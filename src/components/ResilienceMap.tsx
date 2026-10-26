@@ -93,10 +93,31 @@ function readColor(name: string, fallback: string) {
     .trim()
 }
 
-type PlanningMapState = ReturnType<typeof usePlanningStore.getState>
+const selectPlanningMapState = (
+  state: ReturnType<typeof usePlanningStore.getState>,
+) => ({
+  activeLayers: state.activeLayers,
+  hazard: state.hazard,
+  selectedEventId: state.selectedEventId,
+  confirmedResourceIds: state.confirmedResourceIds,
+  selectedAreaId: state.selectedAreaId,
+  selectedResidentPlanId: state.selectedResidentPlanId,
+  selectedResidentResourceId: state.selectedResidentResourceId,
+  residentNoCar: state.residentNoCar,
+  mobilePanel: state.mobilePanel,
+  locationFocus: state.locationFocus,
+  selectedPlanningZoneId: state.selectedPlanningZoneId,
+  setSelectedAreaId: state.setSelectedAreaId,
+  selectPlanningZone: state.selectPlanningZone,
+  setMobilePanel: state.setMobilePanel,
+  selectResource: state.selectResource,
+  toggleLayer: state.toggleLayer,
+})
+
+type PlanningMapState = ReturnType<typeof selectPlanningMapState>
 
 export function ResilienceMap() {
-  const planningState = usePlanningStore(useShallow((state) => state))
+  const planningState = usePlanningStore(useShallow(selectPlanningMapState))
   const deferredPlanningState = useDeferredValue(planningState)
 
   return <ResilienceMapContent planningState={deferredPlanningState} />

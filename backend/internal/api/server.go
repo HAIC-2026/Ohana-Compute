@@ -116,11 +116,12 @@ func NewServer(config Config) *Server {
 		snapshot, err := config.Alerts.ActiveAlerts(request.Context())
 		if err != nil {
 			logger.Error("load active events", "error", err)
-			writeJSON(writer, http.StatusBadGateway, map[string]any{
-				"error":  "active event source unavailable",
-				"source": "nws-hi-alerts",
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"active event source unavailable",
+				"nws-hi-alerts",
+			)
 			return
 		}
 		writeJSON(writer, http.StatusOK, snapshot)
@@ -248,11 +249,12 @@ func feedHandler[T any](
 		result, err := load(request.Context())
 		if err != nil {
 			logger.Error("load live feed", "source", sourceID, "error", err)
-			writeJSON(writer, http.StatusBadGateway, map[string]string{
-				"error":  "live source unavailable",
-				"source": sourceID,
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"live source unavailable",
+				sourceID,
+			)
 			return
 		}
 		writeJSON(writer, http.StatusOK, result)
@@ -267,10 +269,12 @@ func coordinateHandler[T any](
 	return func(writer http.ResponseWriter, request *http.Request) {
 		latitude, longitude, err := parseCoordinates(request)
 		if err != nil {
-			writeJSON(writer, http.StatusBadRequest, map[string]string{
-				"error":  "invalid coordinates",
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"invalid coordinates",
+				"",
+			)
 			return
 		}
 
@@ -279,15 +283,14 @@ func coordinateHandler[T any](
 			logger.Error(
 				"load official source",
 				"source", sourceID,
-				"latitude", latitude,
-				"longitude", longitude,
 				"error", err,
 			)
-			writeJSON(writer, http.StatusBadGateway, map[string]string{
-				"error":  "official source unavailable",
-				"source": sourceID,
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"official source unavailable",
+				sourceID,
+			)
 			return
 		}
 		writeJSON(writer, http.StatusOK, result)
@@ -318,4 +321,18 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
 		slog.Error("write JSON response", "status", status, "error", err)
 	}
+}
+
+func writeAPIError(
+	writer http.ResponseWriter,
+	status int,
+	message string,
+	source string,
+) {
+	writer.Header().Set("Cache-Control", "no-store")
+	payload := map[string]string{"error": message}
+	if source != "" {
+		payload["source"] = source
+	}
+	writeJSON(writer, status, payload)
 }

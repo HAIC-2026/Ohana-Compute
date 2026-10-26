@@ -16,6 +16,7 @@ import {
   Speaker,
   Utensils,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 import {
   activeEvents,
@@ -82,7 +83,24 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     setResidentMobilityHelp,
     setResidentMedicalPower,
     setPreferredLanguage,
-  } = usePlanningStore()
+  } = usePlanningStore(
+    useShallow((state) => ({
+      selectedResidentPlanId: state.selectedResidentPlanId,
+      selectedResidentResourceId: state.selectedResidentResourceId,
+      hazard: state.hazard,
+      selectedEventId: state.selectedEventId,
+      residentNoCar: state.residentNoCar,
+      residentMobilityHelp: state.residentMobilityHelp,
+      residentMedicalPower: state.residentMedicalPower,
+      preferredLanguage: state.preferredLanguage,
+      selectResidentPlan: state.selectResidentPlan,
+      selectResidentResource: state.selectResidentResource,
+      setResidentNoCar: state.setResidentNoCar,
+      setResidentMobilityHelp: state.setResidentMobilityHelp,
+      setResidentMedicalPower: state.setResidentMedicalPower,
+      setPreferredLanguage: state.setPreferredLanguage,
+    })),
+  )
   const plan =
     residentRoutePlans.find((item) => item.id === selectedResidentPlanId) ??
     residentRoutePlans[0]

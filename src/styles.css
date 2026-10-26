@@ -2308,6 +2308,35 @@ select:focus-visible {
   line-height: 1.25;
 }
 
+.community-afn-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-block: 1px solid var(--cp-border);
+}
+
+.community-afn-details > div {
+  display: flex;
+  min-width: 0;
+  padding: 8px 7px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.community-afn-details > div:nth-child(n + 4) {
+  border-top: 1px solid var(--cp-border);
+}
+
+.community-afn-details span {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.community-afn-details strong {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
 .community-afn-source {
   display: flex;
   align-items: flex-start;

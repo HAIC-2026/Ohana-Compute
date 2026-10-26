@@ -67,6 +67,13 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     planningSheet.getByText('2 · Model needs and gaps'),
   ).toBeVisible()
+  await expect(planningSheet.getByText('Planning population')).toBeVisible()
+  await expect(planningSheet.getByText('Overall SVI ranking')).toBeVisible()
+  await expect(planningSheet.getByText('12th percentile')).toBeVisible()
+  await expect(planningSheet.getByText('Expected annual loss')).toBeVisible()
+  await expect(
+    planningSheet.getByText('Relatively Moderate', { exact: true }).last(),
+  ).toBeVisible()
   await expect(
     planningSheet.getByText('3 · Match response partners'),
   ).toBeVisible()

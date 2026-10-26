@@ -102,6 +102,12 @@ coordinates, input values, visible text, user identifiers, or URLs/query
 strings. See [`docs/observability.md`](./docs/observability.md) for the metric
 contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 
+The backend coalesces identical concurrent official-source cache misses so a
+burst of planner requests produces one upstream refresh per source and
+coordinate. Coordinate caches are size-bounded, public errors omit upstream
+diagnostics and coordinates, and request-body/header timeouts bound slow
+clients. Raw source failures remain available in server logs.
+
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
 context, official aggregate AFN values, resource and route checks, assigned
@@ -154,7 +160,10 @@ AFN context. It displays Census ACS disability, limited-English, and
 no-vehicle estimates together with HHS emPOWER medical-equipment dependence.
 The interface preserves privacy-masked emPOWER counts, supports partial source
 responses, and never represents these geographic estimates as person-level
-records.
+records. The response workspace also exposes population, age, poverty,
+health-service equipment, overall SVI, expected annual loss, retrieval time,
+and stale-source status so planners can assess both the signal and its
+provenance without opening another system.
 
 Official data is requested from:
 

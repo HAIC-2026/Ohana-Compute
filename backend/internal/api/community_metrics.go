@@ -17,10 +17,12 @@ func communityProfileHandler(
 	return func(writer http.ResponseWriter, request *http.Request) {
 		latitude, longitude, err := parseCoordinates(request)
 		if err != nil {
-			writeJSON(writer, http.StatusBadRequest, map[string]string{
-				"error":  "invalid coordinates",
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"invalid coordinates",
+				"",
+			)
 			return
 		}
 
@@ -41,15 +43,14 @@ func communityProfileHandler(
 			logger.Error(
 				"load official source",
 				"source", "community-profile",
-				"latitude", latitude,
-				"longitude", longitude,
 				"error", err,
 			)
-			writeJSON(writer, http.StatusBadGateway, map[string]string{
-				"error":  "official source unavailable",
-				"source": "community-profile",
-				"detail": err.Error(),
-			})
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"official source unavailable",
+				"community-profile",
+			)
 			return
 		}
 

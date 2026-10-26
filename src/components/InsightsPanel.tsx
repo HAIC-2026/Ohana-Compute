@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   ArrowUpRight,
   BatteryCharging,
@@ -75,7 +76,27 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     confirmResource,
     selectResource,
     setBriefReady,
-  } = usePlanningStore()
+  } = usePlanningStore(
+    useShallow((state) => ({
+      selectedAreaId: state.selectedAreaId,
+      selectedEventId: state.selectedEventId,
+      locationFocus: state.locationFocus,
+      selectedPlanningZoneId: state.selectedPlanningZoneId,
+      selectedNeighborhoodId: state.selectedNeighborhoodId,
+      hazard: state.hazard,
+      severity: state.severity,
+      activeLayers: state.activeLayers,
+      confirmedResourceIds: state.confirmedResourceIds,
+      selectedResourceId: state.selectedResourceId,
+      residentNoCar: state.residentNoCar,
+      residentMobilityHelp: state.residentMobilityHelp,
+      residentMedicalPower: state.residentMedicalPower,
+      preferredLanguage: state.preferredLanguage,
+      confirmResource: state.confirmResource,
+      selectResource: state.selectResource,
+      setBriefReady: state.setBriefReady,
+    })),
+  )
   const [brief, setBrief] = useState<PlanningBrief | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
@@ -329,7 +350,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             area.summary}
         </p>
 
-        <CommunityAfnSummary coordinates={planningCoordinates} />
+        <CommunityAfnSummary coordinates={planningCoordinates} detailed />
 
         {activeEvent && (
           <div className="sheet-event-summary">

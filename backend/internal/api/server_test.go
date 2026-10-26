@@ -245,6 +245,17 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
 	}
+	if strings.Contains(response.Body.String(), "ArcGIS unavailable") ||
+		strings.Contains(response.Body.String(), "21.29") ||
+		strings.Contains(response.Body.String(), "-157.68") {
+		t.Fatalf("public error exposed upstream details: %s", response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf(
+			"expected errors to disable caching, got %q",
+			response.Header().Get("Cache-Control"),
+		)
+	}
 }
 
 func TestLiveEventEndpointsReturnNormalizedFeeds(t *testing.T) {

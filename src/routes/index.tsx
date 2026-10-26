@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   BatteryCharging,
   BusFront,
@@ -51,11 +52,16 @@ const ResilienceMap = lazy(() =>
   })),
 )
 
-const InsightsPanel = lazy(() =>
+const loadInsightsPanel = () =>
   import('../components/InsightsPanel').then((module) => ({
     default: module.InsightsPanel,
-  })),
-)
+  }))
+
+const InsightsPanel = lazy(loadInsightsPanel)
+
+function preloadResponseWorkspace() {
+  void loadInsightsPanel()
+}
 
 const hazardIcons: Record<HazardId, typeof Waves> = {
   tsunami: Waves,
@@ -103,7 +109,26 @@ function Home() {
     preferredLanguage,
     confirmResource,
     setMobilePanel,
-  } = usePlanningStore()
+  } = usePlanningStore(
+    useShallow((state) => ({
+      hazard: state.hazard,
+      severity: state.severity,
+      selectedEventId: state.selectedEventId,
+      selectActiveEvent: state.selectActiveEvent,
+      selectedAreaId: state.selectedAreaId,
+      selectedNeighborhoodId: state.selectedNeighborhoodId,
+      setSelectedAreaId: state.setSelectedAreaId,
+      activeLayers: state.activeLayers,
+      mobilePanel: state.mobilePanel,
+      briefReady: state.briefReady,
+      confirmedResourceIds: state.confirmedResourceIds,
+      selectedResidentPlanId: state.selectedResidentPlanId,
+      selectedResidentResourceId: state.selectedResidentResourceId,
+      preferredLanguage: state.preferredLanguage,
+      confirmResource: state.confirmResource,
+      setMobilePanel: state.setMobilePanel,
+    })),
+  )
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
   const selectedHazard =
     hazards.find((item) => item.id === hazard) ?? hazards[0]
@@ -522,6 +547,8 @@ function Home() {
           <button
             type="button"
             className="relief-primary"
+            onFocus={preloadResponseWorkspace}
+            onPointerEnter={preloadResponseWorkspace}
             onClick={() => setMobilePanel('insights')}
           >
             <Sparkles size={18} />
@@ -566,6 +593,8 @@ function Home() {
         <button
           type="button"
           className="mobile-result"
+          onFocus={preloadResponseWorkspace}
+          onPointerEnter={preloadResponseWorkspace}
           onClick={() => setMobilePanel('insights')}
         >
           <span>
@@ -581,6 +610,8 @@ function Home() {
         <nav className="mobile-dock" aria-label="Emergency planning tools">
           <button
             type="button"
+            onFocus={preloadResponseWorkspace}
+            onPointerEnter={preloadResponseWorkspace}
             onClick={() => setMobilePanel('insights')}
             className={mobilePanel === 'insights' ? 'is-active' : ''}
           >

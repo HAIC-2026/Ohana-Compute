@@ -2,14 +2,17 @@ import { Database, ShieldCheck } from 'lucide-react'
 
 import {
   formatAggregateMetric,
+  formatPercentile,
   formatProtectedCount,
   useCommunityProfile,
 } from '../lib/community-profile'
 
 export function CommunityAfnSummary({
   coordinates,
+  detailed = false,
 }: {
   coordinates: [number, number]
+  detailed?: boolean
 }) {
   const { status, profile } = useCommunityProfile(coordinates)
   const sourceDefinitions = [
@@ -32,6 +35,23 @@ export function CommunityAfnSummary({
   const unavailableSourceLabels = sourceDefinitions
     .filter(({ source }) => source === undefined)
     .map(({ label }) => label)
+  const staleSourceCount = sourceDefinitions.filter(
+    ({ source }) => source?.status === 'stale',
+  ).length
+  const newestRetrieval = sourceDefinitions
+    .flatMap(({ source }) =>
+      source?.retrieved_at ? [source.retrieved_at] : [],
+    )
+    .sort()
+    .at(-1)
+  const newestRetrievalLabel = newestRetrieval
+    ? new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(newestRetrieval))
+    : null
 
   return (
     <div className="community-afn-summary" data-testid="afn-context">
@@ -91,6 +111,56 @@ export function CommunityAfnSummary({
               </strong>
             </div>
           </div>
+          {detailed ? (
+            <div
+              className="community-afn-details"
+              aria-label="Additional aggregate planning signals"
+            >
+              <div>
+                <span>Planning population</span>
+                <strong>
+                  {formatAggregateMetric(profile.acs?.population, null)}
+                </strong>
+              </div>
+              <div>
+                <span>Age 65 or older</span>
+                <strong>
+                  {profile.svi?.age_65_or_older?.toLocaleString() ??
+                    'Unavailable'}
+                </strong>
+              </div>
+              <div>
+                <span>Below poverty estimate</span>
+                <strong>
+                  {formatAggregateMetric(
+                    profile.acs?.population_below_poverty,
+                    null,
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span>Any health-service DME</span>
+                <strong>
+                  {formatProtectedCount(
+                    profile.empower?.any_healthcare_service_any_dme,
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span>Overall SVI ranking</span>
+                <strong>
+                  {formatPercentile(profile.svi?.overall_percentile)}
+                </strong>
+              </div>
+              <div>
+                <span>Expected annual loss</span>
+                <strong>
+                  {profile.fema_national_risk?.expected_annual_loss_rating ||
+                    'Unavailable'}
+                </strong>
+              </div>
+            </div>
+          ) : null}
           <div className="community-afn-source">
             <ShieldCheck size={14} />
             <div>
@@ -117,6 +187,14 @@ export function CommunityAfnSummary({
                 </span>
               ) : null}
               <span>Sources: {sourceLabels.join(' · ')}</span>
+              {newestRetrievalLabel ? (
+                <span>
+                  Latest retrieval: {newestRetrievalLabel}
+                  {staleSourceCount > 0
+                    ? ` · ${staleSourceCount} stale source${staleSourceCount === 1 ? '' : 's'}`
+                    : ' · all available sources fresh'}
+                </span>
+              ) : null}
               {unavailableSourceLabels.length > 0 ? (
                 <span>Unavailable: {unavailableSourceLabels.join(' · ')}</span>
               ) : null}

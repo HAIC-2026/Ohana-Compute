@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ func TestQueryCachesGeoJSON(t *testing.T) {
 		if request.URL.Query().Get("f") != "geojson" {
 			t.Error("expected GeoJSON request")
 		}
+
 		writer.Header().Set("Content-Type", "application/geo+json")
 		_, _ = writer.Write([]byte(`{
 			"type":"FeatureCollection",
@@ -56,6 +58,90 @@ func TestQueryCachesGeoJSON(t *testing.T) {
 	}
 	if len(first.Collection.Features) != 1 || second.Source.Status != "fresh" {
 		t.Fatalf("unexpected results: %#v %#v", first, second)
+	}
+}
+
+func TestQueryCoalescesConcurrentCacheMisses(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		time.Sleep(25 * time.Millisecond)
+		_, _ = writer.Write([]byte(`{"type":"FeatureCollection","features":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{})
+	query := Request{
+		SourceID:  "shared-source",
+		Authority: "Test",
+		URL:       server.URL,
+		CacheTTL:  time.Hour,
+	}
+
+	var waitGroup sync.WaitGroup
+	errors := make(chan error, 50)
+	for range 50 {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			_, err := client.Query(context.Background(), query)
+			errors <- err
+		}()
+	}
+	waitGroup.Wait()
+	close(errors)
+
+	for err := range errors {
+		if err != nil {
+			t.Fatalf("concurrent query failed: %v", err)
+		}
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("expected one coalesced upstream request, got %d", requests.Load())
+	}
+}
+
+func TestQueryBoundsCacheEntries(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		_, _ = writer.Write([]byte(`{"type":"FeatureCollection","features":[]}`))
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 10, 26, 18, 0, 0, 0, time.UTC)
+	client := NewClient(Config{
+		MaxCacheEntries: 2,
+		Now:             func() time.Time { return now },
+	})
+	query := Request{
+		SourceID:  "bounded-source",
+		Authority: "Test",
+		URL:       server.URL,
+		CacheTTL:  time.Hour,
+	}
+
+	for _, geometry := range []string{"a", "b", "c"} {
+		query.Params = url.Values{"geometry": {geometry}}
+		if _, err := client.Query(context.Background(), query); err != nil {
+			t.Fatalf("query %q failed: %v", geometry, err)
+		}
+		now = now.Add(time.Second)
+	}
+	if len(client.cache) != 2 {
+		t.Fatalf("expected bounded cache size 2, got %d", len(client.cache))
+	}
+
+	query.Params = url.Values{"geometry": {"a"}}
+	if _, err := client.Query(context.Background(), query); err != nil {
+		t.Fatalf("reloading evicted entry failed: %v", err)
+	}
+	if requests.Load() != 4 {
+		t.Fatalf("expected evicted entry to reload, got %d upstream requests", requests.Load())
 	}
 }
 

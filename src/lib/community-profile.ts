@@ -14,6 +14,8 @@ export type CommunitySource = {
   authority: string
   vintage?: string
   upstream_last_modified?: string
+  retrieved_at?: string
+  fresh_until?: string
   status: 'fresh' | 'stale'
 }
 
@@ -36,6 +38,8 @@ export type CommunityProfile = {
     with_disability: number | null
     limited_english: number | null
     no_vehicle_households: number | null
+    overall_percentile?: number | null
+    housing_transportation_percentile?: number | null
     source: CommunitySource
   }
   empower?: {
@@ -52,6 +56,7 @@ export type CommunityProfile = {
   }
   fema_national_risk?: {
     risk_rating: string
+    expected_annual_loss_rating?: string
     social_vulnerability_rating: string
     community_resilience_rating: string
     source: CommunitySource
@@ -175,4 +180,21 @@ export function formatProtectedCount(count: ProtectedCount | undefined) {
   if (count?.value === null || count?.value === undefined) return 'Unavailable'
   if (count.may_represent_masked_cell) return '1–11 (privacy-protected)'
   return count.value.toLocaleString()
+}
+
+export function formatPercentile(value: number | null | undefined) {
+  if (value === null || value === undefined) return 'Unavailable'
+  const percentile = Math.round(value * 100)
+  const lastTwoDigits = percentile % 100
+  const suffix =
+    lastTwoDigits >= 11 && lastTwoDigits <= 13
+      ? 'th'
+      : percentile % 10 === 1
+        ? 'st'
+        : percentile % 10 === 2
+          ? 'nd'
+          : percentile % 10 === 3
+            ? 'rd'
+            : 'th'
+  return `${percentile}${suffix} percentile`
 }

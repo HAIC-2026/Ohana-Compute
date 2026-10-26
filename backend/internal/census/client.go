@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -60,13 +62,14 @@ type Profile struct {
 }
 
 type Config struct {
-	HTTPClient  *http.Client
-	APIKey      string
-	GeocoderURL string
-	DetailedURL string
-	SubjectURL  string
-	CacheTTL    time.Duration
-	Now         func() time.Time
+	HTTPClient      *http.Client
+	APIKey          string
+	GeocoderURL     string
+	DetailedURL     string
+	SubjectURL      string
+	CacheTTL        time.Duration
+	Now             func() time.Time
+	MaxCacheEntries int
 }
 
 type Client struct {
@@ -77,6 +80,8 @@ type Client struct {
 	subjectURL  string
 	cacheTTL    time.Duration
 	now         func() time.Time
+	maxEntries  int
+	requests    singleflight.Group
 
 	mu    sync.RWMutex
 	cache map[string]Profile
@@ -101,6 +106,10 @@ func NewClient(config Config) *Client {
 	if now == nil {
 		now = time.Now
 	}
+	maxEntries := config.MaxCacheEntries
+	if maxEntries <= 0 {
+		maxEntries = 512
+	}
 	return &Client{
 		httpClient:  httpClient,
 		apiKey:      strings.TrimSpace(config.APIKey),
@@ -109,6 +118,7 @@ func NewClient(config Config) *Client {
 		subjectURL:  valueOrDefault(config.SubjectURL, defaultSubjectURL),
 		cacheTTL:    cacheTTL,
 		now:         now,
+		maxEntries:  maxEntries,
 		cache:       make(map[string]Profile),
 	}
 }
@@ -121,8 +131,23 @@ func (client *Client) CommunityProfile(
 	if client.apiKey == "" {
 		return Profile{}, ErrAPIKeyRequired
 	}
-	now := client.now().UTC()
 	cacheKey := fmt.Sprintf("%.5f,%.5f", latitude, longitude)
+	value, err, _ := client.requests.Do(cacheKey, func() (any, error) {
+		return client.loadCommunityProfile(ctx, latitude, longitude, cacheKey)
+	})
+	if err != nil {
+		return Profile{}, err
+	}
+	return cloneProfile(value.(Profile)), nil
+}
+
+func (client *Client) loadCommunityProfile(
+	ctx context.Context,
+	latitude float64,
+	longitude float64,
+	cacheKey string,
+) (Profile, error) {
+	now := client.now().UTC()
 	if profile, ok := client.fresh(cacheKey, now); ok {
 		return profile, nil
 	}
@@ -226,7 +251,7 @@ func (client *Client) CommunityProfile(
 		profile.NoVehicleHouseholds.Percent = &percent
 	}
 	client.store(cacheKey, profile)
-	return cloneProfile(profile), nil
+	return profile, nil
 }
 
 func (client *Client) resolveGeography(
@@ -377,7 +402,26 @@ func (client *Client) fresh(key string, now time.Time) (Profile, bool) {
 func (client *Client) store(key string, profile Profile) {
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if _, exists := client.cache[key]; !exists &&
+		len(client.cache) >= client.maxEntries {
+		client.evictOldest()
+	}
 	client.cache[key] = cloneProfile(profile)
+}
+
+func (client *Client) evictOldest() {
+	var oldestKey string
+	var oldestRetrievedAt time.Time
+	for key, profile := range client.cache {
+		retrievedAt := profile.Source.RetrievedAt
+		if oldestKey == "" || retrievedAt.Before(oldestRetrievedAt) {
+			oldestKey = key
+			oldestRetrievedAt = retrievedAt
+		}
+	}
+	if oldestKey != "" {
+		delete(client.cache, oldestKey)
+	}
 }
 
 func cloneProfile(profile Profile) Profile {

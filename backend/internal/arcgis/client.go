@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type FeatureCollection struct {
@@ -49,9 +51,10 @@ type Request struct {
 }
 
 type Config struct {
-	HTTPClient *http.Client
-	UserAgent  string
-	Now        func() time.Time
+	HTTPClient      *http.Client
+	UserAgent       string
+	Now             func() time.Time
+	MaxCacheEntries int
 }
 
 type cacheEntry struct {
@@ -62,6 +65,8 @@ type Client struct {
 	httpClient *http.Client
 	userAgent  string
 	now        func() time.Time
+	maxEntries int
+	requests   singleflight.Group
 
 	mu    sync.RWMutex
 	cache map[string]cacheEntry
@@ -100,10 +105,15 @@ func NewClient(config Config) *Client {
 	if now == nil {
 		now = time.Now
 	}
+	maxEntries := config.MaxCacheEntries
+	if maxEntries <= 0 {
+		maxEntries = 512
+	}
 	return &Client{
 		httpClient: httpClient,
 		userAgent:  userAgent,
 		now:        now,
+		maxEntries: maxEntries,
 		cache:      make(map[string]cacheEntry),
 	}
 }
@@ -125,6 +135,20 @@ func (client *Client) Query(ctx context.Context, query Request) (Result, error) 
 		return Result{}, fmt.Errorf("build ArcGIS query URL: %w", err)
 	}
 
+	value, err, _ := client.requests.Do(requestURL, func() (any, error) {
+		return client.query(ctx, query, requestURL)
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	return cloneResult(value.(Result)), nil
+}
+
+func (client *Client) query(
+	ctx context.Context,
+	query Request,
+	requestURL string,
+) (Result, error) {
 	now := client.now().UTC()
 	if cached, ok := client.fresh(requestURL, now); ok {
 		return cached, nil
@@ -210,7 +234,7 @@ func (client *Client) Query(ctx context.Context, query Request) (Result, error) 
 		},
 	}
 	client.store(requestURL, result)
-	return cloneResult(result), nil
+	return result, nil
 }
 
 func buildURL(rawURL string, params url.Values) (string, error) {
@@ -260,7 +284,26 @@ func (client *Client) cached(key string) (Result, bool) {
 func (client *Client) store(key string, result Result) {
 	client.mu.Lock()
 	defer client.mu.Unlock()
+	if _, exists := client.cache[key]; !exists &&
+		len(client.cache) >= client.maxEntries {
+		client.evictOldest()
+	}
 	client.cache[key] = cacheEntry{result: cloneResult(result)}
+}
+
+func (client *Client) evictOldest() {
+	var oldestKey string
+	var oldestRetrievedAt time.Time
+	for key, entry := range client.cache {
+		retrievedAt := entry.result.Source.RetrievedAt
+		if oldestKey == "" || retrievedAt.Before(oldestRetrievedAt) {
+			oldestKey = key
+			oldestRetrievedAt = retrievedAt
+		}
+	}
+	if oldestKey != "" {
+		delete(client.cache, oldestKey)
+	}
 }
 
 func staleOrError(stale Result, ok bool, now time.Time, refreshErr error) (Result, error) {

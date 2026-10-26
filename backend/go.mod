@@ -2,7 +2,10 @@ module github.com/chokevin/hawaii-resilience-map/backend
 
 go 1.27
 
-require github.com/prometheus/client_golang v1.25.0
+require (
+	github.com/prometheus/client_golang v1.25.0
+	golang.org/x/sync v0.24.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

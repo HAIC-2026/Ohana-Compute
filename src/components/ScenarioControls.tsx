@@ -11,6 +11,7 @@ import {
   Waves,
   Wind,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { areas, hazards, layers } from '../lib/mock-data'
 import type { HazardId, LayerId } from '../lib/mock-data'
@@ -44,7 +45,18 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
     setSelectedAreaId,
     activeLayers,
     toggleLayer,
-  } = usePlanningStore()
+  } = usePlanningStore(
+    useShallow((state) => ({
+      hazard: state.hazard,
+      setHazard: state.setHazard,
+      severity: state.severity,
+      setSeverity: state.setSeverity,
+      selectedAreaId: state.selectedAreaId,
+      setSelectedAreaId: state.setSelectedAreaId,
+      activeLayers: state.activeLayers,
+      toggleLayer: state.toggleLayer,
+    })),
+  )
 
   return (
     <div className={`scenario-content ${compact ? 'is-compact' : ''}`}>
