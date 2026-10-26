@@ -1,0 +1,7 @@
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+dist
+.tanstack
+test-results
+playwright-report
