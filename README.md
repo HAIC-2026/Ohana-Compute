@@ -79,6 +79,8 @@ and is never stored in GitHub or Kubernetes manifests.
 The backend listens on <http://127.0.0.1:8080> and currently exposes:
 
 - `GET /healthz`
+- `GET /metrics`
+- `POST /api/v1/telemetry/browser`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -88,6 +90,13 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
+
+Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
+aggregated into Prometheus metrics by the backend. It never includes addresses,
+coordinates, input values, visible text, user identifiers, or URLs/query
+strings. See [`docs/observability.md`](./docs/observability.md) for the metric
+contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
+
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`

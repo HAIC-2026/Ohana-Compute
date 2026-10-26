@@ -63,6 +63,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
                 role="radio"
                 aria-checked={hazard === item.id}
                 className={hazard === item.id ? 'is-active' : ''}
+                data-telemetry-action="hazard_select"
                 onClick={() => setHazard(item.id)}
               >
                 <Icon size={18} />
@@ -84,6 +85,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
             max="5"
             step="1"
             value={severity}
+            data-telemetry-action="severity_change"
             onChange={(event) => setSeverity(Number(event.target.value))}
           />
           <div className="range-labels" aria-hidden="true">
@@ -99,6 +101,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
           <select
             id={`planning-area-${compact ? 'mobile' : 'desktop'}`}
             value={selectedAreaId}
+            data-telemetry-action="area_select"
             onChange={(event) => setSelectedAreaId(event.target.value)}
           >
             {oahuAreas.map((area) => (
@@ -125,6 +128,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
                 type="button"
                 className={active ? 'is-active' : ''}
                 aria-pressed={active}
+                data-telemetry-action="layer_toggle"
                 onClick={() => toggleLayer(layer.id)}
               >
                 <span className="layer-icon">

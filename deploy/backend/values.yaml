@@ -9,6 +9,20 @@ service:
   type: LoadBalancer
   port: 80
 
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels: {}
+
+grafanaDashboard:
+  enabled: false
+  labels:
+    grafana_dashboard: '1'
+
+telemetry:
+  rateLimitPerMinute: 1200
+
 azure:
   tenantId: ''
   workloadIdentityClientId: ''

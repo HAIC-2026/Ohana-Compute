@@ -1,11 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -473,5 +475,225 @@ func TestCommunityProfileEndpointReturnsPartialProfile(t *testing.T) {
 	}
 	if profile.SVI == nil || profile.SVI.TractFIPS != "15003000120" {
 		t.Fatalf("unexpected profile: %#v", profile)
+	}
+}
+
+func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	body := `{
+		"version": 1,
+		"events": [{
+			"kind": "interaction",
+			"action": "hazard_select",
+			"category": "button",
+			"route": "home",
+			"viewport": "large",
+			"outcome": "success",
+			"duration_ms": 12.5
+		}]
+	}`
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/telemetry/browser",
+		strings.NewReader(body),
+	)
+	request.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+	request.RemoteAddr = "192.0.2.10:4321"
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", response.Code, response.Body.String())
+	}
+
+	metricsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		metricsResponse,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	metricsBody := metricsResponse.Body.String()
+	for _, metric := range []string{
+		`hawaii_resilience_browser_events_total{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_event_duration_seconds_count{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_telemetry_batches_total{outcome="accepted"} 1`,
+	} {
+		if !strings.Contains(metricsBody, metric) {
+			t.Fatalf("metrics missing %q:\n%s", metric, metricsBody)
+		}
+	}
+}
+
+func TestBrowserTelemetryEndpointRejectsUnsafeOrOversizedPayloads(t *testing.T) {
+	t.Parallel()
+
+	newServer := func() *Server {
+		return NewServer(Config{
+			Alerts:          alertReaderStub{},
+			Cyclones:        cycloneReaderStub{},
+			TsunamiProducts: tsunamiProductReaderStub{},
+			Official:        &officialReaderStub{},
+			Community:       &communityReaderStub{},
+			Transportation:  &transportationReaderStub{},
+		})
+	}
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+		status      int
+	}{
+		{
+			name:        "unknown action cannot become a metric label",
+			contentType: "application/json",
+			body: []byte(`{"version":1,"events":[{
+				"kind":"interaction",
+				"action":"typed address 123 Main Street",
+				"category":"input",
+				"route":"home",
+				"viewport":"large",
+				"outcome":"success"
+			}]}`),
+			status: http.StatusBadRequest,
+		},
+		{
+			name:        "unknown fields fail closed",
+			contentType: "application/json",
+			body: []byte(`{"version":1,"events":[{
+				"kind":"interaction",
+				"action":"change",
+				"category":"input",
+				"route":"home",
+				"viewport":"large",
+				"outcome":"success",
+				"input_value":"private"
+			}]}`),
+			status: http.StatusBadRequest,
+		},
+		{
+			name:        "unsupported content type",
+			contentType: "application/x-www-form-urlencoded",
+			body:        []byte(`version=1`),
+			status:      http.StatusUnsupportedMediaType,
+		},
+		{
+			name:        "oversized body",
+			contentType: "application/json",
+			body: append(
+				append(
+					[]byte(`{"version":1,"events":[{"kind":"interaction","action":"`),
+					bytes.Repeat([]byte("x"), maxTelemetryBodyBytes)...,
+				),
+				[]byte(`","category":"input","route":"home","viewport":"large","outcome":"success"}]}`)...,
+			),
+			status: http.StatusRequestEntityTooLarge,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/telemetry/browser",
+				bytes.NewReader(test.body),
+			)
+			request.Header.Set("Content-Type", test.contentType)
+			request.RemoteAddr = "192.0.2.20:1234"
+			response := httptest.NewRecorder()
+			newServer().Handler().ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf(
+					"expected %d, got %d: %s",
+					test.status,
+					response.Code,
+					response.Body.String(),
+				)
+			}
+		})
+	}
+}
+
+func TestBrowserTelemetryEndpointRateLimitsByRemoteAddress(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		TelemetryRate:   1,
+	})
+	body := `{"version":1,"events":[{
+		"kind":"page_load",
+		"action":"hydration",
+		"category":"page",
+		"route":"home",
+		"viewport":"small",
+		"outcome":"success"
+	}]}`
+	for attempt, wantStatus := range []int{
+		http.StatusAccepted,
+		http.StatusTooManyRequests,
+	} {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/v1/telemetry/browser",
+			strings.NewReader(body),
+		)
+		request.Header.Set("Content-Type", "application/json")
+		request.RemoteAddr = "192.0.2.30:9876"
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code != wantStatus {
+			t.Fatalf(
+				"attempt %d: expected %d, got %d: %s",
+				attempt+1,
+				wantStatus,
+				response.Code,
+				response.Body.String(),
+			)
+		}
+	}
+}
+
+func TestHTTPMetricsUseRoutePatternsAndResponseStatus(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/healthz?ignored=private", nil),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+
+	metricsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		metricsResponse,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	metric := `hawaii_resilience_http_requests_total{method="GET",route="/healthz",status="200"} 1`
+	if !strings.Contains(metricsResponse.Body.String(), metric) {
+		t.Fatalf("metrics missing %q:\n%s", metric, metricsResponse.Body.String())
 	}
 }

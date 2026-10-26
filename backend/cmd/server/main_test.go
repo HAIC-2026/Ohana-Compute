@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,5 +43,19 @@ func TestSecretFromEnvironmentOrFileFailsForUnreadableFile(t *testing.T) {
 
 	if _, err := secretFromEnvironmentOrFile("TEST_SECRET", "TEST_SECRET_FILE"); err == nil {
 		t.Fatal("secretFromEnvironmentOrFile returned nil error")
+	}
+}
+
+func TestPositiveIntOrDefault(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	t.Setenv("TEST_RATE", "2400")
+	if got := positiveIntOrDefault("TEST_RATE", 1200, logger); got != 2400 {
+		t.Fatalf("positiveIntOrDefault = %d, want 2400", got)
+	}
+
+	t.Setenv("TEST_RATE", "invalid")
+	if got := positiveIntOrDefault("TEST_RATE", 1200, logger); got != 1200 {
+		t.Fatalf("positiveIntOrDefault fallback = %d, want 1200", got)
 	}
 }

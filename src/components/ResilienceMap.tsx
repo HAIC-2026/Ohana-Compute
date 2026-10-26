@@ -41,6 +41,7 @@ import {
   fetchOfficialFloodRisk,
   fetchOfficialWildfireRisk,
 } from '../lib/official-emergency-data'
+import { markBrowserLifecycle } from '../lib/browser-telemetry'
 import type {
   OfficialEvacuationZone,
   OfficialFloodRisk,
@@ -344,7 +345,11 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   }
 
   return (
-    <div className="map-frame" data-map-loaded={mapLoaded}>
+    <div
+      className="map-frame"
+      data-map-loaded={mapLoaded}
+      data-telemetry-category="map"
+    >
       <nav className="map-story-chips" aria-label="Quick map layers">
         <button
           type="button"
@@ -416,7 +421,10 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       )}
       <MapLibre
         ref={mapRef}
-        onLoad={() => setMapLoaded(true)}
+        onLoad={() => {
+          setMapLoaded(true)
+          markBrowserLifecycle('map_ready')
+        }}
         initialViewState={{
           longitude: -157.97,
           latitude: isMobile ? 21.39 : 21.45,
@@ -426,7 +434,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         minZoom={8.6}
         maxZoom={16}
         fadeDuration={0}
-        attributionControl
+        attributionControl={{}}
       >
         <NavigationControl position="bottom-right" showCompass={false} />
 

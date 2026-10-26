@@ -1,0 +1,11 @@
+{{- if .Values.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hawaii-resilience-backend-dashboard
+  labels:
+{{ toYaml .Values.grafanaDashboard.labels | indent 4 }}
+data:
+  hawaii-resilience-backend.json: |-
+{{ .Files.Get "dashboards/hawaii-resilience-backend.json" | indent 4 }}
+{{- end }}

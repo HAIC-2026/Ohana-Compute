@@ -1,5 +1,6 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 
+import { BrowserTelemetry } from '../lib/browser-telemetry'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -48,6 +49,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <BrowserTelemetry />
         <div
           hidden
           dangerouslySetInnerHTML={{

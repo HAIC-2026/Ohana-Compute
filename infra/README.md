@@ -58,6 +58,38 @@ gh workflow run deploy-dev-backend.yml \
 The workflow builds the backend image, pushes it to ACR, deploys the Helm
 release, and reports the development load-balancer address.
 
+## 5. Enable Prometheus and Grafana discovery
+
+The backend exposes Prometheus metrics at `/metrics`. After a Prometheus
+Operator and Grafana dashboard sidecar are available in the cluster, enable the
+optional chart resources:
+
+```bash
+helm upgrade --install hawaii-resilience-backend deploy/backend \
+  --reuse-values \
+  --set serviceMonitor.enabled=true \
+  --set grafanaDashboard.enabled=true \
+  --wait
+```
+
+If Prometheus selects `ServiceMonitor` resources by label, also set the required
+`serviceMonitor.additionalLabels`. If the Grafana sidecar uses a different
+dashboard discovery label, override `grafanaDashboard.labels`.
+
+Verify the resources and scrape endpoint:
+
+```bash
+kubectl get servicemonitor hawaii-resilience-backend
+kubectl get configmap hawaii-resilience-backend-dashboard
+kubectl port-forward service/hawaii-resilience-backend 8080:80
+curl --fail http://127.0.0.1:8080/metrics
+```
+
+Open the **Hawaiʻi Resilience Map** dashboard in Grafana after the sidecar has
+loaded the ConfigMap and select the cluster Prometheus data source. See
+[`docs/observability.md`](../docs/observability.md) for metric names, bounded
+labels, privacy guarantees, and direct PromQL queries.
+
 ## Secret flow
 
 ```text

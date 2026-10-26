@@ -24,6 +24,8 @@ spec:
           env:
             - name: CENSUS_API_KEY_FILE
               value: /mnt/secrets-store/{{ .Values.azure.censusSecretName }}
+            - name: TELEMETRY_RATE_LIMIT_PER_MINUTE
+              value: {{ .Values.telemetry.rateLimitPerMinute | quote }}
           readinessProbe:
             httpGet:
               path: /healthz

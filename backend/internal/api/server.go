@@ -19,6 +19,8 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type AlertReader interface {
@@ -61,6 +63,8 @@ type Config struct {
 	Transportation  TransportationReader
 	AllowedOrigins  []string
 	Logger          *slog.Logger
+	Registry        *prometheus.Registry
+	TelemetryRate   int
 }
 
 type Server struct {
@@ -90,8 +94,15 @@ func NewServer(config Config) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	registry := config.Registry
+	if registry == nil {
+		registry = prometheus.NewRegistry()
+	}
+	metrics := newMetrics(registry)
+	telemetryLimiter := newTelemetryRateLimiter(config.TelemetryRate, time.Minute)
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -174,8 +185,15 @@ func NewServer(config Config) *Server {
 		"hdot-planned-lane-closures",
 		config.Transportation.PlannedClosures,
 	))
+	mux.HandleFunc(
+		"POST /api/v1/telemetry/browser",
+		browserTelemetryHandler(metrics, telemetryLimiter),
+	)
 
-	handler := requestLogger(logger, cors(config.AllowedOrigins, mux))
+	handler := requestLogger(
+		logger,
+		instrumentHTTP(metrics, cors(config.AllowedOrigins, mux)),
+	)
 	return &Server{handler: handler}
 }
 
@@ -198,7 +216,7 @@ func cors(allowedOrigins []string, next http.Handler) http.Handler {
 			writer.Header().Set("Access-Control-Allow-Origin", origin)
 			writer.Header().Set("Vary", "Origin")
 			writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			writer.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		}
 		if request.Method == http.MethodOptions {
 			writer.WriteHeader(http.StatusNoContent)

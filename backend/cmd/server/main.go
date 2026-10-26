@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 func main() {
@@ -45,6 +48,11 @@ func main() {
 		",",
 	)
 	cacheTTL := durationOrDefault("NWS_CACHE_TTL", 5*time.Minute, logger)
+	telemetryRate := positiveIntOrDefault(
+		"TELEMETRY_RATE_LIMIT_PER_MINUTE",
+		1200,
+		logger,
+	)
 
 	alerts := nws.NewClient(nws.Config{
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
@@ -71,6 +79,11 @@ func main() {
 		arcGISClient,
 		transportation.Config{},
 	)
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
 	apiServer := api.NewServer(api.Config{
 		Alerts:          alerts,
 		Cyclones:        cyclones,
@@ -80,6 +93,8 @@ func main() {
 		Transportation:  transportationSources,
 		AllowedOrigins:  allowedOrigins,
 		Logger:          logger,
+		Registry:        registry,
+		TelemetryRate:   telemetryRate,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -152,4 +167,22 @@ func durationOrDefault(name string, fallback time.Duration, logger *slog.Logger)
 		return fallback
 	}
 	return duration
+}
+
+func positiveIntOrDefault(name string, fallback int, logger *slog.Logger) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		logger.Warn(
+			"invalid integer environment variable; using default",
+			"name", name,
+			"value", value,
+			"default", fallback,
+		)
+		return fallback
+	}
+	return parsed
 }
