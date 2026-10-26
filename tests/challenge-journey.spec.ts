@@ -182,7 +182,10 @@ test.describe.serial('2026 challenge resident journey', () => {
     ).toBeVisible()
     await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
     await expect(
-      page.getByText('Hurricane Lala forecast exposure · practice layer'),
+      page.getByText('Hurricane Lala scenario footprint'),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Synthetic practice data · not an official forecast'),
     ).toBeVisible()
     await expect(
       page.getByText('Damaging conditions possible in 48–72 hours'),
@@ -237,7 +240,7 @@ test.describe.serial('2026 challenge resident journey', () => {
       'switch to tropical-storm flood scenario',
       await clickUntilText(
         page.getByRole('button', { name: /Tropical Storm Nolo/ }),
-        'Tropical Storm Nolo forecast exposure · practice layer',
+        'Tropical Storm Nolo scenario footprint',
       ),
     )
     expectFastInteraction(

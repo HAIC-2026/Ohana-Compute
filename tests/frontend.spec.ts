@@ -16,7 +16,10 @@ test('desktop selects an island response zone and creates local steps', async ({
   ).toBeVisible()
   await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
   await expect(
-    page.getByText('Hurricane Lala forecast exposure · practice layer'),
+    page.getByText('Hurricane Lala scenario footprint'),
+  ).toBeVisible()
+  await expect(
+    page.getByText('Synthetic practice data · not an official forecast'),
   ).toBeVisible()
   await expect(
     page.getByText('Damaging conditions possible in 48–72 hours'),
@@ -279,8 +282,9 @@ test('island selector keeps one island visible and discloses coverage gaps', asy
   await expect(page.getByLabel('Which part of Maui?')).toHaveValue(
     'maui-central',
   )
+  await expect(page.getByText('Maui regional scenario footprint')).toBeVisible()
   await expect(
-    page.getByText('Maui regional exposure · validation pending'),
+    page.getByText('Synthetic practice data · validation pending'),
   ).toBeVisible()
   await expect(page.getByTestId('response-zone-maui-central')).toBeVisible()
   await expect(page.getByTestId('response-zone-oahu-town')).not.toBeVisible()
@@ -649,7 +653,7 @@ test('all four challenge events switch the resident risk answer', async ({
   const affectedBefore = await page.locator('.people-total strong').innerText()
   await page.getByRole('button', { name: /Tropical Storm Nolo/ }).click()
   await expect(
-    page.getByText('Tropical Storm Nolo forecast exposure · practice layer'),
+    page.getByText('Tropical Storm Nolo scenario footprint'),
   ).toBeVisible()
   await expect(
     page.getByText('Heaviest rain bands possible in 24–48 hours'),

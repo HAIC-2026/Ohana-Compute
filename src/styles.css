@@ -351,26 +351,53 @@ select:focus-visible {
   left: 50%;
   z-index: 18;
   display: flex;
-  min-height: 27px;
-  padding: 0 10px;
+  min-height: 38px;
+  max-width: min(390px, calc(100vw - 32px));
+  padding: 6px 11px;
   align-items: center;
   gap: 6px;
   border: 1px solid var(--cp-border);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--cp-panel-strong);
   color: var(--cp-text-muted);
   box-shadow: var(--cp-shadow);
-  font-size: 9px;
-  font-weight: 700;
   transform: translateX(-50%);
 }
 
-.hazard-legend span {
+.hazard-legend-swatch {
+  flex: 0 0 auto;
   width: 10px;
   height: 10px;
   border: 2px dashed var(--cp-danger);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--cp-danger) 12%, transparent);
+  background: color-mix(in srgb, var(--cp-danger) 6%, transparent);
+}
+
+.hazard-legend-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hazard-legend-copy strong,
+.hazard-legend-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hazard-legend-copy strong {
+  color: var(--cp-text);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.hazard-legend-copy small {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .evacuation-zone-legend {
@@ -3691,6 +3718,8 @@ select:focus-visible {
   cursor: pointer;
 }
 
+.sheet-backdrop.is-insights,
+.sheet-backdrop.is-scenario,
 .sheet-backdrop.is-resident {
   background: transparent;
 }
@@ -4380,6 +4409,11 @@ select:focus-visible {
     border-bottom: 0;
     border-left: 0;
     border-radius: 16px 16px 0 0;
+  }
+
+  .sheet-backdrop.is-insights,
+  .sheet-backdrop.is-scenario {
+    background: var(--cp-overlay);
   }
 }
 
