@@ -32,13 +32,14 @@ type Alert struct {
 }
 
 type SourceStatus struct {
-	ID            string    `json:"id"`
-	Authority     string    `json:"authority"`
-	URL           string    `json:"url"`
-	DataUpdatedAt string    `json:"data_updated_at,omitempty"`
-	RetrievedAt   time.Time `json:"retrieved_at"`
-	FreshUntil    time.Time `json:"fresh_until"`
-	Status        string    `json:"status"`
+	ID                 string     `json:"id"`
+	Authority          string     `json:"authority"`
+	URL                string     `json:"url"`
+	DataUpdatedAt      string     `json:"data_updated_at,omitempty"`
+	RetrievedAt        time.Time  `json:"retrieved_at"`
+	RefreshAttemptedAt *time.Time `json:"refresh_attempted_at,omitempty"`
+	FreshUntil         time.Time  `json:"fresh_until"`
+	Status             string     `json:"status"`
 }
 
 type Snapshot struct {
@@ -256,7 +257,7 @@ func (client *Client) staleOrError(
 
 	stale := cloneSnapshot(*cached)
 	stale.Source.Status = "stale"
-	stale.Source.RetrievedAt = now
+	stale.Source.RefreshAttemptedAt = &now
 	stale.Warnings = []string{
 		fmt.Sprintf(
 			"NWS refresh failed; serving the last valid snapshot from %s: %v",
@@ -280,6 +281,10 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 		)
 	}
 	snapshot.Warnings = append([]string(nil), snapshot.Warnings...)
+	if snapshot.Source.RefreshAttemptedAt != nil {
+		refreshAttemptedAt := *snapshot.Source.RefreshAttemptedAt
+		snapshot.Source.RefreshAttemptedAt = &refreshAttemptedAt
+	}
 	return snapshot
 }
 

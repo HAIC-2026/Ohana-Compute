@@ -80,7 +80,7 @@ var sources = []Source{
 		Access:        "ArcGIS REST / GeoJSON",
 		URL:           "https://geodata.hawaii.gov/arcgis/rest/services/Hazards/MapServer/11",
 		UpdateCadence: "Source vintages vary by county",
-		Integration:   "planned-backend; currently used directly by the frontend",
+		Integration:   "integrated-backend; frontend migration pending",
 		Enables: []string{
 			"Point-in-zone classification and evacuation-route avoidance",
 		},
@@ -98,7 +98,7 @@ var sources = []Source{
 		Access:        "ArcGIS REST / GeoJSON",
 		URL:           "https://geodata.hawaii.gov/arcgis/rest/services/Hazards/MapServer/6",
 		UpdateCadence: "State mirror reports monthly refreshes",
-		Integration:   "planned-backend; currently used directly by the frontend",
+		Integration:   "integrated-backend; frontend migration pending",
 		Enables: []string{
 			"Regulatory flood classification and nearby 1% and 0.2% annual-chance boundaries",
 		},
@@ -116,7 +116,7 @@ var sources = []Source{
 		Access:        "ArcGIS REST / GeoJSON",
 		URL:           "https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0",
 		UpdateCadence: "Incident-dependent",
-		Integration:   "planned-backend; currently used directly by the frontend",
+		Integration:   "integrated-backend; frontend migration pending",
 		Enables: []string{
 			"Officially reported open-shelter status, capacity, accessibility, pets, address, and operator context",
 		},
@@ -170,7 +170,7 @@ var sources = []Source{
 		Access:        "ArcGIS REST / GeoJSON",
 		URL:           "https://geodata.hawaii.gov/arcgis/rest/services/Hazards/MapServer/7",
 		UpdateCadence: "2007 source; boundaries re-reviewed in 2017 and 2022",
-		Integration:   "context-only; currently used directly by the frontend",
+		Integration:   "integrated-backend-context; frontend migration pending",
 		Enables: []string{
 			"Community-scale planning susceptibility context",
 		},

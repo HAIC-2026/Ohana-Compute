@@ -10,11 +10,62 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
 
 type alertReaderStub struct {
 	snapshot nws.Snapshot
 	err      error
+}
+
+type officialReaderStub struct {
+	tsunami       official.TsunamiRisk
+	flood         official.FloodRisk
+	wildfire      official.WildfireRisk
+	shelters      official.OpenShelters
+	err           error
+	lastLatitude  float64
+	lastLongitude float64
+}
+
+func (stub *officialReaderStub) TsunamiRisk(
+	_ context.Context,
+	latitude float64,
+	longitude float64,
+) (official.TsunamiRisk, error) {
+	stub.lastLatitude = latitude
+	stub.lastLongitude = longitude
+	return stub.tsunami, stub.err
+}
+
+func (stub *officialReaderStub) FloodRisk(
+	_ context.Context,
+	latitude float64,
+	longitude float64,
+) (official.FloodRisk, error) {
+	stub.lastLatitude = latitude
+	stub.lastLongitude = longitude
+	return stub.flood, stub.err
+}
+
+func (stub *officialReaderStub) WildfireRisk(
+	_ context.Context,
+	latitude float64,
+	longitude float64,
+) (official.WildfireRisk, error) {
+	stub.lastLatitude = latitude
+	stub.lastLongitude = longitude
+	return stub.wildfire, stub.err
+}
+
+func (stub *officialReaderStub) OpenShelters(
+	_ context.Context,
+	latitude float64,
+	longitude float64,
+) (official.OpenShelters, error) {
+	stub.lastLatitude = latitude
+	stub.lastLongitude = longitude
+	return stub.shelters, stub.err
 }
 
 func (stub alertReaderStub) ActiveAlerts(context.Context) (nws.Snapshot, error) {
@@ -34,6 +85,7 @@ func TestEventsEndpointReturnsProvenance(t *testing.T) {
 				RetrievedAt: time.Date(2026, 10, 26, 17, 0, 0, 0, time.UTC),
 			},
 		}},
+		Official:       &officialReaderStub{},
 		AllowedOrigins: []string{"http://127.0.0.1:3000"},
 	})
 
@@ -62,7 +114,8 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts: alertReaderStub{err: errors.New("upstream unavailable")},
+		Alerts:   alertReaderStub{err: errors.New("upstream unavailable")},
+		Official: &officialReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -78,7 +131,10 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 func TestSourcesEndpointIncludesPhases(t *testing.T) {
 	t.Parallel()
 
-	server := NewServer(Config{Alerts: alertReaderStub{}})
+	server := NewServer(Config{
+		Alerts:   alertReaderStub{},
+		Official: &officialReaderStub{},
+	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
 		response,
@@ -103,5 +159,73 @@ func TestSourcesEndpointIncludesPhases(t *testing.T) {
 	}
 	if body.Sources[0].ID != "nws-hi-alerts" || body.Sources[0].Integration != "integrated" {
 		t.Fatalf("unexpected first source: %#v", body.Sources[0])
+	}
+}
+
+func TestRiskEndpointValidatesAndPassesCoordinates(t *testing.T) {
+	t.Parallel()
+
+	officialStub := &officialReaderStub{
+		flood: official.FloodRisk{Classification: "undetermined"},
+	}
+	server := NewServer(Config{
+		Alerts:   alertReaderStub{},
+		Official: officialStub,
+	})
+
+	valid := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		valid,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/risk/flood?lat=21.2966614&lon=-157.6886009",
+			nil,
+		),
+	)
+	if valid.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", valid.Code, valid.Body.String())
+	}
+	if officialStub.lastLatitude != 21.2966614 || officialStub.lastLongitude != -157.6886009 {
+		t.Fatalf(
+			"unexpected coordinates: %f,%f",
+			officialStub.lastLatitude,
+			officialStub.lastLongitude,
+		)
+	}
+
+	invalid := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		invalid,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/risk/flood?lat=not-a-number&lon=-157.6",
+			nil,
+		),
+	)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", invalid.Code, invalid.Body.String())
+	}
+}
+
+func TestOfficialEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts: alertReaderStub{},
+		Official: &officialReaderStub{
+			err: errors.New("ArcGIS unavailable"),
+		},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/risk/tsunami?lat=21.29&lon=-157.68",
+			nil,
+		),
+	)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
 	}
 }

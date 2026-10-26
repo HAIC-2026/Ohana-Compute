@@ -66,6 +66,10 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /healthz`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
+- `GET /api/v1/risk/tsunami?lat={latitude}&lon={longitude}`
+- `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
+- `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
+- `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 
 ## Validate
 

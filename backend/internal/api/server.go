@@ -3,22 +3,33 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/catalog"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
 
 type AlertReader interface {
 	ActiveAlerts(context.Context) (nws.Snapshot, error)
 }
 
+type OfficialReader interface {
+	TsunamiRisk(context.Context, float64, float64) (official.TsunamiRisk, error)
+	FloodRisk(context.Context, float64, float64) (official.FloodRisk, error)
+	WildfireRisk(context.Context, float64, float64) (official.WildfireRisk, error)
+	OpenShelters(context.Context, float64, float64) (official.OpenShelters, error)
+}
+
 type Config struct {
 	Alerts         AlertReader
+	Official       OfficialReader
 	AllowedOrigins []string
 	Logger         *slog.Logger
 }
@@ -30,6 +41,9 @@ type Server struct {
 func NewServer(config Config) *Server {
 	if config.Alerts == nil {
 		panic("api: Alerts is required")
+	}
+	if config.Official == nil {
+		panic("api: Official is required")
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -59,6 +73,26 @@ func NewServer(config Config) *Server {
 		}
 		writeJSON(writer, http.StatusOK, snapshot)
 	})
+	mux.HandleFunc("GET /api/v1/risk/tsunami", coordinateHandler(
+		logger,
+		"state-tsunami-zones",
+		config.Official.TsunamiRisk,
+	))
+	mux.HandleFunc("GET /api/v1/risk/flood", coordinateHandler(
+		logger,
+		"state-dfirm",
+		config.Official.FloodRisk,
+	))
+	mux.HandleFunc("GET /api/v1/risk/wildfire", coordinateHandler(
+		logger,
+		"state-fire-risk",
+		config.Official.WildfireRisk,
+	))
+	mux.HandleFunc("GET /api/v1/shelters/open", coordinateHandler(
+		logger,
+		"fema-open-shelters",
+		config.Official.OpenShelters,
+	))
 
 	handler := requestLogger(logger, cors(config.AllowedOrigins, mux))
 	return &Server{handler: handler}
@@ -106,10 +140,63 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
+func coordinateHandler[T any](
+	logger *slog.Logger,
+	sourceID string,
+	load func(context.Context, float64, float64) (T, error),
+) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		latitude, longitude, err := parseCoordinates(request)
+		if err != nil {
+			writeJSON(writer, http.StatusBadRequest, map[string]string{
+				"error":  "invalid coordinates",
+				"detail": err.Error(),
+			})
+			return
+		}
+
+		result, err := load(request.Context(), latitude, longitude)
+		if err != nil {
+			logger.Error(
+				"load official source",
+				"source", sourceID,
+				"latitude", latitude,
+				"longitude", longitude,
+				"error", err,
+			)
+			writeJSON(writer, http.StatusBadGateway, map[string]string{
+				"error":  "official source unavailable",
+				"source": sourceID,
+				"detail": err.Error(),
+			})
+			return
+		}
+		writeJSON(writer, http.StatusOK, result)
+	}
+}
+
+func parseCoordinates(request *http.Request) (float64, float64, error) {
+	latitude, err := strconv.ParseFloat(request.URL.Query().Get("lat"), 64)
+	if err != nil || math.IsNaN(latitude) || math.IsInf(latitude, 0) {
+		return 0, 0, errors.New("lat must be a finite number")
+	}
+	longitude, err := strconv.ParseFloat(request.URL.Query().Get("lon"), 64)
+	if err != nil || math.IsNaN(longitude) || math.IsInf(longitude, 0) {
+		return 0, 0, errors.New("lon must be a finite number")
+	}
+	if latitude < -90 || latitude > 90 {
+		return 0, 0, errors.New("lat must be between -90 and 90")
+	}
+	if longitude < -180 || longitude > 180 {
+		return 0, 0, errors.New("lon must be between -180 and 180")
+	}
+	return latitude, longitude, nil
+}
+
 func writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
-		slog.Error("write JSON response", "status", status, "error", fmt.Errorf("%w", err))
+		slog.Error("write JSON response", "status", status, "error", err)
 	}
 }

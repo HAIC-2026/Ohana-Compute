@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
 
 func main() {
@@ -33,8 +35,12 @@ func main() {
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		CacheTTL:   cacheTTL,
 	})
+	officialSources := official.NewClient(arcgis.NewClient(arcgis.Config{
+		HTTPClient: &http.Client{Timeout: 12 * time.Second},
+	}))
 	apiServer := api.NewServer(api.Config{
 		Alerts:         alerts,
+		Official:       officialSources,
 		AllowedOrigins: allowedOrigins,
 		Logger:         logger,
 	})

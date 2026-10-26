@@ -107,6 +107,10 @@ func TestActiveAlertsReturnsExplicitStaleSnapshot(t *testing.T) {
 	if snapshot.Source.Status != "stale" {
 		t.Fatalf("expected stale status, got %q", snapshot.Source.Status)
 	}
+	if snapshot.Source.RefreshAttemptedAt == nil ||
+		!snapshot.Source.RefreshAttemptedAt.Equal(now) {
+		t.Fatalf("expected refresh attempt timestamp, got %#v", snapshot.Source)
+	}
 	if len(snapshot.Warnings) != 1 || !strings.Contains(snapshot.Warnings[0], "refresh failed") {
 		t.Fatalf("expected explicit warning, got %#v", snapshot.Warnings)
 	}
