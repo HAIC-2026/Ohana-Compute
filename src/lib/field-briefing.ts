@@ -1,3 +1,5 @@
+import { hawaiiDhsReferences } from './official-references'
+
 export type FieldBriefingInput = {
   generatedAt?: Date
   place: string
@@ -99,6 +101,18 @@ function checkList(items: string[]) {
     .join('')}</ul>`
 }
 
+function referenceList() {
+  return `<ul class="references">${hawaiiDhsReferences
+    .map(
+      (reference) => `
+        <li>
+          <a href="${escapeHTML(reference.url)}">${escapeHTML(reference.title)}</a>
+          <span>${escapeHTML(reference.description)}</span>
+        </li>`,
+    )
+    .join('')}</ul>`
+}
+
 export function fieldBriefingFilename(input: FieldBriefingInput) {
   return `${slug(input.place)}-${slug(input.hazard)}-field-briefing.html`
 }
@@ -186,10 +200,10 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHTML(input.place)} mass care field briefing</title>
     <style>
-      :root { color-scheme: light; --ink:#242424; --muted:#5c5c5c; --line:#dedede; --paper:#ffffff; --soft:#f5f5f5; --accent:#b11f4b; --success:#16a34a; --warning:#f59e0b; --danger:#dc2626; }
+      :root { color-scheme: light; --ink:#263436; --muted:#526366; --line:#ccd9da; --paper:#ffffff; --soft:#edf3f3; --accent:#18828c; --success:#16a34a; --warning:#f59e0b; --danger:#dc2626; }
       * { box-sizing:border-box; }
-      body { margin:0; background:#f7f4ef; color:var(--ink); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-      main { width:min(920px,calc(100% - 32px)); margin:24px auto; background:var(--paper); box-shadow:0 12px 35px #dedede; }
+      body { margin:0; background:#f1f5f5; color:var(--ink); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+      main { width:min(920px,calc(100% - 32px)); margin:24px auto; background:var(--paper); box-shadow:0 12px 35px #ccd9da; }
       header { padding:28px 32px 22px; border-top:8px solid var(--accent); border-bottom:1px solid var(--line); }
       h1 { max-width:22ch; margin:0; font-size:30px; line-height:1.08; letter-spacing:-.03em; }
       h2 { margin:0 0 14px; font-size:18px; letter-spacing:-.015em; }
@@ -235,6 +249,12 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
       .checks { padding:0; list-style:none; }
       .checks li { display:flex; gap:8px; }
       .checks span { flex:0 0 auto; font-size:16px; }
+      .reference-note { margin:18px 0; padding:14px; border:1px solid var(--line); background:var(--soft); }
+      .reference-note p { margin:5px 0 0; color:var(--muted); }
+      .references { padding:0; list-style:none; }
+      .references li { padding:9px 0; border-top:1px solid var(--line); }
+      .references a { color:var(--accent); font-weight:750; }
+      .references span { display:block; margin-top:2px; color:var(--muted); font-size:12px; }
       .empty { color:var(--muted); font-style:italic; }
       footer { padding:18px 32px 26px; color:var(--muted); font-size:11px; }
       @media (max-width:720px) { main{width:100%;margin:0;box-shadow:none}.meta,.metrics,.baseline,.split{grid-template-columns:1fr 1fr}.event-summary{grid-template-columns:1fr;padding-left:20px;padding-right:20px}table{display:block;overflow-x:auto}section,header,.notice,footer{padding-left:20px;padding-right:20px} }
@@ -318,8 +338,14 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
             ${list(input.communication.afnActions, 'Confirm AFN and language-access actions locally.')}
           </div>
         </div>
+        <div class="reference-note">
+          <strong>Hawaiʻi DHS guidance reflected in these checks</strong>
+          <p>Official DHS emergency-planning guidance identifies accessible warnings, mobility assistance, no-vehicle transportation, language support, medication refrigeration, backup medical equipment, and service-animal supplies as considerations. DHS Maui recovery resources also direct wildfire survivors seeking Disaster Case Management enrollment to 211.</p>
+        </div>
         <h3>Required local validation checks</h3>
         ${checkList(input.communication.localValidationChecks)}
+        <h3>Official planning references</h3>
+        ${referenceList()}
       </section>
 
       <footer>

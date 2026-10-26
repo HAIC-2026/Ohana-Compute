@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock3,
   CloudRain,
+  ExternalLink,
   Flame,
   HousePlus,
   Layers3,
@@ -42,6 +43,7 @@ import {
   residentRoutePlans,
 } from '../lib/mock-data'
 import type { HazardId } from '../lib/mock-data'
+import { hawaiiDhsReferences } from '../lib/official-references'
 import { usePlanningStore } from '../store/planning-store'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -586,7 +588,17 @@ function Home() {
 
           <p className="practice-note">
             Planning estimates use practice data. Confirm conditions, resource
-            status, and assignments with local teams before operational use.
+            status, and assignments with local teams before operational use.{' '}
+            <a
+              href={hawaiiDhsReferences[0].url}
+              target="_blank"
+              rel="noreferrer"
+              data-telemetry-action="official_reference_open"
+              data-telemetry-category="evidence"
+            >
+              Hawaiʻi DHS programs and services
+              <ExternalLink size={10} aria-hidden="true" />
+            </a>
           </p>
         </aside>
 

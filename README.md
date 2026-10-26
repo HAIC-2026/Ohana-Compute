@@ -111,10 +111,11 @@ clients. Raw source failures remain available in server logs.
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
 context, official aggregate AFN values, resource and route checks, assigned
-actions, public guidance, and required local validation checks. It has embedded
-print styles and no external runtime dependencies, so it can be printed or
-opened after connectivity is lost. It intentionally excludes resident-entered
-addresses, coordinates, names, identifiers, and person-level medical data.
+actions, public guidance, required local validation checks, and direct Hawaiʻi
+DHS planning-reference URLs. It has embedded print styles and no external
+runtime dependencies, so it can be printed or opened after connectivity is
+lost. It intentionally excludes resident-entered addresses, coordinates,
+names, identifiers, and person-level medical data.
 
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -172,6 +173,27 @@ Official data is requested from:
 - [Central Pacific Hurricane Center GIS feed](https://www.nhc.noaa.gov/gis-cp.xml)
 - [Pacific Tsunami Warning Center CAP feed](https://www.tsunami.gov/events/xml/PHEBCAP.xml)
 - [HDOT planned lane closures](https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0)
+
+Official Hawaiʻi DHS guidance is referenced separately from live or aggregate
+data:
+
+- [Hawaiʻi Department of Human Services](https://humanservices.hawaii.gov/)
+- [DHS emergency planning for disability and access needs](https://humanservices.hawaii.gov/communications/are-you-ready/special-needs/)
+- [DHS Maui wildfire recovery resources](https://humanservices.hawaii.gov/communications/)
+
+The DHS emergency-planning page informs checks for accessible warnings,
+mobility assistance, transportation for people without vehicles, language
+access, medication refrigeration, backup medical equipment, and service-animal
+supplies. The Maui recovery page documents a Maui-specific Disaster Case
+Management referral through 211. These references inform planning and recovery
+coordination; they are not hazard forecasts, live shelter status, or a statewide
+incident feed.
+
+The interface palette follows the official State of Hawaiʻi web style guide and
+the ETS site’s ʻĀina theme: state charcoal, teal (`#18828c`), deep teal
+(`#0b7482`), and aqua (`#73c9cf`) on accessible white and cool-neutral
+surfaces. Red, amber, and green remain reserved for hazard and operational
+status meaning.
 
 The official sources provide planning context, not a complete live incident
 picture:

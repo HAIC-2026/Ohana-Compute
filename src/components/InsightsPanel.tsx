@@ -10,6 +10,7 @@ import {
   CircleHelp,
   Clock3,
   Download,
+  ExternalLink,
   FileText,
   Globe2,
   ListChecks,
@@ -40,6 +41,7 @@ import {
   useCommunityProfile,
 } from '../lib/community-profile'
 import { downloadFieldBriefing } from '../lib/field-briefing'
+import { hawaiiDhsReferences } from '../lib/official-references'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
@@ -330,8 +332,11 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         preferences: guidancePreferences,
         localValidationChecks: [
           'Confirm paper, radio, and phone-tree communication fallback for limited connectivity.',
-          'Confirm trusted multilingual and trauma-informed community messengers.',
-          'Confirm pets and working animals sheltering, transport, and supply capacity.',
+          'Confirm accessible warning delivery for people who are deaf or hard of hearing and people who use assistive technology.',
+          'Confirm transportation and shelter assistance for people with mobility needs and no private vehicle.',
+          'Confirm trusted multilingual and trauma-informed community messengers and translated materials.',
+          'Confirm medication refrigeration, oxygen and medical-equipment power, extra batteries, and service-animal supplies.',
+          'Confirm pets and working animals sheltering, transportation, and supply capacity.',
           'Confirm elevator-outage support for high-rise residents with mobility needs.',
         ],
       },
@@ -765,6 +770,40 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                 <li key={source.name}>
                   <strong>{source.name}</strong>
                   <span>{source.updated}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="official-references">
+            <div className="section-heading">
+              <h2>Hawaiʻi DHS planning references</h2>
+              <span>
+                Official inclusion and recovery guidance, not scenario data
+              </span>
+            </div>
+            <p>
+              DHS guidance informs the planner&apos;s checks for accessible
+              warnings, mobility and no-vehicle support, language access,
+              medication refrigeration, medical equipment, service animals, and
+              survivor recovery referrals.
+            </p>
+            <ul>
+              {hawaiiDhsReferences.map((reference) => (
+                <li key={reference.id}>
+                  <a
+                    href={reference.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-telemetry-action="official_reference_open"
+                    data-telemetry-category="evidence"
+                  >
+                    <span>
+                      <strong>{reference.title}</strong>
+                      <small>{reference.description}</small>
+                    </span>
+                    <ExternalLink size={15} aria-hidden="true" />
+                  </a>
                 </li>
               ))}
             </ul>

@@ -119,6 +119,11 @@ test('planner completes the Map Model Match journey through the Go API', async (
   expect(packet).toContain('working animals')
   expect(packet).toContain('limited connectivity')
   expect(packet).toContain('elevator-outage support')
+  expect(packet).toContain('Hawaiʻi DHS guidance reflected in these checks')
+  expect(packet).toContain('accessible warnings')
+  expect(packet).toContain('medication refrigeration')
+  expect(packet).toContain('Disaster Case Management enrollment to 211')
+  expect(packet).toContain('https://humanservices.hawaii.gov/')
   expect(packet).toContain('No person-level records or household addresses')
   expect(packet).not.toContain(privateAddress)
 
