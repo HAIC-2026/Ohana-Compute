@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures'
+import { communityProfile, expect, test } from './fixtures'
 
 import { mockOfficialHawaiiKaiStatus } from './support/mock-backend'
 
@@ -119,6 +119,7 @@ test('planner consumes official aggregate AFN context', async ({
   await expect(
     afnContext.getByText('Official public sources available'),
   ).toBeVisible()
+  await expect(afnContext).toContainText('4 of 4')
   await expect(page.getByTestId('afn-disability')).toContainText('220 (9.3%)')
   await expect(page.getByTestId('afn-language')).toContainText('150 (6.4%)')
   await expect(page.getByTestId('afn-transportation')).toContainText(
@@ -127,8 +128,65 @@ test('planner consumes official aggregate AFN context', async ({
   await expect(page.getByTestId('afn-medical-power')).toContainText(
     '1–11 (privacy-protected)',
   )
+  await expect(page.getByTestId('afn-risk-baseline')).toContainText(
+    'National risk baseline: Relatively Moderate',
+  )
   await expect(afnContext).toContainText('No person-level records')
   await expect(afnContext).toContainText('U.S. Census Bureau · 2024 ACS 5-year')
+})
+
+test('planner identifies missing AFN sources without exposing raw errors', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.route('**/api/v1/community/profile?*', async (route) => {
+    const { acs: _acs, ...partialProfile } = communityProfile
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...partialProfile,
+        source_errors: [
+          {
+            source: 'acs-5-year',
+            error: 'private upstream diagnostic must stay hidden',
+          },
+        ],
+      }),
+    })
+  })
+
+  await page.goto('/')
+  const afnContext = page.getByTestId('afn-context')
+  await expect(afnContext).toContainText(
+    'Partial official source coverage · 3 of 4',
+  )
+  await expect(afnContext).toContainText('Unavailable: Census ACS')
+  await expect(afnContext).not.toContainText(
+    'private upstream diagnostic must stay hidden',
+  )
+})
+
+test('Waiʻanae AFN request uses an on-tract planning coordinate', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await expect(page.getByTestId('afn-context')).toContainText('4 of 4')
+
+  let requestedCoordinates = ''
+  await page.route('**/api/v1/community/profile?*', async (route) => {
+    const url = new URL(route.request().url())
+    requestedCoordinates = `${url.searchParams.get('lat')},${url.searchParams.get('lon')}`
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(communityProfile),
+    })
+  })
+  await page.getByLabel('Which part of Oʻahu?').selectOption('oahu-leeward')
+  await expect.poll(() => requestedCoordinates).toBe('21.435848,-158.181169')
 })
 
 test('planner fails closed when official AFN sources are unavailable', async ({

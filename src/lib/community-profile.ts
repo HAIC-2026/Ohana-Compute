@@ -9,7 +9,8 @@ export type AggregateMetric = {
   percent_margin_of_error?: number | null
 }
 
-type CommunitySource = {
+export type CommunitySource = {
+  id: string
   authority: string
   vintage?: string
   upstream_last_modified?: string
@@ -49,6 +50,12 @@ export type CommunityProfile = {
     any_healthcare_service_any_dme: ProtectedCount
     source: CommunitySource
   }
+  fema_national_risk?: {
+    risk_rating: string
+    social_vulnerability_rating: string
+    community_resilience_rating: string
+    source: CommunitySource
+  }
   source_errors?: Array<{
     source: string
     error: string
@@ -68,6 +75,28 @@ export type CommunityProfileState = {
 
 const profileCache = new Map<string, CommunityProfile>()
 const profileRequests = new Map<string, Promise<CommunityProfile>>()
+
+export function getCommunityProfileStatus(
+  profile: CommunityProfile,
+): CommunityProfileState['status'] {
+  const availableSources = [
+    profile.acs,
+    profile.svi,
+    profile.empower,
+    profile.fema_national_risk,
+  ].filter(Boolean).length
+  if (availableSources === 4 && !profile.source_errors?.length) return 'ready'
+  if (availableSources > 0) return 'partial'
+  return 'unavailable'
+}
+
+function stateForProfile(profile: CommunityProfile): CommunityProfileState {
+  const status = getCommunityProfileStatus(profile)
+  return {
+    status,
+    profile: status === 'unavailable' ? null : profile,
+  }
+}
 
 function loadCommunityProfile(
   cacheKey: string,
@@ -104,10 +133,7 @@ export function useCommunityProfile(coordinates: [number, number]) {
     let active = true
     const cachedProfile = profileCache.get(cacheKey)
     if (cachedProfile) {
-      setState({
-        status: cachedProfile.source_errors?.length ? 'partial' : 'ready',
-        profile: cachedProfile,
-      })
+      setState(stateForProfile(cachedProfile))
       return () => {
         active = false
       }
@@ -118,10 +144,7 @@ export function useCommunityProfile(coordinates: [number, number]) {
     void loadCommunityProfile(cacheKey, latitude, longitude)
       .then((profile) => {
         if (!active) return
-        setState({
-          status: profile.source_errors?.length ? 'partial' : 'ready',
-          profile,
-        })
+        setState(stateForProfile(profile))
       })
       .catch(() => {
         if (!active) return

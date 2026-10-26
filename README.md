@@ -60,12 +60,14 @@ npm run dev:stack
 The frontend is available at <http://127.0.0.1:3000> and requests the Go API at
 <http://127.0.0.1:8080>. Override the backend location with
 `VITE_BACKEND_API_URL`; [`.env.example`](./.env.example) contains the local
-default.
+default. On macOS, `dev:stack` securely reads an existing Census API key from
+Keychain so the aggregate AFN profile can load all four official sources. If no
+key is stored, the stack starts in explicit partial-source mode and prints the
+one-time setup command instead of hiding the missing ACS coverage.
 
 The servers can still be started independently with `npm run dev` and
-`npm run backend:run`. On macOS, store the Census API key in Keychain and start
-the backend separately without writing the key to the repository or shell
-history:
+`npm run backend:run`. On macOS, store the Census API key in Keychain without
+writing the key to the repository or shell history:
 
 ```bash
 ./backend/scripts/census-keychain.sh store

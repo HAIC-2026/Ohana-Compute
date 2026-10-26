@@ -1,6 +1,6 @@
 import { expect, test as base } from '@playwright/test'
 
-const communityProfile = {
+export const communityProfile = {
   acs: {
     geography: {
       name: 'Census Tract 1.20, Honolulu County',
@@ -34,6 +34,7 @@ const communityProfile = {
       percent_margin_of_error: 1.5,
     },
     source: {
+      id: 'acs-5-year',
       authority: 'U.S. Census Bureau',
       vintage: '2024 ACS 5-year',
       status: 'fresh',
@@ -71,8 +72,32 @@ const communityProfile = {
       may_represent_masked_cell: false,
     },
     source: {
+      id: 'hhs-empower',
       authority: 'U.S. Department of Health and Human Services',
       vintage: 'Current public aggregate',
+      status: 'fresh',
+    },
+  },
+  svi: {
+    location: 'Census Tract 1.20; Honolulu County; Hawaii',
+    population: 2361,
+    age_65_or_older: 410,
+    with_disability: 220,
+    limited_english: 150,
+    no_vehicle_households: 80,
+    source: {
+      id: 'cdc-svi-2022',
+      authority: 'CDC/ATSDR',
+      status: 'fresh',
+    },
+  },
+  fema_national_risk: {
+    risk_rating: 'Relatively Moderate',
+    social_vulnerability_rating: 'Relatively Low',
+    community_resilience_rating: 'Relatively High',
+    source: {
+      id: 'fema-nri',
+      authority: 'Federal Emergency Management Agency',
       status: 'fresh',
     },
   },
