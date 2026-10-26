@@ -1,6 +1,6 @@
 ---
-name: Hawaiʻi Relief Map
-description: A plain-language disaster relief map that asks two questions and returns one clear starting action.
+name: Hawaiʻi Mass Care Planner
+description: A plain-language emergency-planning map that identifies community needs, resource gaps, and one coordinated starting action.
 colors:
   atlas-paper: '#f7f4ef'
   elevated-paper: '#fcfbf8'
@@ -143,24 +143,24 @@ components:
     border: '1px solid {colors.gridline}'
 ---
 
-# Design System: Hawaiʻi Relief Map
+# Design System: Hawaiʻi Mass Care Planner
 
 ## Creative North Star
 
-**Choose, Understand, Confirm, Act**
+**Map, Model, Match**
 
-The interface is designed for someone who may be stressed, unfamiliar with software, or using a phone in the field. It asks only what is necessary:
+The interface is designed for an emergency planner or relief coordinator working under time pressure, including field use on a phone. It asks only what is necessary:
 
-1. What is happening?
-2. Where are you helping?
-3. What needs to be confirmed?
-4. What should you do first?
+1. What is happening and where?
+2. Who may need help?
+3. What resources and gaps must be confirmed?
+4. Which partners act first, and how will residents be reached?
 
 Everything else is progressive disclosure. Severity, planning layers, relative need scoring, source dates, and generated-model details remain available, but they never compete with the primary task.
 
 ## Core Purpose
 
-Help a relief worker find a practical starting point in seconds. The first screen must communicate:
+Help an emergency planner find a defensible operational starting point in seconds. The first screen must communicate:
 
 - the selected emergency,
 - the named active event, arrival window, trend, confidence, and severity,
@@ -170,7 +170,7 @@ Help a relief worker find a practical starting point in seconds. The first scree
 - which shelters, transport teams, and routes need confirmation,
 - and the first coordinated action.
 
-For residents, the first action is **Plan route from my home**. The resident route must answer:
+After planners review the response, **Public guidance preview** shows how an approved plan becomes resident action. It must answer:
 
 - what may happen nearby,
 - whether to stay, leave, or seek powered shelter,
@@ -187,20 +187,20 @@ The fixed map canvas contains two instruments and a compact layer key:
 
 - **Question instrument:** one island context and one recognizable response-zone selector.
 - **Active-event instrument:** named incoming events with watch/warning status, trend, severity, and forecast timing. Generic hazard controls remain secondary for practice scenarios.
-- **Answer instrument:** one plain-language priority followed by numbered **People**, **Resources**, and **Coordinated action** sections.
+- **Answer instrument:** one plain-language priority followed by numbered **Map**, **Model**, and **Match** sections for affected communities, needs and gaps, and coordinated response.
 - **Neighborhood instrument:** recognizable neighborhood tabs with a shelter decision, trigger, owner, communication pathway, nearest practice resources, access routes, traffic hazards, AFN actions, and evidence status.
-- **Resident route sheet:** address/current-location entry, access needs, language preference, nearby risk summary, destination tabs, road-level route steps, mapped avoid zones, read-aloud directions, and an explicit practice-data warning.
+- **Public guidance sheet:** address/current-location entry, access needs, language preference, nearby risk summary, destination tabs, road-level route steps, mapped avoid zones, read-aloud directions, and an explicit practice-data warning.
 - **Route geometry:** driving lines follow the street network. Transit itineraries render walking legs as dashed warning lines, the bus segment as a solid link-colored line, and named boarding and exit stops.
 - **Transit evidence:** schedule-based guidance names the route, headsign, stops, feed validity window, and the absence of confirmed realtime or disaster-detour data.
 - **Map key:** the selected emergency exposure plus optional People, Resources, and Transport needs overlays.
 
 No chart, acronym, model name, or advanced setting appears on the main surface.
 
-### Relief Steps
+### Response Plan
 
-The Relief Steps sheet repeats the People → Resources → Coordinated action sequence, exposes the complete local resource inventory, and shares confirmation state with the map and desktop summary. Each resource can be inspected for capacity and capabilities, confirmed, and completed without recycling an already-confirmed item.
+The Response Plan sheet repeats the People → Resources → Coordinated action sequence, exposes the complete local resource inventory, and shares confirmation state with the map and desktop summary. Each resource can be inspected for capacity and capabilities, confirmed, and completed without recycling an already-confirmed item.
 
-It then offers one action: **Create relief checklist**. The generated checklist uses plain language, names a responsible team, and gives a timing cue at a readable operational-text size.
+It then offers one action: **Create response checklist**. The generated checklist uses plain language, names a responsible team, and gives a timing cue at a readable operational-text size.
 
 The sheet also exposes an honest five-part challenge-readiness assessment: accuracy/actionability, usability, privacy, equity, and feasibility. The relative-needs chart and source list remain hidden inside **Why am I seeing these recommendations?**
 
@@ -212,7 +212,7 @@ Optional scenario severity and map layers live inside **Change map details**. Th
 
 - Say “people who may be affected,” not “exposed population.”
 - Say “places to confirm locally,” not “validation count.”
-- Say “relief checklist,” not “Luna planning brief.”
+- Say “response checklist,” not “Luna planning brief.”
 - Say “needs considered,” not “CMIST planning signals.”
 - Say “practice data,” not “synthetic scenario.”
 - Say “change map details,” not “scenario builder.”
@@ -233,8 +233,8 @@ Optional scenario severity and map layers live inside **Change map details**. Th
 
 - The header compresses to 58px.
 - The selected place and emergency appear in a compact top control; the full question instrument expands only when the user chooses to change them.
-- The answer becomes a single tappable result row above the bottom controls.
-- Three bottom actions remain: **My route**, **Relief plan**, and **Map**.
+- The coordinated response priority becomes a single tappable result row above the bottom controls.
+- Three bottom actions remain: **Response plan**, **Public guidance**, and **Map**.
 - Sheets rise from the bottom, use a 14px functional-text baseline, and scroll internally.
 
 ## Visual Hierarchy
@@ -243,7 +243,7 @@ There are three dominant information levels:
 
 1. The location and emergency.
 2. People, resources/gaps, and first coordinated action.
-3. The full relief checklist and resource inventory.
+3. The full response checklist and resource inventory.
 
 Deep Rose marks the selected emergency and primary actions. Operational details such as capacity, status, owner, timing, and route state remain readable rather than being treated as microcopy.
 
@@ -272,7 +272,7 @@ Deep Rose marks the selected emergency and primary actions. Operational details 
 - If the official open-shelter feed returns no Hawaiʻi sites, state that no open shelter is currently reported and label every remaining destination as a practice route only.
 - If an official source fails, show an unavailable state and require confirmation; never translate source failure into outside-zone or shelter-available language.
 - If a requested language is not listed at the destination, say that an interpreter must be confirmed rather than implying support.
-- Never require chart interpretation to get relief steps.
+- Never require chart interpretation to get response actions.
 - Keep one selected hazard exposure layer visible and clearly label it as practice data.
 - Use the event pattern to adjust affected population, needs, resource pressure, public guidance, and the first coordinated action. A storm track alone is never the boundary of risk.
 - Every neighborhood recommendation must show who owns the decision, what triggers it, how partners and the public receive it, which AFN and LEP actions are required, and whether the evidence is practice-only or locally validated.

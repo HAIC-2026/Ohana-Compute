@@ -175,9 +175,9 @@ func NewServer(config Config) *Server {
 		"fema-nri",
 		config.Community.NationalRisk,
 	))
-	mux.HandleFunc("GET /api/v1/community/profile", coordinateHandler(
+	mux.HandleFunc("GET /api/v1/community/profile", communityProfileHandler(
 		logger,
-		"community-profile",
+		metrics,
 		config.Community.Profile,
 	))
 	mux.HandleFunc("GET /api/v1/transportation/planned-closures", coordinateHandler(

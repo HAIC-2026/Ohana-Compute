@@ -60,6 +60,7 @@ type communityReaderStub struct {
 	risk    community.NationalRisk
 	profile community.Profile
 	err     error
+	observe bool
 }
 
 func (stub *communityReaderStub) ACS(
@@ -95,10 +96,28 @@ func (stub *communityReaderStub) NationalRisk(
 }
 
 func (stub *communityReaderStub) Profile(
-	context.Context,
-	float64,
-	float64,
+	ctx context.Context,
+	_ float64,
+	_ float64,
 ) (community.Profile, error) {
+	if stub.observe {
+		for source, available := range map[string]bool{
+			"acs-5-year":   stub.profile.ACS != nil,
+			"cdc-svi-2022": stub.profile.SVI != nil,
+			"hhs-empower":  stub.profile.EmPOWER != nil,
+			"fema-nri":     stub.profile.NationalRisk != nil,
+		} {
+			outcome := "error"
+			if available && stub.err == nil {
+				outcome = "success"
+			}
+			community.ReportSourceObservation(ctx, community.SourceObservation{
+				Source:   source,
+				Outcome:  outcome,
+				Duration: 25 * time.Millisecond,
+			})
+		}
+	}
 	return stub.profile, stub.err
 }
 
@@ -696,4 +715,165 @@ func TestHTTPMetricsUseRoutePatternsAndResponseStatus(t *testing.T) {
 	if !strings.Contains(metricsResponse.Body.String(), metric) {
 		t.Fatalf("metrics missing %q:\n%s", metric, metricsResponse.Body.String())
 	}
+}
+
+func TestCommunityProfileMetricsExposeBoundedSourceHealth(t *testing.T) {
+	t.Parallel()
+
+	retrievedAt := time.Now().Add(-2 * time.Minute)
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community: &communityReaderStub{
+			observe: true,
+			profile: community.Profile{
+				ACS: &census.Profile{
+					Source: census.SourceStatus{
+						Status:      "fresh",
+						RetrievedAt: retrievedAt,
+					},
+				},
+				SVI: &community.SVI{
+					Source: arcgis.SourceStatus{
+						Status:      "stale",
+						RetrievedAt: retrievedAt,
+					},
+				},
+				EmPOWER: &community.EmPOWER{
+					OxygenServicesAnyDME: community.ProtectedCount{
+						Value:                  intPointer(11),
+						MayRepresentMaskedCell: true,
+					},
+					Source: arcgis.SourceStatus{
+						Status:      "fresh",
+						RetrievedAt: retrievedAt,
+					},
+				},
+				SourceErrors: []community.SourceError{{
+					Source: "fema-nri",
+					Error:  "unavailable",
+				}},
+				Disclaimer: "Aggregate planning data.",
+			},
+		},
+		Transportation: &transportationReaderStub{},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/community/profile?lat=21.29&lon=-157.68",
+			nil,
+		),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	metricsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		metricsResponse,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	metricsBody := metricsResponse.Body.String()
+	for _, metric := range []string{
+		`hawaii_resilience_afn_profile_responses_total{completeness="partial"} 1`,
+		`hawaii_resilience_afn_source_requests_total{outcome="error",source="fema-nri"} 1`,
+		`hawaii_resilience_afn_source_request_duration_seconds_count{outcome="success",source="acs-5-year"} 1`,
+		`hawaii_resilience_afn_source_stale{source="cdc-svi-2022"} 1`,
+		`hawaii_resilience_afn_privacy_masked_observations_total{field="oxygen_services_dme"} 1`,
+		`hawaii_resilience_afn_source_retrieved_timestamp_seconds{source="acs-5-year"} `,
+	} {
+		if !strings.Contains(metricsBody, metric) {
+			t.Fatalf("metrics missing %q:\n%s", metric, metricsBody)
+		}
+	}
+}
+
+func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	coordinateQuery := "?lat=21.29&lon=-157.68"
+	requests := []struct {
+		method      string
+		path        string
+		body        string
+		contentType string
+	}{
+		{method: http.MethodGet, path: "/metrics"},
+		{method: http.MethodGet, path: "/healthz"},
+		{method: http.MethodGet, path: "/api/v1/sources"},
+		{method: http.MethodGet, path: "/api/v1/events"},
+		{method: http.MethodGet, path: "/api/v1/events/hurricanes"},
+		{method: http.MethodGet, path: "/api/v1/events/tsunami"},
+		{method: http.MethodGet, path: "/api/v1/risk/tsunami" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/risk/flood" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/risk/wildfire" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/shelters/open" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/community/acs" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/community/svi" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/community/empower" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/community/fema-risk" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/community/profile" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/transportation/planned-closures" + coordinateQuery},
+		{
+			method:      http.MethodPost,
+			path:        "/api/v1/telemetry/browser",
+			body:        `{"version":1,"events":[]}`,
+			contentType: "application/json",
+		},
+	}
+	for _, item := range requests {
+		request := httptest.NewRequest(item.method, item.path, strings.NewReader(item.body))
+		request.RemoteAddr = "192.0.2.40:1234"
+		if item.contentType != "" {
+			request.Header.Set("Content-Type", item.contentType)
+		}
+		server.Handler().ServeHTTP(httptest.NewRecorder(), request)
+	}
+
+	metricsResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		metricsResponse,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	metricsBody := metricsResponse.Body.String()
+	for _, route := range []string{
+		"/metrics",
+		"/healthz",
+		"/api/v1/sources",
+		"/api/v1/events",
+		"/api/v1/events/hurricanes",
+		"/api/v1/events/tsunami",
+		"/api/v1/risk/tsunami",
+		"/api/v1/risk/flood",
+		"/api/v1/risk/wildfire",
+		"/api/v1/shelters/open",
+		"/api/v1/community/acs",
+		"/api/v1/community/svi",
+		"/api/v1/community/empower",
+		"/api/v1/community/fema-risk",
+		"/api/v1/community/profile",
+		"/api/v1/transportation/planned-closures",
+		"/api/v1/telemetry/browser",
+	} {
+		if !strings.Contains(metricsBody, `route="`+route+`"`) {
+			t.Fatalf("HTTP metrics missing route %q:\n%s", route, metricsBody)
+		}
+	}
+}
+
+func intPointer(value int) *int {
+	return &value
 }

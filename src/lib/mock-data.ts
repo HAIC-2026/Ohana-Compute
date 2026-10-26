@@ -2206,7 +2206,8 @@ export const postalLocations: PostalLocation[] = [
       },
       {
         label: 'Next step',
-        value: 'Choose a neighborhood planning view before using relief steps',
+        value:
+          'Choose a neighborhood planning view before using response actions',
       },
     ],
     planningZones: [

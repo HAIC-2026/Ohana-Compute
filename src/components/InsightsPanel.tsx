@@ -32,6 +32,7 @@ import {
 
 import { generatePlanningBrief } from '../lib/mock-api'
 import type { PlanningBrief } from '../lib/mock-api'
+import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
   areas,
@@ -176,13 +177,21 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     <div className={`insights-content ${compact ? 'is-compact' : ''}`}>
       <section className="area-overview">
         <div className="area-title">
-          <h2>{displayPlace}</h2>
+          <h2>Mass care plan for {displayPlace}</h2>
         </div>
         <p>
           {selectedPlanningZone?.summary ??
             locationFocus?.summary ??
             area.summary}
         </p>
+
+        <CommunityAfnSummary
+          coordinates={
+            selectedPlanningZone?.coordinates ??
+            locationFocus?.coordinates ??
+            area.coordinates
+          }
+        />
 
         {activeEvent && (
           <div className="sheet-event-summary">
@@ -204,7 +213,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
 
         <div className="sheet-challenge-flow">
           <div className="sheet-challenge-card is-people">
-            <span>1 · People who may need help</span>
+            <span>1 · Map affected communities</span>
             <div>
               <Users size={18} />
               <strong>{scenario.exposedPopulation.toLocaleString()}</strong>
@@ -213,7 +222,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <p>{challengeSnapshot.topNeeds.join(' · ')}</p>
           </div>
           <div className="sheet-challenge-card is-resources">
-            <span>2 · Resources to confirm</span>
+            <span>2 · Model needs and gaps</span>
             <div className="sheet-resource-grid">
               <small>
                 <BatteryCharging size={15} />
@@ -265,7 +274,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             </div>
           </div>
           <div className="sheet-challenge-card is-action">
-            <span>3 · First coordinated action</span>
+            <span>3 · Match response partners</span>
             <strong>{localSteps[0].title}</strong>
             <small>
               {localSteps[0].owner} · {localSteps[0].timing}
@@ -346,23 +355,20 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           <article>
             <Target size={17} />
             <div>
-              <span>Accuracy & actionability</span>
-              <strong>
-                Official hazard and shelter checks · plan still practice
-              </strong>
+              <span>Actionable</span>
+              <strong>Hazard-specific planning path modeled</strong>
               <p>
-                Resident locations now check official tsunami zones, FEMA flood
+                Planning locations now check official tsunami zones, FEMA flood
                 classifications and nearby risk boundaries, and the FEMA
                 open-shelter feed. Event forecasts, practice destinations, road
-                closures, and county shelter openings still require validation
-                before operational use.
+                closures, and local shelter openings still require validation.
               </p>
             </div>
           </article>
           <article>
             <Workflow size={17} />
             <div>
-              <span>Usability</span>
+              <span>Usable</span>
               <strong>Operational workflow modeled</strong>
               <p>
                 The plan connects neighborhood lead, EOC mass care, shelter,
@@ -374,38 +380,40 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           <article>
             <LockKeyhole size={17} />
             <div>
-              <span>Privacy</span>
+              <span>Private</span>
               <strong>Aggregate and de-identified</strong>
               <p>
-                The prototype loads synthetic area totals and resource records
-                only. It contains no names, household addresses, medical
-                records, or person-level movement histories.
+                Official ACS, SVI, and HHS emPOWER context is limited to
+                aggregate planning geographies, alongside synthetic scenario and
+                resource records. The planner contains no names, household
+                addresses, medical records, or person-level movement histories.
               </p>
             </div>
           </article>
           <article>
             <Globe2 size={17} />
             <div>
-              <span>Equity</span>
+              <span>Equitable</span>
               <strong>Statewide entry point · uneven local depth</strong>
               <p>
                 Every available island can be viewed one at a time. AFN,
                 accessible transport, medical power, and language actions are
-                explicit; detailed neighborhood validation is currently
-                strongest for Town on Oʻahu.
+                explicit; rural and off-grid conditions, pets and working
+                animals, and detailed local validation require further work.
               </p>
             </div>
           </article>
           <article>
             <ServerCog size={17} />
             <div>
-              <span>Feasibility</span>
-              <strong>Public adapters proven · production API pending</strong>
+              <span>Sustainable</span>
+              <strong>Open standards and maintainable services</strong>
               <p>
-                The responsive frontend reads the public GIS and shelter
-                services directly. The planned Go API, caching and monitoring,
-                container images, two-pod AKS deployment, and Istio ingress
-                remain the production implementation layer.
+                The responsive frontend, normalized Go API, browser telemetry,
+                and Prometheus metrics are implemented. Production source
+                caching, deployment rollout, operational alerting, and agency
+                validation remain required; low-connectivity planning packets
+                are not yet available.
               </p>
             </div>
           </article>
@@ -418,8 +426,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <ListChecks size={20} />
           </span>
           <div>
-            <h2>Relief checklist</h2>
-            <p>A short starting point for local relief teams</p>
+            <h2>Response checklist</h2>
+            <p>A human-reviewable starting point for coordinating teams</p>
           </div>
         </div>
 
@@ -427,11 +435,11 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           <div className="brief-empty">
             <Sparkles size={20} />
             <p>
-              Create a simple list of actions based on the emergency, place, and
-              map information you selected.
+              Create a prioritized list of actions from the selected event,
+              affected communities, resource checks, and route constraints.
             </p>
             <button type="button" onClick={generate}>
-              Create relief checklist
+              Create response checklist
               <ArrowUpRight size={16} />
             </button>
           </div>
@@ -441,7 +449,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           <div className="brief-loading" role="status">
             <LoaderCircle size={20} className="spin" />
             <div>
-              <strong>Preparing relief steps</strong>
+              <strong>Preparing response actions</strong>
               <span>Checking the map and source notes…</span>
             </div>
           </div>

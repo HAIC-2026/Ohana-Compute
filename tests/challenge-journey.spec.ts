@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import { mockOfficialHawaiiKaiStatus } from './support/mock-backend'
@@ -176,7 +176,9 @@ test.describe.serial('2026 challenge resident journey', () => {
       ).toBeLessThanOrEqual(initialHydrationBudgetMs)
     }
     await expect(
-      page.getByRole('heading', { name: 'Plan for your part of Hawaiʻi' }),
+      page.getByRole('heading', {
+        name: 'Plan mass care before the next disaster',
+      }),
     ).toBeVisible()
     await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
     await expect(
@@ -190,15 +192,15 @@ test.describe.serial('2026 challenge resident journey', () => {
     ).toBeVisible()
     await expect(
       page.getByRole('heading', {
-        name: 'What local teams should confirm',
+        name: 'Needs and resource gaps',
       }),
     ).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: 'What to do first' }),
+      page.getByRole('heading', { name: 'Coordinated response' }),
     ).toBeVisible()
     await expect(page.getByText('Next local resource check')).toBeVisible()
     await expect(
-      page.getByRole('button', { name: 'Plan route from my home' }),
+      page.getByRole('button', { name: 'Open public guidance preview' }),
     ).toBeVisible()
     await expect(page.locator('.map-frame')).toHaveAttribute(
       'data-map-loaded',
@@ -269,7 +271,7 @@ test.describe.serial('2026 challenge resident journey', () => {
       metrics,
       'open resident route surface',
       await clickUntilText(
-        page.getByRole('button', { name: 'Plan route from my home' }),
+        page.getByRole('button', { name: 'Open public guidance preview' }),
         'Start from home',
       ),
     )
@@ -316,7 +318,9 @@ test.describe.serial('2026 challenge resident journey', () => {
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('desktop'))
     await openApp(page)
-    await page.getByRole('button', { name: 'Plan route from my home' }).click()
+    await page
+      .getByRole('button', { name: 'Open public guidance preview' })
+      .click()
     await expect(
       page.getByText('Flood risk at this location', { exact: true }),
     ).toBeVisible()
@@ -329,7 +333,9 @@ test.describe.serial('2026 challenge resident journey', () => {
       .getByRole('button', { name: 'Close panel' })
       .click()
     await page.getByRole('button', { name: /Pacific Tsunami Warning/ }).click()
-    await page.getByRole('button', { name: 'Plan route from my home' }).click()
+    await page
+      .getByRole('button', { name: 'Open public guidance preview' })
+      .click()
     await expect(
       page.getByText('Tsunami evacuation status', { exact: true }),
     ).toBeVisible()
@@ -344,7 +350,9 @@ test.describe.serial('2026 challenge resident journey', () => {
       .getByRole('button', { name: 'Close panel' })
       .click()
     await page.getByRole('button', { name: /Leeward Wildfire Koa/ }).click()
-    await page.getByRole('button', { name: 'Plan route from my home' }).click()
+    await page
+      .getByRole('button', { name: 'Open public guidance preview' })
+      .click()
     await expect(
       page.getByText('Wildfire risk at this location', { exact: true }),
     ).toBeVisible()
@@ -363,10 +371,10 @@ test.describe.serial('2026 challenge resident journey', () => {
       page.getByRole('button', { name: 'Map', exact: true }),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: 'Relief plan', exact: true }),
+      page.getByRole('button', { name: 'Response plan', exact: true }),
     ).toBeVisible()
     await expect(
-      page.getByRole('button', { name: 'My route', exact: true }),
+      page.getByRole('button', { name: 'Public guidance', exact: true }),
     ).toBeVisible()
 
     await page.getByRole('button', { name: 'Map', exact: true }).click()
@@ -375,9 +383,11 @@ test.describe.serial('2026 challenge resident journey', () => {
       .getByRole('complementary')
       .getByRole('button', { name: 'Close panel' })
       .click()
-    await page.getByRole('button', { name: 'My route', exact: true }).click()
+    await page
+      .getByRole('button', { name: 'Public guidance', exact: true })
+      .click()
     await expect(
-      page.getByRole('heading', { name: 'My safe route' }),
+      page.getByRole('heading', { name: 'Public guidance preview' }),
     ).toBeVisible()
     await expect(
       page.getByRole('checkbox', { name: /I do not have a car/ }),
@@ -409,22 +419,31 @@ test('[performance] normalized backend endpoints stay in the millisecond range o
   ]
   const metrics: ApiMetric[] = []
 
-  for (const path of paths) {
+  for (const endpointPath of paths) {
     const coldStartedAt = performance.now()
-    const coldResponse = await request.get(`http://127.0.0.1:8080${path}`, {
-      timeout: 30_000,
-    })
+    const coldResponse = await request.get(
+      `http://127.0.0.1:8080${endpointPath}`,
+      {
+        timeout: 30_000,
+      },
+    )
     const coldMs = performance.now() - coldStartedAt
-    expect(coldResponse.status(), `${path} cold request`).toBe(200)
+    expect(coldResponse.status(), `${endpointPath} cold request`).toBe(200)
 
     const warmMs: number[] = []
     for (let attempt = 0; attempt < 7; attempt += 1) {
       const startedAt = performance.now()
-      const response = await request.get(`http://127.0.0.1:8080${path}`, {
-        timeout: 5_000,
-      })
+      const response = await request.get(
+        `http://127.0.0.1:8080${endpointPath}`,
+        {
+          timeout: 5_000,
+        },
+      )
       warmMs.push(Number((performance.now() - startedAt).toFixed(3)))
-      expect(response.status(), `${path} warm request ${attempt + 1}`).toBe(200)
+      expect(
+        response.status(),
+        `${endpointPath} warm request ${attempt + 1}`,
+      ).toBe(200)
     }
 
     const warmP50Ms = percentile(warmMs, 50)
@@ -432,15 +451,15 @@ test('[performance] normalized backend endpoints stay in the millisecond range o
     if (enforcePerformanceBudgets) {
       expect(
         warmP50Ms,
-        `${path} cached median should finish within ${warmApiBudgetMs} ms`,
+        `${endpointPath} cached median should finish within ${warmApiBudgetMs} ms`,
       ).toBeLessThanOrEqual(warmApiBudgetMs)
       expect(
         warmP95Ms,
-        `${path} cached p95 should finish within ${warmApiP95BudgetMs} ms`,
+        `${endpointPath} cached p95 should finish within ${warmApiP95BudgetMs} ms`,
       ).toBeLessThanOrEqual(warmApiP95BudgetMs)
     }
     metrics.push({
-      path,
+      path: endpointPath,
       cold_ms: Number(coldMs.toFixed(3)),
       cold_target_ms: coldApiTargetMs,
       warm_ms: warmMs,

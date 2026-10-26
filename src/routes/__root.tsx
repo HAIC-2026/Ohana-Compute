@@ -14,12 +14,12 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Hawaiʻi Resilience Atlas',
+        title: 'Hawaiʻi Mass Care Planner',
       },
       {
         name: 'description',
         content:
-          'A privacy-safe disaster planning map for understanding hazard exposure and access and functional needs across Hawaiʻi.',
+          'A privacy-safe emergency-planning map for identifying community needs, resource gaps, coordinated actions, and accessible resident guidance across Hawaiʻi.',
       },
     ],
     links: [

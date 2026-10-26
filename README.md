@@ -1,9 +1,10 @@
-# Hawaiʻi Resilience Atlas
+# Hawaiʻi Mass Care Planner
 
-A resident-first disaster-planning prototype for the 2026 Hawaiʻi Annual
-Innovation Challenge. It helps residents and response partners explore
-event-specific guidance, official hazard context, nearby resources, and
-road- or transit-level practice routes.
+An emergency-planner-first mass-care prototype for the 2026 Hawaiʻi Annual
+Innovation Challenge. It helps Counties, State partners, and community
+organizations map affected communities, model access and functional needs and
+resource gaps, match partners to coordinated actions, and preview accessible
+resident guidance.
 
 The prototype covers the challenge's four scoped hazards with named practice
 events:
@@ -107,12 +108,21 @@ contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 
 ```bash
 npm run backend:test
+npm run test:integration
 npm run test:journey
 npm run test:e2e
 npm run build
 npm run lint
 npm run check
 ```
+
+`npm run test:integration` starts the real frontend and Go API on isolated test
+ports, drives the complete Map → Model → Match planner journey, confirms a
+resource, generates the response checklist, exercises accessible public
+guidance, and then verifies the resulting AFN, HTTP, browser-interaction, and
+telemetry Prometheus metrics. The integration server uses deterministic
+aggregate official-source fixtures; unit tests separately cover the production
+community-source fan-out and partial-source behavior.
 
 `npm run test:journey` runs the numbered resident story and writes raw timing
 metrics plus a summary to `test-results/performance/`. Important browser state
@@ -124,6 +134,13 @@ Performance budgets run with one browser worker so parallel test-run contention
 does not distort the user-facing timings.
 
 ## Data truth and limitations
+
+The planner consumes `GET /api/v1/community/profile` for privacy-safe aggregate
+AFN context. It displays Census ACS disability, limited-English, and
+no-vehicle estimates together with HHS emPOWER medical-equipment dependence.
+The interface preserves privacy-masked emPOWER counts, supports partial source
+responses, and never represents these geographic estimates as person-level
+records.
 
 Official data is requested from:
 

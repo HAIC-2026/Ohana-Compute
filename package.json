@@ -12,12 +12,13 @@
     "build": "vite build",
     "backend:run": "cd backend && go run ./cmd/server",
     "backend:test": "cd backend && go test ./...",
+    "test:integration": "playwright test --config=playwright.integration.config.ts",
     "preview": "vite preview",
     "lint": "eslint",
     "format": "prettier --write . && eslint --fix",
     "check": "prettier --check .",
     "test:journey": "npm run build && PLAYWRIGHT_PERFORMANCE_RUN=1 PLAYWRIGHT_FRONTEND_COMMAND='npm run preview -- --host 127.0.0.1 --port 3000' playwright test tests/challenge-journey.spec.ts --workers=1 && node scripts/summarize-e2e-performance.mjs",
-    "test:e2e": "npm run build && PLAYWRIGHT_FRONTEND_COMMAND='npm run preview -- --host 127.0.0.1 --port 3000' playwright test"
+    "test:e2e": "npm run build && PLAYWRIGHT_FRONTEND_COMMAND='npm run preview -- --host 127.0.0.1 --port 3000' playwright test && npm run test:integration"
   },
   "dependencies": {
     "@tanstack/react-router": "latest",

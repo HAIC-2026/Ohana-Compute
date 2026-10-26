@@ -127,6 +127,7 @@ function installBrowserTelemetry() {
 
   const interactionEvents = [
     'click',
+    'input',
     'change',
     'submit',
     'keydown',

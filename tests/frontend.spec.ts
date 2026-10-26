@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 import { mockOfficialHawaiiKaiStatus } from './support/mock-backend'
 
@@ -11,7 +11,7 @@ test('desktop selects an island response zone and creates local steps', async ({
 
   await expect(
     page.getByRole('heading', {
-      name: 'Plan for your part of Hawaiʻi',
+      name: 'Plan mass care before the next disaster',
     }),
   ).toBeVisible()
   await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
@@ -20,6 +20,20 @@ test('desktop selects an island response zone and creates local steps', async ({
   ).toBeVisible()
   await expect(
     page.getByText('Damaging conditions possible in 48–72 hours'),
+  ).toBeVisible()
+  const planningSummary = page.locator('.relief-panel')
+  await expect(planningSummary.getByText('Map', { exact: true })).toBeVisible()
+  await expect(
+    planningSummary.getByText('Model', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    planningSummary.getByText('Match', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Open response workspace' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Preview resident guidance' }),
   ).toBeVisible()
 
   await page
@@ -38,10 +52,10 @@ test('desktop selects an island response zone and creates local steps', async ({
     page.getByRole('heading', { name: 'Who may need help' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'What local teams should confirm' }),
+    page.getByRole('heading', { name: 'Needs and resource gaps' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'What to do first' }),
+    page.getByRole('heading', { name: 'Coordinated response' }),
   ).toBeVisible()
   await expect(page.getByText('Next local resource check')).toBeVisible()
   const confirmedResourceName = await page
@@ -49,10 +63,10 @@ test('desktop selects an island response zone and creates local steps', async ({
     .innerText()
   await page.getByRole('button', { name: 'Confirm' }).click()
 
-  await page.getByRole('button', { name: 'Open planner details' }).click()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
   await expect(
     page.getByRole('heading', {
-      name: 'Relief steps for East Honolulu',
+      name: 'Mass care plan for East Honolulu',
     }),
   ).toBeVisible()
   await expect(
@@ -78,7 +92,7 @@ test('desktop selects an island response zone and creates local steps', async ({
       .getByText('All listed local resources are confirmed'),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Create relief checklist' }).click()
+  await page.getByRole('button', { name: 'Create response checklist' }).click()
   await expect(
     page.getByText(
       'Start in East Honolulu: confirm powered shelter and accessible transportation capacity before damaging winds arrive.',
@@ -92,6 +106,51 @@ test('desktop selects an island response zone and creates local steps', async ({
       ),
   ).toBeVisible()
   await expect(page.getByText('4 sources used')).toBeVisible()
+})
+
+test('planner consumes official aggregate AFN context', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+
+  const afnContext = page.getByTestId('afn-context')
+  await expect(
+    afnContext.getByText('Official public sources available'),
+  ).toBeVisible()
+  await expect(page.getByTestId('afn-disability')).toContainText('220 (9.3%)')
+  await expect(page.getByTestId('afn-language')).toContainText('150 (6.4%)')
+  await expect(page.getByTestId('afn-transportation')).toContainText(
+    '80 (8.5%)',
+  )
+  await expect(page.getByTestId('afn-medical-power')).toContainText(
+    '1–11 (privacy-protected)',
+  )
+  await expect(afnContext).toContainText('No person-level records')
+  await expect(afnContext).toContainText('U.S. Census Bureau · 2024 ACS 5-year')
+})
+
+test('planner fails closed when official AFN sources are unavailable', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.route('**/api/v1/community/profile?*', async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'community profile unavailable' }),
+    })
+  })
+
+  await page.goto('/')
+  const afnContext = page.getByTestId('afn-context')
+  await expect(
+    afnContext.getByText('Official sources unavailable'),
+  ).toBeVisible()
+  await expect(afnContext).toContainText(
+    'must not be treated as official AFN estimates',
+  )
 })
 
 test('Town neighborhood panels change shelter and route guidance', async ({
@@ -134,16 +193,21 @@ test('Town neighborhood panels change shelter and route guidance', async ({
       .getByText(/Move vehicles, medicines, and mobility equipment/),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Open planner details' }).click()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const planningSheet = page.locator('.planning-sheet:visible')
   await expect(
-    page.getByRole('heading', {
-      name: 'Relief steps for Kakaʻako–Ala Moana',
-    }),
+    planningSheet
+      .getByRole('heading', {
+        name: 'Mass care plan for Kakaʻako–Ala Moana',
+      })
+      .first(),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Challenge readiness' }),
+    planningSheet.getByRole('heading', { name: 'Challenge readiness' }),
   ).toBeVisible()
-  await expect(page.getByText('Aggregate and de-identified')).toBeVisible()
+  await expect(
+    planningSheet.getByText('Aggregate and de-identified'),
+  ).toBeVisible()
 })
 
 test('island selector keeps one island visible and discloses coverage gaps', async ({
@@ -183,29 +247,40 @@ test('mobile controls preserve the selected response zone', async ({
     .click()
 
   await page
-    .getByRole('button', { name: /Change location or active event/ })
+    .getByRole('button', { name: /Change planning area or active event/ })
     .click()
   await page
     .locator('.map-story')
     .getByLabel('Which part of Oʻahu?')
     .selectOption('oahu-kaneohe')
-  await page.getByRole('button', { name: 'Relief plan', exact: true }).click()
+  await page.getByRole('button', { name: 'Response plan', exact: true }).click()
+  const planningSheet = page.locator('.planning-sheet:visible')
   await expect(
-    page.getByRole('heading', {
-      name: 'Relief steps for Kāneʻohe',
-    }),
+    planningSheet
+      .getByRole('heading', {
+        name: 'Mass care plan for Kāneʻohe',
+      })
+      .first(),
   ).toBeVisible()
-  await expect(page.getByText('1 · People who may need help')).toBeVisible()
-  await expect(page.getByText('2 · Resources to confirm')).toBeVisible()
-  await expect(page.getByText('3 · First coordinated action')).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Local resource inventory' }),
+    planningSheet.getByText('1 · Map affected communities'),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Create relief checklist' }).click()
-  await expect(page.locator('.priority-list')).toBeVisible()
+  await expect(
+    planningSheet.getByText('2 · Model needs and gaps'),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('3 · Match response partners'),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByRole('heading', { name: 'Local resource inventory' }),
+  ).toBeVisible()
+  await planningSheet
+    .getByRole('button', { name: 'Create response checklist' })
+    .click()
+  await expect(planningSheet.locator('.priority-list')).toBeVisible()
   await expect
     .poll(() =>
-      page
+      planningSheet
         .locator('.priority-list small')
         .first()
         .evaluate((element) => getComputedStyle(element).fontSize),
@@ -213,16 +288,16 @@ test('mobile controls preserve the selected response zone', async ({
     .toBe('14px')
   await expect
     .poll(() =>
-      page
+      planningSheet
         .locator('.sheet-challenge-card.is-action > strong')
         .evaluate((element) => getComputedStyle(element).fontSize),
     )
     .toBe('14px')
-  await expect(page.getByText('Needs considered')).not.toBeVisible()
-  await page.getByText('Why am I seeing these recommendations?').click()
-  await expect(
-    page.locator('.planning-sheet').getByText('Needs considered'),
-  ).toBeVisible()
+  await expect(planningSheet.getByText('Needs considered')).not.toBeVisible()
+  await planningSheet
+    .getByText('Why am I seeing these recommendations?')
+    .click()
+  await expect(planningSheet.getByText('Needs considered')).toBeVisible()
 })
 
 test('resident route adapts for address, no car, language, and resource need', async ({
@@ -249,11 +324,13 @@ test('resident route adapts for address, no car, language, and resource need', a
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await expect(
-    page.getByRole('heading', { name: 'Get from home to help' }),
+    page.getByRole('heading', { name: 'Preview resident guidance' }),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await expect(
-    page.getByRole('heading', { name: 'My safe route' }),
+    page.getByRole('heading', { name: 'Public guidance preview' }),
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Use my current location' }).click()
@@ -374,7 +451,9 @@ test('official source failures never become a reassuring status', async ({
 
   await page.goto('/')
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
 
   await expect(
     page
@@ -403,7 +482,9 @@ test('road-level route requests live basemap tiles', async ({
 
   await page.goto('/')
   await initialBasemapRequest
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await page
     .getByLabel('Home address or landmark')
     .fill('somewhere in Hawaii Kai')
@@ -434,9 +515,11 @@ test('mobile resident route exposes no-car and language controls', async ({
     .getByRole('complementary')
     .getByRole('button', { name: 'Close panel' })
     .click()
-  await page.getByRole('button', { name: 'My route', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Public guidance', exact: true })
+    .click()
   await expect(
-    page.getByRole('heading', { name: 'My safe route' }),
+    page.getByRole('heading', { name: 'Public guidance preview' }),
   ).toBeVisible()
   await expect(
     page.getByText('Official extreme tsunami evacuation zone', {
@@ -488,7 +571,9 @@ test('all four challenge events switch the resident risk answer', async ({
     page.getByRole('button', { name: /Leeward Wildfire Koa/ }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await expect(
     page.getByText('Flood risk at this location', { exact: true }),
   ).toBeVisible()
@@ -528,7 +613,9 @@ test('all four challenge events switch the resident risk answer', async ({
     affectedBefore,
   )
 
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await expect(
     page.getByText('Flood risk at this location', { exact: true }),
   ).toBeVisible()
@@ -555,11 +642,14 @@ test('all four challenge events switch the resident risk answer', async ({
   await expect(
     page.getByText(
       'Road-level practice directions that avoid official evacuation zones',
-      { exact: true },
+      { exact: false },
     ),
   ).toBeVisible()
   await expect(
-    page.getByText('Before the first possible wave', { exact: false }),
+    page
+      .locator('.relief-panel')
+      .getByText('Before the first possible wave', { exact: false })
+      .first(),
   ).toBeVisible()
   await expect(
     page.getByText(
@@ -573,7 +663,9 @@ test('all four challenge events switch the resident risk answer', async ({
       { exact: true },
     ),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await expect(
     page.getByText('Tsunami evacuation status', { exact: true }),
   ).toBeVisible()
@@ -605,13 +697,16 @@ test('all four challenge events switch the resident risk answer', async ({
   await expect(
     page.getByText(
       'Road-level practice directions that avoid smoke, fire, and closures',
-      { exact: true },
+      { exact: false },
     ),
   ).toBeVisible()
   await expect(
-    page.getByText('Before smoke or closures block evacuation routes', {
-      exact: false,
-    }),
+    page
+      .locator('.relief-panel')
+      .getByText('Before smoke or closures block evacuation routes', {
+        exact: false,
+      })
+      .first(),
   ).toBeVisible()
   await expect(
     page.getByText(
@@ -625,7 +720,9 @@ test('all four challenge events switch the resident risk answer', async ({
       { exact: true },
     ),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Plan route from my home' }).click()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
   await expect(
     page.getByText('Wildfire risk at this location', { exact: true }),
   ).toBeVisible()

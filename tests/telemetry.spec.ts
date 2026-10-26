@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 
 type TelemetryEvent = {
   kind: string
@@ -33,9 +33,16 @@ test('browser telemetry is batched and excludes private values', async ({
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   const themeButton = page.locator('.header-actions button')
-  for (let index = 0; index < 40; index += 1) {
-    await themeButton.click()
-  }
+  await themeButton.click()
+  const planningAreaSelect = page.getByLabel('Which part of Oʻahu?')
+  await planningAreaSelect.focus()
+  await page.keyboard.press('ArrowDown')
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
+  await page.getByLabel('Home address or landmark').fill(privateValue)
+  await page.getByRole('button', { name: 'Find routes' }).click()
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
   const events = batches.flatMap((batch) => batch.events)
@@ -45,6 +52,30 @@ test('browser telemetry is batched and excludes private values', async ({
       (event) =>
         event.kind === 'page_load' &&
         ['hydration', 'map_ready'].includes(event.action),
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'select' &&
+        event.action === 'keyboard',
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'input' &&
+        event.action === 'change',
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'form' &&
+        event.action === 'submit',
     ),
   ).toBe(true)
   expect(
@@ -76,7 +107,7 @@ test('browser telemetry is batched and excludes private values', async ({
   const serialized = JSON.stringify(batches)
   expect(serialized).not.toContain(privateValue)
   expect(serialized).not.toContain(windowLocationPlaceholder)
-  expect(serialized).not.toContain('Hawaiʻi Relief Map')
+  expect(serialized).not.toContain('Hawaiʻi Mass Care Planner')
 })
 
 const windowLocationPlaceholder = '?scoutTheme=dark'

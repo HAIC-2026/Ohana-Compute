@@ -8,17 +8,38 @@ web
 
 ## Users
 
-Primary users include Hawaiʻi residents trying to reach safety and essential resources under stress, including people without cars, people who use mobility or medical equipment, and people who prefer a language other than English. County and state emergency planners, community partners, and challenge evaluators use the same evidence through the deeper planning workflow.
+Primary users are county and state emergency planners, mass-care coordinators, community partners, and challenge evaluators working under operational pressure. Hawaiʻi residents are the downstream public audience, including people without cars, people who use mobility or medical equipment, and people who prefer a language other than English.
 
 ## Product Purpose
 
-The product turns fragmented public hazard, population, shelter, transportation, food, medical-power, and infrastructure information into a resident route and shared planning view. A resident should be able to start from home, understand what may happen nearby, see where not to travel, and find a safe practice route to shelter, food and water, medical power, or accessible pickup. Planners can inspect the aggregate evidence and coordination workflow behind that guidance.
+The product turns fragmented public hazard, population, shelter, transportation, food, medical-power, and infrastructure information into an emergency-planning workflow. Planners identify affected communities, estimate likely access and functional needs, confirm resources and routes, expose response gaps, assign a first coordinated action, and preview how the approved plan becomes accessible resident guidance.
 
-Success means a first-time user can move from an island-wide picture to a defensible planning priority in a few minutes, with every metric tied to a visible source and no implication that the system identifies individual residents.
+Success means a first-time planner can move from an island-wide event picture to a defensible planning priority and human-reviewable response checklist in a few minutes, with every metric tied to visible evidence and no implication that the system identifies individual residents.
+
+## Base Use Case
+
+The minimum complete planner journey is:
+
+1. **Map:** open a named event and planning area, then inspect official
+   aggregate AFN context with source geography and privacy limitations.
+2. **Model:** compare the affected-community estimate with shelter, backup
+   power, transportation, and route gaps that still require confirmation.
+3. **Match:** identify the accountable response partner, first action, and
+   decision window.
+4. Confirm a local resource and generate a human-reviewable response
+   checklist.
+5. Preview how the plan becomes accessible resident guidance, including
+   no-car and preferred-language needs.
+6. Verify that the browser interactions, backend routes, AFN source health,
+   profile completeness, and telemetry delivery appear in Prometheus metrics.
+
+`npm run test:integration` exercises this complete journey through a real Go API
+server with deterministic official-source fixtures and verifies the resulting
+Prometheus metrics.
 
 ## Positioning
 
-The product joins a statewide geospatial operating picture with a CMIST-oriented decision layer. Unlike a generic disaster map or chatbot, the map computes and displays the evidence while the model explains only the selected, structured scenario context.
+The product joins a statewide geospatial operating picture with a CMIST-oriented emergency-planning layer. Unlike a generic disaster map or chatbot, the map computes and displays evidence, resource checks, and operational gaps while the model explains only the selected, structured scenario context. Resident routing is a downstream preview of approved public guidance, not the primary planning product.
 
 ## Operating Context
 
@@ -26,18 +47,21 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - County-led mass-care planning supported by State ESF-6 and community partners.
 - Desktop use in planning meetings and emergency operations settings, plus mobile use in the field.
 - Public, aggregate datasets with different geographic resolution, update cadence, and uncertainty.
-- A public read-only first release with mocked backend responses until the service contract is implemented.
+- A public read-only first release backed by normalized Go API contracts, with
+  deterministic source fixtures reserved for end-to-end integration testing.
 
 ## Capabilities and Constraints
 
 - Interactive Hawaiʻi map with selectable hazard, AFN indicator, shelter, and infrastructure layers.
+- Official aggregate AFN context for the selected planning area from Census ACS,
+  CDC/ATSDR SVI, and HHS emPOWER, with partial-source and unavailable states.
 - One clearly labeled practice exposure overlay for the selected emergency, with unrelated hazard geometry hidden.
 - An active-event briefing model that combines a named event, expected arrival window, forecast trend, confidence, severity, dominant threats, and event-specific public guidance.
 - Practice active events cover all four challenge scenarios: Hurricane Lala, Tropical Storm Nolo flooding, a Pacific Tsunami Warning, and Leeward Wildfire Koa.
 - Island-first navigation that displays one island at a time, divides it into recognizable response zones grounded in official planning-region and neighborhood-board geography, and then produces a local plan for the selected zone.
 - A statewide island selector with honest coverage states: Oʻahu currently has the deepest local prototype, while Maui, Hawaiʻi, and Kauaʻi expose regional practice views and a visible validation-pending state instead of reusing Oʻahu geometry.
 - Town neighborhood briefings for Mānoa–Makiki, Kakaʻako–Ala Moana, Kaimukī–Kāhala, Waikīkī–Kapahulu, and Downtown–Kalihi.
-- A resident-first route planner with address/landmark/ZIP lookup, current-location support, road-level practice routes, mapped flood-avoidance zones, shelter, food and water, medical-power, and accessible-transport destinations.
+- A resident-guidance preview with address/landmark/ZIP lookup, current-location support, road-level practice routes, mapped flood-avoidance zones, shelter, food and water, medical-power, and accessible-transport destinations.
 - Practice resident-route coverage currently includes Mānoa–Makiki, Kakaʻako–Ala Moana, Kaimukī–Kāhala, and Hawaiʻi Kai, including 96816 and 96825 lookup examples.
 - The Hawaiʻi Kai reference route uses street-snapped geometry for driving and a current TheBus GTFS Route 1L walk–bus–walk itinerary; realtime arrivals and disaster detours remain unavailable until the required TheBus API integration is added.
 - The resident route checks the selected point against the official Hawaiʻi Statewide GIS tsunami evacuation layer and renders the matched standard, extreme, or safe-zone polygon separately from synthetic flood overlays.
@@ -57,12 +81,15 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - No personally identifiable information, stored addresses, individual registry, live tracking, dispatch, or autonomous resource allocation.
 - Responsive web interface deployed later as a frontend container beside a Go API container.
 - The production target is a new AKS environment with public Istio ingress and a managed Luna 6 endpoint accessed only through the backend.
-- Initial values and responses are synthetic demonstrations and must be labeled as such.
+- Scenario exposure, resources, routes, and response recommendations are
+  synthetic demonstrations and must be labeled as such. Official aggregate AFN
+  values retain their source geography and privacy limitations.
 - A visible challenge-readiness section must distinguish implemented prototype behavior from county validation, live-data integration, and deployment work that remains pending.
 
 ## Evidence on Hand
 
-- `../HAIC_AI-Challenge_Submission_DHS_Disaster_2026.pdf` is not inside this project; the source challenge document is attached to the originating Copilot session.
+- The official HAIC 2026 DHS challenge pitch defines the required framework as **Map, Model, Match**: map people with AFN and hazard exposure, model hazard-specific resource needs and gaps, then match needs to agencies and community partners with clear roles, decision points, and ways to reach residents.
+- Counties lead mass care, with State ESF-6 supporting County efforts. Evaluation is explicitly based on whether the framework is actionable, usable, private, equitable, and sustainable.
 - The prompt names Census ACS, CDC/ATSDR Social Vulnerability Index, HHS emPOWER, FEMA risk and flood data, tsunami evacuation zones, wildfire risk layers, and Hawaiʻi Statewide GIS data.
 - The prototype now reads Hawaiʻi Statewide GIS tsunami, DFIRM flood, and DLNR wildfire-risk services plus the FEMA National Shelter System open-shelter service directly. County incident perimeters, shelter openings, road closures, customer claims, measured impact, and current local resource inventories are not yet integrated.
 
