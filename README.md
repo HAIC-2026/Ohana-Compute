@@ -61,6 +61,14 @@ Run the backend separately:
 npm run backend:run
 ```
 
+On macOS, store the Census API key in Keychain and start the backend without
+writing the key to the repository or shell history:
+
+```bash
+./backend/scripts/census-keychain.sh store
+./backend/scripts/census-keychain.sh run
+```
+
 The backend listens on <http://127.0.0.1:8080> and currently exposes:
 
 - `GET /healthz`

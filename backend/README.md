@@ -54,6 +54,25 @@ Environment variables:
 - `NWS_CACHE_TTL` — Go duration; default `5m`
 - `CENSUS_API_KEY` — free Census data API key required for the ACS section
 
+### Store the Census key securely on macOS
+
+Use the included Keychain helper instead of placing the key in `.env`, a shell
+profile, or a command:
+
+```bash
+./backend/scripts/census-keychain.sh store
+./backend/scripts/census-keychain.sh run
+```
+
+`store` asks for the key through a hidden Keychain prompt and does not grant
+automatic access to the saved item. Keychain may request confirmation when
+`run` retrieves it. The script exports the key only to the backend process and
+starts the server. Remove the saved credential with:
+
+```bash
+./backend/scripts/census-keychain.sh delete
+```
+
 The aggregate community profile remains available when one source fails. Each
 unavailable source appears in `source_errors`; without `CENSUS_API_KEY`, SVI,
 emPOWER, and FEMA NRI continue to return while ACS is explicitly unavailable.
