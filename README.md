@@ -69,6 +69,11 @@ writing the key to the repository or shell history:
 ./backend/scripts/census-keychain.sh run
 ```
 
+For the AKS development environment, Bicep provisions Azure Key Vault, AKS
+Workload Identity, the Secrets Store CSI Driver, ACR, and GitHub Actions OIDC.
+See [`infra/README.md`](./infra/README.md). The Census key remains in Key Vault
+and is never stored in GitHub or Kubernetes manifests.
+
 The backend listens on <http://127.0.0.1:8080> and currently exposes:
 
 - `GET /healthz`

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,6 +23,15 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	censusAPIKey, err := secretFromEnvironmentOrFile(
+		"CENSUS_API_KEY",
+		"CENSUS_API_KEY_FILE",
+	)
+	if err != nil {
+		logger.Error("failed to load Census API key", "error", err)
+		os.Exit(1)
+	}
 
 	port := envOrDefault("PORT", "8080")
 	allowedOrigins := strings.Split(
@@ -45,7 +55,7 @@ func main() {
 		arcGISClient,
 		census.NewClient(census.Config{
 			HTTPClient: &http.Client{Timeout: 12 * time.Second},
-			APIKey:     os.Getenv("CENSUS_API_KEY"),
+			APIKey:     censusAPIKey,
 		}),
 	)
 	apiServer := api.NewServer(api.Config{
@@ -91,6 +101,23 @@ func envOrDefault(name string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func secretFromEnvironmentOrFile(environmentName string, fileEnvironmentName string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(environmentName)); value != "" {
+		return value, nil
+	}
+
+	path := strings.TrimSpace(os.Getenv(fileEnvironmentName))
+	if path == "" {
+		return "", nil
+	}
+
+	value, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", fileEnvironmentName, err)
+	}
+	return strings.TrimSpace(string(value)), nil
 }
 
 func durationOrDefault(name string, fallback time.Duration, logger *slog.Logger) time.Duration {

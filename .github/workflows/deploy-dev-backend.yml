@@ -1,0 +1,98 @@
+name: Deploy development backend
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Read deployment outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          outputs=$(az deployment group show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_DEPLOYMENT_NAME }}" \
+            --query properties.outputs)
+          echo "AKS_NAME=$(jq -r '.aksName.value' <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "ACR_NAME=$(jq -r '.acrName.value' <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "ACR_LOGIN_SERVER=$(jq -r '.acrLoginServer.value' <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "KEY_VAULT_NAME=$(jq -r '.keyVaultName.value' <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "WORKLOAD_IDENTITY_CLIENT_ID=$(jq -r '.workloadIdentityClientId.value' <<<"$outputs")" >> "$GITHUB_ENV"
+          echo "AZURE_TENANT_ID=${{ vars.AZURE_TENANT_ID }}" >> "$GITHUB_ENV"
+          echo "KUBERNETES_NAMESPACE=$(jq -r '.namespace.value' <<<"$outputs")" >> "$GITHUB_ENV"
+
+      - name: Build and push backend image
+        shell: bash
+        run: |
+          set -euo pipefail
+          az acr login --name "$ACR_NAME"
+          image="$ACR_LOGIN_SERVER/hawaii-resilience-backend:$GITHUB_SHA"
+          docker build --tag "$image" backend
+          docker push "$image"
+
+      - name: Deploy backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          az aks get-credentials \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$AKS_NAME" \
+            --admin \
+            --overwrite-existing
+          helm upgrade --install hawaii-resilience-backend deploy/backend \
+            --namespace "$KUBERNETES_NAMESPACE" \
+            --create-namespace \
+            --set image.repository="$ACR_LOGIN_SERVER/hawaii-resilience-backend" \
+            --set image.tag="$GITHUB_SHA" \
+            --set azure.tenantId="$AZURE_TENANT_ID" \
+            --set azure.workloadIdentityClientId="$WORKLOAD_IDENTITY_CLIENT_ID" \
+            --set azure.keyVaultName="$KEY_VAULT_NAME" \
+            --wait \
+            --timeout 10m
+
+      - name: Report endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl rollout status \
+            deployment/hawaii-resilience-backend \
+            --namespace "$KUBERNETES_NAMESPACE" \
+            --timeout=5m
+          for attempt in $(seq 1 60); do
+            address=$(kubectl get service hawaii-resilience-backend \
+              --namespace "$KUBERNETES_NAMESPACE" \
+              --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ -n "$address" ] && curl --fail --silent --show-error \
+              --max-time 10 "http://$address/healthz" >/dev/null; then
+              echo "Development backend: http://$address"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "The backend deployed, but the public IP is still pending." >&2
+          exit 1

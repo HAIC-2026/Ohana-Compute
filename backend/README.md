@@ -53,6 +53,8 @@ Environment variables:
 - `ALLOWED_ORIGINS` — comma-separated origins; defaults to local Vite URLs
 - `NWS_CACHE_TTL` — Go duration; default `5m`
 - `CENSUS_API_KEY` — free Census data API key required for the ACS section
+- `CENSUS_API_KEY_FILE` — optional path to the key; used by the AKS Key Vault
+  CSI mount when `CENSUS_API_KEY` is unset
 
 ### Store the Census key securely on macOS
 

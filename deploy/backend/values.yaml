@@ -1,0 +1,24 @@
+replicaCount: 1
+
+image:
+  repository: ''
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+
+azure:
+  tenantId: ''
+  workloadIdentityClientId: ''
+  keyVaultName: ''
+  censusSecretName: census-api-key
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
