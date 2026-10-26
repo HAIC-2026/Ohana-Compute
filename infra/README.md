@@ -85,7 +85,7 @@ kubectl port-forward service/hawaii-resilience-backend 8080:80
 curl --fail http://127.0.0.1:8080/metrics
 ```
 
-Open the **Hawaiʻi Resilience Map** dashboard in Grafana after the sidecar has
+Open the **Hawaiʻi Mass Care Planner** dashboard in Grafana after the sidecar has
 loaded the ConfigMap and select the cluster Prometheus data source. See
 [`docs/observability.md`](../docs/observability.md) for metric names, bounded
 labels, privacy guarantees, and direct PromQL queries.

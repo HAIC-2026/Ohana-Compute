@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import { ScenarioControls } from '../components/ScenarioControls'
+import { CommunityAfnSummary } from '../components/CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from '../components/NeighborhoodBriefingPanel'
 import { ResidentRoutePanel } from '../components/ResidentRoutePanel'
 import {
@@ -99,7 +100,6 @@ function Home() {
     confirmedResourceIds,
     selectedResidentPlanId,
     selectedResidentResourceId,
-    residentNoCar,
     preferredLanguage,
     confirmResource,
     setMobilePanel,
@@ -116,9 +116,6 @@ function Home() {
     residentPlan.resources.find(
       (resource) => resource.id === selectedResidentResourceId,
     ) ?? residentPlan.resources[0]
-  const residentTravel = residentNoCar
-    ? residentResource.noCar
-    : residentResource.drive
   const neighborhoodBriefings = getNeighborhoodBriefings(area.id)
   const selectedNeighborhood =
     neighborhoodBriefings.find(
@@ -202,8 +199,8 @@ function Home() {
             <i />
           </span>
           <div>
-            <strong>Hawaiʻi Relief Map</strong>
-            <span>Simple disaster relief planning</span>
+            <strong>Hawaiʻi Mass Care Planner</strong>
+            <span>Map needs, model gaps, match response</span>
           </div>
         </div>
 
@@ -242,7 +239,7 @@ function Home() {
                 {displayPlace} ·{' '}
                 {activeEvent?.name ?? selectedHazard.shortLabel}
               </small>
-              <strong>Change location or active event</strong>
+              <strong>Change planning area or active event</strong>
             </span>
             <ChevronRight size={18} />
           </button>
@@ -256,10 +253,10 @@ function Home() {
             >
               <X size={18} />
             </button>
-            <h1>Plan for your part of Hawaiʻi</h1>
+            <h1>Plan mass care before the next disaster</h1>
             <p>
-              Choose one island and response zone, then use the active event
-              forecast to see what people need before conditions arrive.
+              Map affected communities, model hazard-specific needs and gaps,
+              then match agencies and community partners to coordinated actions.
             </p>
 
             <div className="place-flow">
@@ -383,44 +380,23 @@ function Home() {
             </section>
           )}
 
-          <section className="resident-route-entry">
-            <div className="resident-route-entry-heading">
-              <span>
-                <Navigation size={17} />
-              </span>
-              <div>
-                <h3>Get from home to help</h3>
-                <p>{residentRouteSummary[hazard]}</p>
-              </div>
-            </div>
-            <div className="resident-route-entry-summary">
-              <small>Recommended destination</small>
-              <strong>{residentResource.name}</strong>
-              <span>
-                {residentTravel.label} · {residentTravel.eta} ·{' '}
-                {preferredLanguage}
-              </span>
-            </div>
-            <button type="button" onClick={() => setMobilePanel('resident')}>
-              Plan my safe route
-              <ChevronRight size={17} />
-            </button>
-          </section>
-
           <div className="relief-message">
-            <span>Priority before conditions arrive</span>
+            <span>Response priority before conditions arrive</span>
             <strong>{mainNeed}</strong>
             <p>{area.summary}</p>
           </div>
 
           <NeighborhoodBriefingPanel areaId={area.id} hazard={hazard} compact />
 
-          <div className="challenge-flow" aria-label="Relief planning summary">
+          <div
+            className="challenge-flow"
+            aria-label="Emergency response planning summary"
+          >
             <section className="challenge-step is-people">
               <div className="challenge-step-heading">
                 <span>1</span>
                 <div>
-                  <small>People</small>
+                  <small>Map</small>
                   <h3>Who may need help</h3>
                 </div>
               </div>
@@ -436,6 +412,7 @@ function Home() {
                   <span key={need}>{need}</span>
                 ))}
               </div>
+              <CommunityAfnSummary coordinates={area.coordinates} />
               {activeEvent && (
                 <div className="public-guidance">
                   <strong>What people need to know</strong>
@@ -452,8 +429,8 @@ function Home() {
               <div className="challenge-step-heading">
                 <span>2</span>
                 <div>
-                  <small>Resources</small>
-                  <h3>What local teams should confirm</h3>
+                  <small>Model</small>
+                  <h3>Needs and resource gaps</h3>
                 </div>
               </div>
               <div className="resource-grid">
@@ -526,8 +503,8 @@ function Home() {
               <div className="challenge-step-heading">
                 <span>3</span>
                 <div>
-                  <small>Coordinated action</small>
-                  <h3>What to do first</h3>
+                  <small>Match</small>
+                  <h3>Coordinated response</h3>
                 </div>
               </div>
               <div className="first-action">
@@ -545,61 +522,78 @@ function Home() {
           <button
             type="button"
             className="relief-primary"
-            onClick={() => setMobilePanel('resident')}
-          >
-            <Navigation size={18} />
-            Plan route from my home
-            <ChevronRight size={18} />
-          </button>
-          <button
-            type="button"
-            className="relief-secondary"
             onClick={() => setMobilePanel('insights')}
           >
-            <Sparkles size={17} />
-            {briefReady ? 'Review planner details' : 'Open planner details'}
+            <Sparkles size={18} />
+            {briefReady
+              ? 'Review response workspace'
+              : 'Open response workspace'}
+            <ChevronRight size={18} />
           </button>
 
+          <section className="resident-route-entry">
+            <div className="resident-route-entry-heading">
+              <span>
+                <Navigation size={17} />
+              </span>
+              <div>
+                <h3>Preview resident guidance</h3>
+                <p>
+                  Translate the current plan into accessible, multilingual
+                  practice directions.
+                </p>
+              </div>
+            </div>
+            <div className="resident-route-entry-summary">
+              <small>Example public destination</small>
+              <strong>{residentResource.name}</strong>
+              <span>
+                {residentRouteSummary[hazard]} · {preferredLanguage}
+              </span>
+            </div>
+            <button type="button" onClick={() => setMobilePanel('resident')}>
+              Open public guidance preview
+              <ChevronRight size={17} />
+            </button>
+          </section>
+
           <p className="practice-note">
-            This is a planning estimate using practice data. Confirm conditions
-            with local teams before acting.
+            Planning estimates use practice data. Confirm conditions, resource
+            status, and assignments with local teams before operational use.
           </p>
         </aside>
 
         <button
           type="button"
           className="mobile-result"
-          onClick={() => setMobilePanel('resident')}
+          onClick={() => setMobilePanel('insights')}
         >
           <span>
-            <small>
-              From {residentPlan.name} · {residentTravel.label}
-            </small>
-            <strong>{residentResource.name}</strong>
+            <small>Response priority · {displayPlace}</small>
+            <strong>{localSteps[0].title}</strong>
             <em>
-              {residentTravel.eta} · {residentTravel.distance} · avoid flood
-              hazards
+              {localSteps[0].owner} · {localSteps[0].timing}
             </em>
           </span>
           <ChevronRight size={20} />
         </button>
 
-        <nav className="mobile-dock" aria-label="Relief planning tools">
-          <button
-            type="button"
-            onClick={() => setMobilePanel('resident')}
-            className={mobilePanel === 'resident' ? 'is-active' : ''}
-          >
-            <Navigation size={19} />
-            My route
-          </button>
+        <nav className="mobile-dock" aria-label="Emergency planning tools">
           <button
             type="button"
             onClick={() => setMobilePanel('insights')}
             className={mobilePanel === 'insights' ? 'is-active' : ''}
           >
             <Sparkles size={19} />
-            Relief plan
+            Response plan
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePanel('resident')}
+            className={mobilePanel === 'resident' ? 'is-active' : ''}
+          >
+            <Navigation size={19} />
+            Public guidance
           </button>
           <button
             type="button"
@@ -637,15 +631,15 @@ function Home() {
                     {mobilePanel === 'scenario'
                       ? 'Change map details'
                       : mobilePanel === 'resident'
-                        ? 'My safe route'
-                        : `Relief steps for ${displayPlace}`}
+                        ? 'Public guidance preview'
+                        : `Mass care plan for ${displayPlace}`}
                   </h2>
                   <span>
                     {mobilePanel === 'scenario'
                       ? 'Optional settings'
                       : mobilePanel === 'resident'
-                        ? 'From home to shelter, food, power, or pickup'
-                        : 'Start with the most urgent needs'}
+                        ? 'How an approved plan becomes accessible resident action'
+                        : 'Confirm needs, resources, routes, and first actions'}
                   </span>
                 </div>
                 <button

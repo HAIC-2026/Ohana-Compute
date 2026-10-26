@@ -70,7 +70,14 @@ func TestProfileReturnsPartialDataAndExplicitSourceErrors(t *testing.T) {
 		censusStub{err: census.ErrAPIKeyRequired},
 	)
 
-	profile, err := client.Profile(context.Background(), 21.29, -157.68)
+	observations := make(chan SourceObservation, 4)
+	ctx := WithSourceObserver(
+		context.Background(),
+		func(observation SourceObservation) {
+			observations <- observation
+		},
+	)
+	profile, err := client.Profile(ctx, 21.29, -157.68)
 	if err != nil {
 		t.Fatalf("Profile failed: %v", err)
 	}
@@ -84,6 +91,25 @@ func TestProfileReturnsPartialDataAndExplicitSourceErrors(t *testing.T) {
 	}
 	if !profile.EmPOWER.OxygenServicesAnyDME.MayRepresentMaskedCell {
 		t.Fatal("expected emPOWER privacy masking flag for value 11")
+	}
+	successes := 0
+	errors := 0
+	for range 4 {
+		observation := <-observations
+		if observation.Duration < 0 {
+			t.Fatalf("unexpected duration: %s", observation.Duration)
+		}
+		switch observation.Outcome {
+		case "success":
+			successes++
+		case "error":
+			errors++
+		default:
+			t.Fatalf("unexpected outcome: %q", observation.Outcome)
+		}
+	}
+	if successes != 3 || errors != 1 {
+		t.Fatalf("unexpected observations: success=%d error=%d", successes, errors)
 	}
 }
 

@@ -26,6 +26,31 @@ type CensusReader interface {
 	CommunityProfile(context.Context, float64, float64) (census.Profile, error)
 }
 
+type SourceObservation struct {
+	Source   string
+	Outcome  string
+	Duration time.Duration
+}
+
+type sourceObserverKey struct{}
+
+func WithSourceObserver(
+	ctx context.Context,
+	observer func(SourceObservation),
+) context.Context {
+	return context.WithValue(ctx, sourceObserverKey{}, observer)
+}
+
+func ReportSourceObservation(
+	ctx context.Context,
+	observation SourceObservation,
+) {
+	observer, ok := ctx.Value(sourceObserverKey{}).(func(SourceObservation))
+	if ok && observer != nil {
+		observer(observation)
+	}
+}
+
 type Client struct {
 	arcGIS Querier
 	census CensusReader
@@ -263,7 +288,17 @@ func (client *Client) Profile(
 		waitGroup.Add(1)
 		go func() {
 			defer waitGroup.Done()
+			started := time.Now()
 			value, err := load()
+			outcome := "success"
+			if err != nil {
+				outcome = "error"
+			}
+			ReportSourceObservation(ctx, SourceObservation{
+				Source:   source,
+				Outcome:  outcome,
+				Duration: time.Since(started),
+			})
 			channel <- result{source: source, value: value, err: err}
 		}()
 	}

@@ -27,6 +27,11 @@ Page lifecycle timings cover navigation response, DOM content loaded, browser
 load, React hydration, and map ready. Semantic interactions are captured at the
 document boundary, while the Event Timing API supplies additional end-to-end
 interaction duration where supported.
+Because capture listeners are installed once at the document boundary, every
+trusted button or link activation, form submission, selection or change,
+keyboard interaction, and map pointer interaction is covered without requiring
+each component to add its own telemetry call. Pointer events that would
+duplicate a subsequent click are intentionally counted once rather than twice.
 
 The browser batches up to 40 events, flushes every five seconds, and keeps at
 most 200 events in memory. Hidden-page and navigation flushes use
@@ -49,9 +54,26 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_browser_event_duration_seconds`
 - `hawaii_resilience_browser_telemetry_batches_total`
 - `hawaii_resilience_browser_telemetry_rejected_total`
+- `hawaii_resilience_afn_source_requests_total`
+- `hawaii_resilience_afn_source_request_duration_seconds`
+- `hawaii_resilience_afn_profile_responses_total`
+- `hawaii_resilience_afn_source_retrieved_timestamp_seconds`
+- `hawaii_resilience_afn_source_stale`
+- `hawaii_resilience_afn_privacy_masked_observations_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
-response status. They never use the request URL or query string.
+response status. The middleware wraps every registered endpoint, including
+health, source catalog, event, risk, shelter, community, transportation,
+telemetry ingest, and metrics routes. It never uses the request URL or query
+string.
+
+AFN source metrics use only four source labels: `acs-5-year`,
+`cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
+`error`; profile completeness is `complete`, `partial`, or `unavailable`.
+Retrieved-timestamp and stale gauges describe the latest aggregate source
+response; dashboards calculate live data age as `time() - retrieved_timestamp`.
+Privacy-mask counters identify only the fixed emPOWER field category and never
+export the protected count, planning coordinate, ZIP code, or Census tract.
 
 ## Prometheus Operator and Grafana
 
@@ -71,7 +93,7 @@ installation selects monitors by release or team label.
 
 The dashboard ConfigMap uses `grafana_dashboard: "1"` by default for Grafana
 sidecar discovery. Change `grafanaDashboard.labels` when the installed sidecar
-uses a different selector. The source dashboard is
+uses a different selector. The source **Hawaiʻi Mass Care Planner** dashboard is
 `deploy/backend/dashboards/hawaii-resilience-backend.json`.
 
 Useful direct queries include:
@@ -94,6 +116,27 @@ histogram_quantile(
   0.95,
   sum by (le, kind, action) (
     rate(hawaii_resilience_browser_event_duration_seconds_bucket[5m])
+  )
+)
+```
+
+```promql
+sum by (completeness) (
+  rate(hawaii_resilience_afn_profile_responses_total[5m])
+)
+```
+
+```promql
+sum by (source, outcome) (
+  rate(hawaii_resilience_afn_source_requests_total[5m])
+)
+```
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le, source) (
+    rate(hawaii_resilience_afn_source_request_duration_seconds_bucket[5m])
   )
 )
 ```
