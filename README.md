@@ -34,6 +34,8 @@ households.
 - A TheBus Route 1L walk-bus-walk example for Hawaiʻi Kai
 - No-car, mobility, medical-power, language, written-direction, and read-aloud
   controls
+- Downloadable, self-contained field briefings for printing and
+  limited-connectivity coordination
 - Desktop and mobile Playwright coverage
 
 ## Stack
@@ -100,6 +102,14 @@ coordinates, input values, visible text, user identifiers, or URLs/query
 strings. See [`docs/observability.md`](./docs/observability.md) for the metric
 contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 
+After generating the response checklist, planners can download a standalone
+HTML field briefing. The packet carries the selected Map → Model → Match
+context, official aggregate AFN values, resource and route checks, assigned
+actions, public guidance, and required local validation checks. It has embedded
+print styles and no external runtime dependencies, so it can be printed or
+opened after connectivity is lost. It intentionally excludes resident-entered
+addresses, coordinates, names, identifiers, and person-level medical data.
+
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
@@ -120,11 +130,13 @@ npm run check
 
 `npm run test:integration` starts the real frontend and Go API on isolated test
 ports, drives the complete Map → Model → Match planner journey, confirms a
-resource, generates the response checklist, exercises accessible public
-guidance, and then verifies the resulting AFN, HTTP, browser-interaction, and
-telemetry Prometheus metrics. The integration server uses deterministic
-aggregate official-source fixtures; unit tests separately cover the production
-community-source fan-out and partial-source behavior.
+resource, generates the response checklist, downloads and inspects the offline
+field briefing, exercises accessible public guidance, and then verifies the
+resulting AFN, HTTP, browser-interaction, and telemetry Prometheus metrics. The
+test also proves that a private address entered in the guidance flow is absent
+from both the downloaded packet and Prometheus output. The integration server
+uses deterministic aggregate official-source fixtures; unit tests separately
+cover the production community-source fan-out and partial-source behavior.
 
 `npm run test:journey` runs the numbered resident story and writes raw timing
 metrics plus a summary to `test-results/performance/`. Important browser state

@@ -14,7 +14,7 @@ Primary users are county and state emergency planners, mass-care coordinators, c
 
 The product turns fragmented public hazard, population, shelter, transportation, food, medical-power, and infrastructure information into an emergency-planning workflow. Planners identify affected communities, estimate likely access and functional needs, confirm resources and routes, expose response gaps, assign a first coordinated action, and preview how the approved plan becomes accessible resident guidance.
 
-Success means a first-time planner can move from an island-wide event picture to a defensible planning priority and human-reviewable response checklist in a few minutes, with every metric tied to visible evidence and no implication that the system identifies individual residents.
+Success means a first-time planner can move from an island-wide event picture to a defensible planning priority, human-reviewable response checklist, and offline field briefing in a few minutes, with every metric tied to visible evidence and no implication that the system identifies individual residents.
 
 ## Base Use Case
 
@@ -28,9 +28,11 @@ The minimum complete planner journey is:
    decision window.
 4. Confirm a local resource and generate a human-reviewable response
    checklist.
-5. Preview how the plan becomes accessible resident guidance, including
+5. Download a self-contained field briefing for printing or
+   limited-connectivity coordination.
+6. Preview how the plan becomes accessible resident guidance, including
    no-car and preferred-language needs.
-6. Verify that the browser interactions, backend routes, AFN source health,
+7. Verify that the browser interactions, backend routes, AFN source health,
    profile completeness, and telemetry delivery appear in Prometheus metrics.
 
 `npm run test:integration` exercises this complete journey through a real Go API
@@ -74,6 +76,11 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.
 - A primary planning sequence that shows people who may need help, likely needs, resources and routes to confirm, and the first coordinated action.
+- A self-contained HTML field briefing that preserves Map–Model–Match evidence,
+  resource and route status, accountable actions, public guidance, and explicit
+  local checks for connectivity fallback, trusted multilingual outreach,
+  elevator outages, pets, and working animals. It is printable, works without
+  external assets, and excludes resident-entered addresses and coordinates.
 - A synthetic local resource inventory with names, capacity, capabilities, shared confirmation status, grouped map markers, and an explicit completion state.
 - Scenario controls and aggregate impact summaries for selected planning areas.
 - CMIST categories: Communication, Medical, Independence, Safety/Support, and Transportation.

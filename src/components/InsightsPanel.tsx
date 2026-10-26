@@ -8,6 +8,7 @@ import {
   ChevronDown,
   CircleHelp,
   Clock3,
+  Download,
   FileText,
   Globe2,
   ListChecks,
@@ -32,6 +33,12 @@ import {
 
 import { generatePlanningBrief } from '../lib/mock-api'
 import type { PlanningBrief } from '../lib/mock-api'
+import {
+  formatAggregateMetric,
+  formatProtectedCount,
+  useCommunityProfile,
+} from '../lib/community-profile'
+import { downloadFieldBriefing } from '../lib/field-briefing'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
@@ -44,6 +51,7 @@ import {
   getLocalRouteChecks,
   getNeighborhoodBriefings,
   getScenarioView,
+  hazards,
   sources,
 } from '../lib/mock-data'
 import { usePlanningStore } from '../store/planning-store'
@@ -60,6 +68,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     activeLayers,
     confirmedResourceIds,
     selectedResourceId,
+    residentNoCar,
+    residentMobilityHelp,
+    residentMedicalPower,
+    preferredLanguage,
     confirmResource,
     selectResource,
     setBriefReady,
@@ -84,6 +96,13 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     selectedNeighborhood?.name ??
     locationFocus?.name ??
     area.name
+  const planningCoordinates =
+    selectedPlanningZone?.coordinates ??
+    locationFocus?.coordinates ??
+    area.coordinates
+  const communityProfileState = useCommunityProfile(planningCoordinates)
+  const selectedHazard =
+    hazards.find((item) => item.id === hazard) ?? hazards[0]
   const scenario = getScenarioView(
     area,
     hazard,
@@ -173,6 +192,131 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     setIsGenerating(false)
   }
 
+  const downloadPacket = () => {
+    if (!brief || communityProfileState.status === 'loading') return
+
+    const profile = communityProfileState.profile
+    const profileSources = [
+      profile?.acs?.source,
+      profile?.svi?.source,
+      profile?.empower?.source,
+      profile?.fema_national_risk?.source,
+    ].filter((source): source is NonNullable<typeof source> => Boolean(source))
+    const unavailableSources = [
+      !profile?.acs && 'Census ACS',
+      !profile?.svi && 'CDC/ATSDR SVI',
+      !profile?.empower && 'HHS emPOWER',
+      !profile?.fema_national_risk && 'FEMA National Risk Index',
+    ].filter((source): source is string => Boolean(source))
+    const guidancePreferences = [
+      `Preferred public language: ${preferredLanguage}`,
+      residentNoCar ? 'Transportation: plan for no private vehicle' : null,
+      residentMobilityHelp
+        ? 'Accessibility: include mobility assistance'
+        : null,
+      residentMedicalPower
+        ? 'Medical: include power-dependent equipment support'
+        : null,
+    ].filter((preference): preference is string => Boolean(preference))
+
+    downloadFieldBriefing({
+      place: displayPlace,
+      island: area.island,
+      hazard: selectedHazard.label,
+      severity,
+      event: activeEvent
+        ? {
+            name: activeEvent.name,
+            status: activeEvent.status,
+            arrival: activeEvent.arrival,
+            summary: activeEvent.summary,
+          }
+        : undefined,
+      map: {
+        exposedPopulation: scenario.exposedPopulation.toLocaleString(),
+        primarySignal: scenario.primarySignal,
+        sourceStatus:
+          communityProfileState.status === 'ready'
+            ? 'Complete'
+            : communityProfileState.status === 'partial'
+              ? 'Partial'
+              : 'Unavailable',
+        geography:
+          profile?.acs?.geography.name ??
+          profile?.svi?.location ??
+          profile?.empower?.county ??
+          'Official aggregate geography unavailable',
+        disability: formatAggregateMetric(
+          profile?.acs?.population_with_disability,
+          profile?.svi?.with_disability,
+        ),
+        limitedEnglish: formatAggregateMetric(
+          profile?.acs?.limited_english_population,
+          profile?.svi?.limited_english,
+        ),
+        noVehicle: formatAggregateMetric(
+          profile?.acs?.no_vehicle_households,
+          profile?.svi?.no_vehicle_households,
+        ),
+        medicalPower: formatProtectedCount(
+          profile?.empower?.power_dependent_dme,
+        ),
+        nationalRisk: profile?.fema_national_risk?.risk_rating ?? 'Unavailable',
+        socialVulnerability:
+          profile?.fema_national_risk?.social_vulnerability_rating ??
+          'Unavailable',
+        communityResilience:
+          profile?.fema_national_risk?.community_resilience_rating ??
+          'Unavailable',
+        sources: profileSources.map(
+          (source) =>
+            `${source.authority}${source.vintage ? ` (${source.vintage})` : ''}`,
+        ),
+        unavailableSources,
+      },
+      model: {
+        needs: challengeSnapshot.topNeeds,
+        cmist: scenario.cmist,
+        resources: resourceInventory.map((resource) => ({
+          name: resource.name,
+          kind: resource.kind,
+          capacity: resource.capacity,
+          confirmed:
+            resource.status === 'confirmed' ||
+            confirmedResourceIds.includes(resource.id),
+          capabilities: resource.capabilities,
+        })),
+        routes: routeChecks,
+      },
+      match: {
+        decision:
+          selectedNeighborhood && neighborhoodDecision
+            ? {
+                label: neighborhoodDecision.label,
+                action: neighborhoodDecision.action,
+                reason: neighborhoodDecision.reason,
+                trigger: neighborhoodDecision.trigger,
+                owner: selectedNeighborhood.coordination.decisionOwner,
+                communicationPath:
+                  selectedNeighborhood.coordination.communicationPath,
+              }
+            : undefined,
+        actions: brief.priorities,
+      },
+      communication: {
+        publicGuidance: activeEvent?.publicGuidance ?? [],
+        afnActions: selectedNeighborhood?.coordination.afnActions ?? [],
+        preferences: guidancePreferences,
+        localValidationChecks: [
+          'Confirm paper, radio, and phone-tree communication fallback for limited connectivity.',
+          'Confirm trusted multilingual and trauma-informed community messengers.',
+          'Confirm pets and working animals sheltering, transport, and supply capacity.',
+          'Confirm elevator-outage support for high-rise residents with mobility needs.',
+        ],
+      },
+    })
+  }
+
   return (
     <div className={`insights-content ${compact ? 'is-compact' : ''}`}>
       <section className="area-overview">
@@ -185,13 +329,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             area.summary}
         </p>
 
-        <CommunityAfnSummary
-          coordinates={
-            selectedPlanningZone?.coordinates ??
-            locationFocus?.coordinates ??
-            area.coordinates
-          }
-        />
+        <CommunityAfnSummary coordinates={planningCoordinates} />
 
         {activeEvent && (
           <div className="sheet-event-summary">
@@ -398,8 +536,9 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
               <p>
                 Every available island can be viewed one at a time. AFN,
                 accessible transport, medical power, and language actions are
-                explicit; rural and off-grid conditions, pets and working
-                animals, and detailed local validation require further work.
+                explicit. Field packets require local checks for off-grid
+                communication, high-rise elevator outages, pets, and working
+                animals; detailed county validation still requires field work.
               </p>
             </div>
           </article>
@@ -410,10 +549,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
               <strong>Open standards and maintainable services</strong>
               <p>
                 The responsive frontend, normalized Go API, browser telemetry,
-                and Prometheus metrics are implemented. Production source
-                caching, deployment rollout, operational alerting, and agency
-                validation remain required; low-connectivity planning packets
-                are not yet available.
+                Prometheus metrics, and self-contained low-connectivity field
+                packets are implemented. Production source caching, deployment
+                rollout, operational alerting, and agency validation remain
+                required.
               </p>
             </div>
           </article>
@@ -436,9 +575,15 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <Sparkles size={20} />
             <p>
               Create a prioritized list of actions from the selected event,
-              affected communities, resource checks, and route constraints.
+              affected communities, resource checks, and route constraints. The
+              completed list unlocks a printable offline field packet.
             </p>
-            <button type="button" onClick={generate}>
+            <button
+              type="button"
+              data-telemetry-action="planning_brief_generate"
+              data-telemetry-category="planning"
+              onClick={generate}
+            >
               Create response checklist
               <ArrowUpRight size={16} />
             </button>
@@ -489,9 +634,30 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                 </span>
                 <small>{brief.citations.join(' · ')}</small>
               </div>
-              <button type="button" onClick={generate}>
-                Update list
-              </button>
+              <div className="brief-actions">
+                <button
+                  className="field-packet-button"
+                  type="button"
+                  data-telemetry-action="field_packet_download"
+                  data-telemetry-category="planning"
+                  disabled={communityProfileState.status === 'loading'}
+                  aria-busy={communityProfileState.status === 'loading'}
+                  onClick={downloadPacket}
+                >
+                  <Download size={14} />
+                  {communityProfileState.status === 'loading'
+                    ? 'Preparing field packet'
+                    : 'Download field packet'}
+                </button>
+                <button
+                  type="button"
+                  data-telemetry-action="planning_brief_update"
+                  data-telemetry-category="planning"
+                  onClick={generate}
+                >
+                  Update list
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

@@ -510,15 +510,25 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 	})
 	body := `{
 		"version": 1,
-		"events": [{
-			"kind": "interaction",
-			"action": "hazard_select",
-			"category": "button",
-			"route": "home",
-			"viewport": "large",
-			"outcome": "success",
-			"duration_ms": 12.5
-		}]
+		"events": [
+			{
+				"kind": "interaction",
+				"action": "hazard_select",
+				"category": "button",
+				"route": "home",
+				"viewport": "large",
+				"outcome": "success",
+				"duration_ms": 12.5
+			},
+			{
+				"kind": "interaction",
+				"action": "field_packet_download",
+				"category": "planning",
+				"route": "home",
+				"viewport": "large",
+				"outcome": "success"
+			}
+		]
 	}`
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -543,6 +553,7 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 	for _, metric := range []string{
 		`hawaii_resilience_browser_events_total{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_event_duration_seconds_count{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_events_total{action="field_packet_download",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_telemetry_batches_total{outcome="accepted"} 1`,
 	} {
 		if !strings.Contains(metricsBody, metric) {

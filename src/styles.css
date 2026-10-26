@@ -3544,6 +3544,39 @@ select:focus-visible {
   font-weight: 700;
 }
 
+.brief-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.brief-footer .field-packet-button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  font-size: 10px;
+}
+
+.brief-footer .field-packet-button:hover {
+  border-color: var(--cp-accent);
+  color: var(--cp-accent);
+  background: var(--cp-accent-soft);
+}
+
+.brief-footer .field-packet-button:disabled {
+  border-color: var(--cp-border);
+  color: var(--cp-text-muted);
+  background: var(--cp-surface-soft);
+  cursor: wait;
+}
+
 .evidence-details {
   border-bottom: 1px solid var(--cp-border);
 }
@@ -4338,6 +4371,16 @@ select:focus-visible {
 
   .maplibregl-ctrl-attrib {
     max-width: calc(100vw - 24px);
+  }
+
+  .brief-footer {
+    align-items: flex-start;
+    padding-block: 9px;
+  }
+
+  .brief-actions {
+    flex-direction: column;
+    align-items: flex-end;
   }
 }
 
