@@ -9,6 +9,8 @@ in a portal.
 - `GET /healthz`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
+- `GET /api/v1/events/hurricanes`
+- `GET /api/v1/events/tsunami`
 - `GET /api/v1/risk/tsunami?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
@@ -18,7 +20,11 @@ in a portal.
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/fema-risk?lat={latitude}&lon={longitude}`
+- `GET /api/v1/transportation/planned-closures?lat={latitude}&lon={longitude}`
 - Normalized NOAA/NWS active alerts for Hawaiʻi
+- Normalized Central Pacific cyclone summaries and official advisory GIS links
+- Normalized Pacific Tsunami Warning Center CAP status and instructions
+- Coordinate-scoped HDOT planned lane closures for the next seven days
 - Normalized Hawaiʻi State GIS tsunami, FEMA DFIRM, coastal-planning, and
   DLNR wildfire-risk responses
 - Normalized FEMA ESF6 open shelters sorted by resident distance
@@ -35,6 +41,11 @@ retrieval time, cache freshness deadline, and `fresh` or `stale` status.
 Planning layers remain labeled as planning context; they do not become live
 incident perimeters, inundation forecasts, road closures, or evacuation
 orders.
+
+HDOT closure results are planned roadwork, not emergency road status or proof
+that a route is passable. The PTWC endpoint exposes the latest product and its
+expiration explicitly; an expired information statement is not treated as an
+all-clear.
 
 The frontend still calls the same State/FEMA services directly. Migrating it to
 these parity endpoints is the next integration slice.

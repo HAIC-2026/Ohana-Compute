@@ -79,6 +79,8 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /healthz`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
+- `GET /api/v1/events/hurricanes`
+- `GET /api/v1/events/tsunami`
 - `GET /api/v1/risk/tsunami?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
@@ -88,6 +90,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/fema-risk?lat={latitude}&lon={longitude}`
+- `GET /api/v1/transportation/planned-closures?lat={latitude}&lon={longitude}`
 
 ## Validate
 
@@ -105,6 +108,9 @@ Official data is requested from:
 
 - [Hawaiʻi Statewide GIS Hazards services](https://geodata.hawaii.gov/arcgis/rest/services/Hazards/MapServer)
 - [FEMA National Shelter System](https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer)
+- [Central Pacific Hurricane Center GIS feed](https://www.nhc.noaa.gov/gis-cp.xml)
+- [Pacific Tsunami Warning Center CAP feed](https://www.tsunami.gov/events/xml/PHEBCAP.xml)
+- [HDOT planned lane closures](https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0)
 
 The official sources provide planning context, not a complete live incident
 picture:
@@ -114,8 +120,10 @@ picture:
 - The sea-level-rise layer is a long-range planning scenario, not a current
   forecast.
 - Practice shelters and routes are not represented as officially open.
-- Live road closures, transit arrivals, county shelter capacity, and incident
-  evacuation orders are not yet integrated.
+- HDOT planned lane closures are construction context, not live emergency road
+  status or proof of passability.
+- Live emergency road closures, transit arrivals, county shelter capacity, and
+  incident evacuation orders are not yet integrated.
 
 When an official source fails, the interface reports the status as unavailable
 instead of substituting a reassuring answer.
@@ -128,8 +136,9 @@ instead of substituting a reassuring answer.
 - `src/lib/official-emergency-data.ts` isolates authoritative external-source
   queries, caching, classification, and fail-closed behavior.
 - `src/store/planning-store.ts` holds the client scenario state.
-- `backend/` contains the Go API, normalized source catalog, and the first live
-  NOAA/NWS alert adapter.
+- `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
+  event adapters, official hazard and shelter adapters, community-planning
+  sources, and HDOT planned-closure context.
 
 The frontend already treats inference as an asynchronous service and passes a
 structured area, hazard, severity, exposure, and primary planning signal. The

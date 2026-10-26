@@ -16,8 +16,11 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
 
 func main() {
@@ -58,12 +61,25 @@ func main() {
 			APIKey:     censusAPIKey,
 		}),
 	)
+	cyclones := cphc.NewClient(cphc.Config{
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	})
+	tsunamiProducts := ptwc.NewClient(ptwc.Config{
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	})
+	transportationSources := transportation.NewClient(
+		arcGISClient,
+		transportation.Config{},
+	)
 	apiServer := api.NewServer(api.Config{
-		Alerts:         alerts,
-		Official:       officialSources,
-		Community:      communitySources,
-		AllowedOrigins: allowedOrigins,
-		Logger:         logger,
+		Alerts:          alerts,
+		Cyclones:        cyclones,
+		TsunamiProducts: tsunamiProducts,
+		Official:        officialSources,
+		Community:       communitySources,
+		Transportation:  transportationSources,
+		AllowedOrigins:  allowedOrigins,
+		Logger:          logger,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + port,

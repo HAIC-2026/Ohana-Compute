@@ -9,15 +9,36 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
 
 type alertReaderStub struct {
 	snapshot nws.Snapshot
 	err      error
+}
+
+type cycloneReaderStub struct {
+	snapshot cphc.Snapshot
+	err      error
+}
+
+type tsunamiProductReaderStub struct {
+	snapshot ptwc.Snapshot
+	err      error
+}
+
+type transportationReaderStub struct {
+	snapshot      transportation.Snapshot
+	err           error
+	lastLatitude  float64
+	lastLongitude float64
 }
 
 type officialReaderStub struct {
@@ -123,6 +144,24 @@ func (stub alertReaderStub) ActiveAlerts(context.Context) (nws.Snapshot, error) 
 	return stub.snapshot, stub.err
 }
 
+func (stub cycloneReaderStub) ActiveCyclones(context.Context) (cphc.Snapshot, error) {
+	return stub.snapshot, stub.err
+}
+
+func (stub tsunamiProductReaderStub) LatestProduct(context.Context) (ptwc.Snapshot, error) {
+	return stub.snapshot, stub.err
+}
+
+func (stub *transportationReaderStub) PlannedClosures(
+	_ context.Context,
+	latitude float64,
+	longitude float64,
+) (transportation.Snapshot, error) {
+	stub.lastLatitude = latitude
+	stub.lastLongitude = longitude
+	return stub.snapshot, stub.err
+}
+
 func TestEventsEndpointReturnsProvenance(t *testing.T) {
 	t.Parallel()
 
@@ -136,9 +175,12 @@ func TestEventsEndpointReturnsProvenance(t *testing.T) {
 				RetrievedAt: time.Date(2026, 10, 26, 17, 0, 0, 0, time.UTC),
 			},
 		}},
-		Official:       &officialReaderStub{},
-		Community:      &communityReaderStub{},
-		AllowedOrigins: []string{"http://127.0.0.1:3000"},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		AllowedOrigins:  []string{"http://127.0.0.1:3000"},
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
@@ -166,9 +208,12 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts:    alertReaderStub{err: errors.New("upstream unavailable")},
-		Official:  &officialReaderStub{},
-		Community: &communityReaderStub{},
+		Alerts:          alertReaderStub{err: errors.New("upstream unavailable")},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -181,13 +226,115 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 	}
 }
 
+func TestLiveEventEndpointsReturnNormalizedFeeds(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts: alertReaderStub{},
+		Cyclones: cycloneReaderStub{snapshot: cphc.Snapshot{
+			Source: cphc.SourceStatus{ID: "nhc-cphc-gis", Status: "fresh"},
+		}},
+		TsunamiProducts: tsunamiProductReaderStub{snapshot: ptwc.Snapshot{
+			Source: ptwc.SourceStatus{ID: "ptwc-cap", Status: "fresh"},
+		}},
+		Official:       &officialReaderStub{},
+		Community:      &communityReaderStub{},
+		Transportation: &transportationReaderStub{},
+	})
+
+	for _, path := range []string{
+		"/api/v1/events/hurricanes",
+		"/api/v1/events/tsunami",
+	} {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(
+			response,
+			httptest.NewRequest(http.MethodGet, path, nil),
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestLiveEventEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{err: errors.New("CPHC unavailable")},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/events/hurricanes", nil),
+	)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPlannedClosuresEndpointValidatesAndPassesCoordinates(t *testing.T) {
+	t.Parallel()
+
+	transportationStub := &transportationReaderStub{
+		snapshot: transportation.Snapshot{
+			Source: transportationSourceStatus(),
+		},
+	}
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  transportationStub,
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/transportation/planned-closures?lat=21.3&lon=-157.8",
+			nil,
+		),
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if transportationStub.lastLatitude != 21.3 || transportationStub.lastLongitude != -157.8 {
+		t.Fatalf(
+			"unexpected coordinates: %f,%f",
+			transportationStub.lastLatitude,
+			transportationStub.lastLongitude,
+		)
+	}
+}
+
+func transportationSourceStatus() arcgis.SourceStatus {
+	return arcgis.SourceStatus{
+		ID:        "hdot-planned-lane-closures",
+		Authority: "Hawaiʻi Department of Transportation",
+		Status:    "fresh",
+	}
+}
+
 func TestSourcesEndpointIncludesPhases(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts:    alertReaderStub{},
-		Official:  &officialReaderStub{},
-		Community: &communityReaderStub{},
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -223,9 +370,12 @@ func TestRiskEndpointValidatesAndPassesCoordinates(t *testing.T) {
 		flood: official.FloodRisk{Classification: "undetermined"},
 	}
 	server := NewServer(Config{
-		Alerts:    alertReaderStub{},
-		Official:  officialStub,
-		Community: &communityReaderStub{},
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        officialStub,
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
 	})
 
 	valid := httptest.NewRecorder()
@@ -266,11 +416,14 @@ func TestOfficialEndpointFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts: alertReaderStub{},
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
 		Official: &officialReaderStub{
 			err: errors.New("ArcGIS unavailable"),
 		},
-		Community: &communityReaderStub{},
+		Community:      &communityReaderStub{},
+		Transportation: &transportationReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -290,14 +443,17 @@ func TestCommunityProfileEndpointReturnsPartialProfile(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts:   alertReaderStub{},
-		Official: &officialReaderStub{},
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
 		Community: &communityReaderStub{
 			profile: community.Profile{
 				SVI:        &community.SVI{TractFIPS: "15003000120"},
 				Disclaimer: "Aggregate planning data.",
 			},
 		},
+		Transportation: &transportationReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(

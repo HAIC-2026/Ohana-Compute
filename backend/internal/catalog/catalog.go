@@ -44,7 +44,7 @@ var sources = []Source{
 		Access:        "RSS plus advisory GIS downloads",
 		URL:           "https://www.nhc.noaa.gov/gis-cp.xml",
 		UpdateCadence: "Advisory-driven, normally every six hours and more often during threats",
-		Integration:   "planned",
+		Integration:   "integrated-backend",
 		Enables: []string{
 			"Storm track, cone, wind radii, probabilities, and arrival-time planning",
 		},
@@ -60,9 +60,9 @@ var sources = []Source{
 		Phase:         "P0",
 		DataClass:     "live",
 		Access:        "Atom and CAP feeds",
-		URL:           "https://www.tsunami.gov/?page=productRetrieval",
+		URL:           "https://www.tsunami.gov/events/xml/PHEBCAP.xml",
 		UpdateCadence: "Event-driven",
-		Integration:   "planned",
+		Integration:   "integrated-backend",
 		Enables: []string{
 			"Canonical Hawaiʻi tsunami watch, advisory, warning, and cancellation status",
 		},
@@ -132,9 +132,9 @@ var sources = []Source{
 		Phase:         "P0",
 		DataClass:     "operational-planning",
 		Access:        "ArcGIS FeatureServer",
-		URL:           "https://geoportal.hawaii.gov/datasets/HiStateGIS::lane-closures/about",
+		URL:           "https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0",
 		UpdateCadence: "Published weekly and updated as planned work changes",
-		Integration:   "planned",
+		Integration:   "integrated-backend",
 		Enables: []string{
 			"Scheduled route restrictions and construction detours",
 		},

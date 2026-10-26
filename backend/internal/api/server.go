@@ -14,12 +14,23 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/catalog"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
 
 type AlertReader interface {
 	ActiveAlerts(context.Context) (nws.Snapshot, error)
+}
+
+type CycloneReader interface {
+	ActiveCyclones(context.Context) (cphc.Snapshot, error)
+}
+
+type TsunamiProductReader interface {
+	LatestProduct(context.Context) (ptwc.Snapshot, error)
 }
 
 type OfficialReader interface {
@@ -37,12 +48,19 @@ type CommunityReader interface {
 	Profile(context.Context, float64, float64) (community.Profile, error)
 }
 
+type TransportationReader interface {
+	PlannedClosures(context.Context, float64, float64) (transportation.Snapshot, error)
+}
+
 type Config struct {
-	Alerts         AlertReader
-	Official       OfficialReader
-	Community      CommunityReader
-	AllowedOrigins []string
-	Logger         *slog.Logger
+	Alerts          AlertReader
+	Cyclones        CycloneReader
+	TsunamiProducts TsunamiProductReader
+	Official        OfficialReader
+	Community       CommunityReader
+	Transportation  TransportationReader
+	AllowedOrigins  []string
+	Logger          *slog.Logger
 }
 
 type Server struct {
@@ -53,11 +71,20 @@ func NewServer(config Config) *Server {
 	if config.Alerts == nil {
 		panic("api: Alerts is required")
 	}
+	if config.Cyclones == nil {
+		panic("api: Cyclones is required")
+	}
+	if config.TsunamiProducts == nil {
+		panic("api: TsunamiProducts is required")
+	}
 	if config.Official == nil {
 		panic("api: Official is required")
 	}
 	if config.Community == nil {
 		panic("api: Community is required")
+	}
+	if config.Transportation == nil {
+		panic("api: Transportation is required")
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -87,6 +114,16 @@ func NewServer(config Config) *Server {
 		}
 		writeJSON(writer, http.StatusOK, snapshot)
 	})
+	mux.HandleFunc("GET /api/v1/events/hurricanes", feedHandler(
+		logger,
+		"nhc-cphc-gis",
+		config.Cyclones.ActiveCyclones,
+	))
+	mux.HandleFunc("GET /api/v1/events/tsunami", feedHandler(
+		logger,
+		"ptwc-cap",
+		config.TsunamiProducts.LatestProduct,
+	))
 	mux.HandleFunc("GET /api/v1/risk/tsunami", coordinateHandler(
 		logger,
 		"state-tsunami-zones",
@@ -131,6 +168,11 @@ func NewServer(config Config) *Server {
 		logger,
 		"community-profile",
 		config.Community.Profile,
+	))
+	mux.HandleFunc("GET /api/v1/transportation/planned-closures", coordinateHandler(
+		logger,
+		"hdot-planned-lane-closures",
+		config.Transportation.PlannedClosures,
 	))
 
 	handler := requestLogger(logger, cors(config.AllowedOrigins, mux))
@@ -177,6 +219,26 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 			"duration", time.Since(started),
 		)
 	})
+}
+
+func feedHandler[T any](
+	logger *slog.Logger,
+	sourceID string,
+	load func(context.Context) (T, error),
+) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		result, err := load(request.Context())
+		if err != nil {
+			logger.Error("load live feed", "source", sourceID, "error", err)
+			writeJSON(writer, http.StatusBadGateway, map[string]string{
+				"error":  "live source unavailable",
+				"source": sourceID,
+				"detail": err.Error(),
+			})
+			return
+		}
+		writeJSON(writer, http.StatusOK, result)
+	}
 }
 
 func coordinateHandler[T any](
