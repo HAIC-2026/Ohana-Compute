@@ -1,0 +1,95 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
+	port := envOrDefault("PORT", "8080")
+	allowedOrigins := strings.Split(
+		envOrDefault(
+			"ALLOWED_ORIGINS",
+			"http://127.0.0.1:3000,http://localhost:3000",
+		),
+		",",
+	)
+	cacheTTL := durationOrDefault("NWS_CACHE_TTL", 5*time.Minute, logger)
+
+	alerts := nws.NewClient(nws.Config{
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		CacheTTL:   cacheTTL,
+	})
+	apiServer := api.NewServer(api.Config{
+		Alerts:         alerts,
+		AllowedOrigins: allowedOrigins,
+		Logger:         logger,
+	})
+	httpServer := &http.Server{
+		Addr:              ":" + port,
+		Handler:           apiServer.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	shutdownContext, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	go func() {
+		<-shutdownContext.Done()
+		context, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(context); err != nil {
+			logger.Error("graceful shutdown failed", "error", err)
+		}
+	}()
+
+	logger.Info("backend listening", "address", httpServer.Addr)
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Error("backend stopped unexpectedly", "error", err)
+		os.Exit(1)
+	}
+}
+
+func envOrDefault(name string, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func durationOrDefault(name string, fallback time.Duration, logger *slog.Logger) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		logger.Warn(
+			"invalid duration environment variable; using default",
+			"name", name,
+			"value", value,
+			"default", fallback,
+		)
+		return fallback
+	}
+	return duration
+}

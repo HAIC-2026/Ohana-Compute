@@ -16,3 +16,5 @@ playwright-report
 screenshots
 .cta.json
 .impeccable
+backend/server
+backend/coverage.out

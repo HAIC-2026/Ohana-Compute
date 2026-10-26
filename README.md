@@ -38,6 +38,7 @@ households.
 ## Stack
 
 - TanStack Start, React 19, and TypeScript
+- Go backend for normalized source adapters and provenance
 - MapLibre GL with Esri World Street Map tiles
 - Zustand for scenario state
 - OSRM driving geometry and Valhalla pedestrian geometry
@@ -54,9 +55,22 @@ npm run dev
 
 Open <http://127.0.0.1:3000>.
 
+Run the backend separately:
+
+```bash
+npm run backend:run
+```
+
+The backend listens on <http://127.0.0.1:8080> and currently exposes:
+
+- `GET /healthz`
+- `GET /api/v1/sources`
+- `GET /api/v1/events`
+
 ## Validate
 
 ```bash
+npm run backend:test
 npm run test:e2e
 npm run build
 npm run lint
@@ -92,6 +106,8 @@ instead of substituting a reassuring answer.
 - `src/lib/official-emergency-data.ts` isolates authoritative external-source
   queries, caching, classification, and fail-closed behavior.
 - `src/store/planning-store.ts` holds the client scenario state.
+- `backend/` contains the Go API, normalized source catalog, and the first live
+  NOAA/NWS alert adapter.
 
 The frontend already treats inference as an asynchronous service and passes a
 structured area, hazard, severity, exposure, and primary planning signal. The
@@ -102,6 +118,9 @@ redesigning the interface.
 
 See `PRODUCT.md` for durable product truth and `DESIGN.md` for the implemented
 visual system.
+
+The source-selection memo is in
+`docs/research/hawaii-backend-data-sources-20261026.md`.
 
 ## License
 
