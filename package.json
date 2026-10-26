@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000",
+    "dev:stack": "node scripts/dev-stack.mjs",
     "generate-routes": "tsr generate",
     "build": "vite build",
     "backend:run": "cd backend && go run ./cmd/server",

@@ -48,21 +48,23 @@ households.
 
 ## Run locally
 
+Install dependencies, then run the frontend and backend as separate local
+servers with one lifecycle-managed command:
+
 ```bash
 npm install
-npm run dev
+npm run dev:stack
 ```
 
-Open <http://127.0.0.1:3000>.
+The frontend is available at <http://127.0.0.1:3000> and requests the Go API at
+<http://127.0.0.1:8080>. Override the backend location with
+`VITE_BACKEND_API_URL`; [`.env.example`](./.env.example) contains the local
+default.
 
-Run the backend separately:
-
-```bash
-npm run backend:run
-```
-
-On macOS, store the Census API key in Keychain and start the backend without
-writing the key to the repository or shell history:
+The servers can still be started independently with `npm run dev` and
+`npm run backend:run`. On macOS, store the Census API key in Keychain and start
+the backend separately without writing the key to the repository or shell
+history:
 
 ```bash
 ./backend/scripts/census-keychain.sh store
@@ -133,8 +135,11 @@ instead of substituting a reassuring answer.
 - `src/lib/mock-data.ts` contains deterministic synthetic geospatial and
   planning data.
 - `src/lib/mock-api.ts` simulates the future Go API and managed Luna endpoint.
-- `src/lib/official-emergency-data.ts` isolates authoritative external-source
-  queries, caching, classification, and fail-closed behavior.
+- `src/lib/backend-api.ts` is the configurable, typed request boundary between
+  the separately hosted frontend and backend.
+- `src/lib/official-emergency-data.ts` maps normalized backend responses into
+  resident-facing hazard and shelter models without calling government sources
+  directly from the browser.
 - `src/store/planning-store.ts` holds the client scenario state.
 - `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
   event adapters, official hazard and shelter adapters, community-planning

@@ -92,6 +92,12 @@ emPOWER, and FEMA NRI continue to return while ACS is explicitly unavailable.
 emPOWER values of `11` are marked as potentially privacy-masked because HHS
 uses `11` for cells containing 1–10 beneficiaries.
 
+The frontend should call this server through its shared `backend-api.ts`
+client. For local development, the browser runs at `127.0.0.1:3000`, this
+server runs at `127.0.0.1:8080`, and the default CORS allowlist permits that
+origin. Set `VITE_BACKEND_API_URL` on the frontend and `ALLOWED_ORIGINS` here
+when the two servers use different deployed origins.
+
 ## Validate
 
 ```bash

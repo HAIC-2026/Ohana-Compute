@@ -26,10 +26,18 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: 'npm run dev -- --host 127.0.0.1',
-    url: 'http://127.0.0.1:3000',
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run backend:run',
+      url: 'http://127.0.0.1:8080/healthz',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev -- --host 127.0.0.1',
+      url: 'http://127.0.0.1:3000',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 })

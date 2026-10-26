@@ -134,7 +134,7 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
         })
     }
 
-    void fetchOfficialOpenShelters()
+    void fetchOfficialOpenShelters(plan.startCoordinates)
       .then((result) => {
         if (!cancelled) setOpenShelters(result)
       })
