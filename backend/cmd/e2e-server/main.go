@@ -20,6 +20,10 @@ import (
 
 type fixtureSources struct{}
 
+type fixtureArcGIS struct{}
+
+type fixtureCensus struct{}
+
 func (fixtureSources) ActiveAlerts(context.Context) (nws.Snapshot, error) {
 	return nws.Snapshot{}, nil
 }
@@ -80,7 +84,7 @@ func (fixtureSources) OpenShelters(
 	return official.OpenShelters{Shelters: []official.Shelter{}}, nil
 }
 
-func (fixtureSources) ACS(
+func (fixtureCensus) CommunityProfile(
 	context.Context,
 	float64,
 	float64,
@@ -89,48 +93,60 @@ func (fixtureSources) ACS(
 	return *profile.ACS, nil
 }
 
-func (fixtureSources) SVI(
-	context.Context,
-	float64,
-	float64,
-) (community.SVI, error) {
-	return *fixtureProfile().SVI, nil
-}
-
-func (fixtureSources) EmPOWER(
-	context.Context,
-	float64,
-	float64,
-) (community.EmPOWER, error) {
-	return *fixtureProfile().EmPOWER, nil
-}
-
-func (fixtureSources) NationalRisk(
-	context.Context,
-	float64,
-	float64,
-) (community.NationalRisk, error) {
-	return *fixtureProfile().NationalRisk, nil
-}
-
-func (fixtureSources) Profile(
-	ctx context.Context,
-	_ float64,
-	_ float64,
-) (community.Profile, error) {
-	for _, source := range []string{
-		"acs-5-year",
-		"cdc-svi-2022",
-		"hhs-empower",
-		"fema-nri",
-	} {
-		community.ReportSourceObservation(ctx, community.SourceObservation{
-			Source:   source,
-			Outcome:  "success",
-			Duration: 5 * time.Millisecond,
-		})
+func (fixtureArcGIS) Query(
+	_ context.Context,
+	request arcgis.Request,
+) (arcgis.Result, error) {
+	profile := fixtureProfile()
+	switch request.SourceID {
+	case "cdc-svi-2022":
+		return fixtureArcGISResult(profile.SVI.Source, map[string]any{
+			"FIPS":       profile.SVI.TractFIPS,
+			"LOCATION":   profile.SVI.Location,
+			"E_TOTPOP":   *profile.SVI.Population,
+			"E_AGE65":    *profile.SVI.Age65OrOlder,
+			"E_DISABL":   *profile.SVI.WithDisability,
+			"E_LIMENG":   *profile.SVI.LimitedEnglish,
+			"E_NOVEH":    *profile.SVI.NoVehicleHouseholds,
+			"RPL_THEMES": 0.1185,
+			"RPL_THEME1": 0.14,
+			"RPL_THEME2": 0.12,
+			"RPL_THEME3": 0.10,
+			"RPL_THEME4": 0.11,
+		}), nil
+	case "hhs-empower":
+		return fixtureArcGISResult(profile.EmPOWER.Source, map[string]any{
+			"STATE":                          profile.EmPOWER.State,
+			"COUNTY":                         profile.EmPOWER.County,
+			"Zip_Code":                       profile.EmPOWER.ZIPCode,
+			"Medicare_Benes":                 *profile.EmPOWER.MedicareBeneficiaries.Value,
+			"Power_Dependent_Devices_DME":    *profile.EmPOWER.PowerDependentDME.Value,
+			"Facility_ESRD_Dialysis_Any_DME": 14,
+			"O2_Services_Any_DME":            *profile.EmPOWER.OxygenServicesAnyDME.Value,
+			"Home_Health_Services_Any_DME":   22,
+			"AtHome_Hospice_Any_DME":         8,
+			"Any_Healthcare_Srvc_Any_DME":    61,
+		}), nil
+	case "fema-nri":
+		return fixtureArcGISResult(profile.NationalRisk.Source, map[string]any{
+			"NRI_ID":     profile.NationalRisk.ID,
+			"STATE":      "Hawaii",
+			"COUNTY":     "Honolulu",
+			"TRACT":      "000120",
+			"TRACTFIPS":  "15003000120",
+			"POPULATION": 2361,
+			"RISK_SCORE": 31.4,
+			"RISK_RATNG": "Relatively Moderate",
+			"EAL_SCORE":  30.1,
+			"EAL_RATNG":  "Relatively Moderate",
+			"SOVI_SCORE": 28.7,
+			"SOVI_RATNG": "Relatively Low",
+			"RESL_SCORE": 54.2,
+			"RESL_RATNG": "Relatively High",
+		}), nil
+	default:
+		return arcgis.Result{}, nil
 	}
-	return fixtureProfile(), nil
 }
 
 func (fixtureSources) PlannedClosures(
@@ -147,12 +163,13 @@ func main() {
 		port = "18080"
 	}
 	fixtures := fixtureSources{}
+	communityFixtures := community.NewClient(fixtureArcGIS{}, fixtureCensus{})
 	server := api.NewServer(api.Config{
 		Alerts:          fixtures,
 		Cyclones:        fixtures,
 		TsunamiProducts: fixtures,
 		Official:        fixtures,
-		Community:       fixtures,
+		Community:       communityFixtures,
 		Transportation:  fixtures,
 		AllowedOrigins:  []string{"http://127.0.0.1:13000"},
 		Logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
@@ -261,6 +278,22 @@ func protectedCount(value int, masked bool) community.ProtectedCount {
 	return community.ProtectedCount{
 		Value:                  intPointer(value),
 		MayRepresentMaskedCell: masked,
+	}
+}
+
+func fixtureArcGISResult(
+	source arcgis.SourceStatus,
+	properties map[string]any,
+) arcgis.Result {
+	return arcgis.Result{
+		Collection: arcgis.FeatureCollection{
+			Type: "FeatureCollection",
+			Features: []arcgis.Feature{{
+				Type:       "Feature",
+				Properties: properties,
+			}},
+		},
+		Source: source,
 	}
 }
 

@@ -1,13 +1,56 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const useProcessGroups = process.platform !== 'win32'
+const backendEnvironment = {
+  ...process.env,
+  PORT: process.env.BACKEND_PORT ?? '8080',
+}
+
+// Symptom: the full local stack always exposed a partial AFN profile.
+// Root cause: it bypassed the secure Keychain path used by the standalone backend.
+// Guard: load the stored key before spawning Go, or warn that ACS will be absent.
+if (
+  process.platform === 'darwin' &&
+  !backendEnvironment.CENSUS_API_KEY?.trim() &&
+  !backendEnvironment.CENSUS_API_KEY_FILE?.trim()
+) {
+  const account = backendEnvironment.USER?.trim()
+  const keychainResult = account
+    ? spawnSync(
+        'security',
+        [
+          'find-generic-password',
+          '-a',
+          account,
+          '-s',
+          'hawaii-resilience-map-census-api',
+          '-w',
+        ],
+        {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        },
+      )
+    : null
+  const censusAPIKey =
+    keychainResult?.status === 0 ? keychainResult.stdout.trim() : ''
+  if (censusAPIKey) {
+    backendEnvironment.CENSUS_API_KEY = censusAPIKey
+    console.log('Loaded the Census API key from macOS Keychain.')
+  } else {
+    console.warn(
+      'Census ACS will be unavailable. Store a key with ./backend/scripts/census-keychain.sh store.',
+    )
+  }
+}
+
 const children = [
   spawn('go', ['run', './cmd/server'], {
     cwd: path.join(root, 'backend'),
-    env: { ...process.env, PORT: process.env.BACKEND_PORT ?? '8080' },
+    env: backendEnvironment,
     stdio: 'inherit',
     detached: useProcessGroups,
   }),

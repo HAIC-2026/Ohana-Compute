@@ -92,6 +92,11 @@ emPOWER, and FEMA NRI continue to return while ACS is explicitly unavailable.
 emPOWER values of `11` are marked as potentially privacy-masked because HHS
 uses `11` for cells containing 1–10 beneficiaries.
 
+The repository-level `npm run dev:stack` command automatically retrieves an
+existing macOS Keychain item and passes it only to the backend process. It never
+prints or persists the key. If the item is absent, the command warns once and
+keeps the explicit partial-profile behavior above.
+
 The frontend should call this server through its shared `backend-api.ts`
 client. For local development, the browser runs at `127.0.0.1:3000`, this
 server runs at `127.0.0.1:8080`, and the default CORS allowlist permits that

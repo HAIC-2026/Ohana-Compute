@@ -2122,7 +2122,7 @@ export const areas: PlanningArea[] = [
     id: 'oahu-leeward',
     name: 'Waiʻanae Coast',
     island: 'Oʻahu',
-    coordinates: [-158.186, 21.436],
+    coordinates: [-158.181169, 21.435848],
     population: 226800,
     exposedPopulation: 31760,
     households: 12480,

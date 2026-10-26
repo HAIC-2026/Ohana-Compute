@@ -14,12 +14,16 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     afnContext.getByText('Official public sources available'),
   ).toBeVisible()
+  await expect(afnContext).toContainText('4 of 4')
   await expect(page.getByTestId('afn-disability')).toContainText('320 (13.6%)')
   await expect(page.getByTestId('afn-language')).toContainText('210 (8.9%)')
   await expect(page.getByTestId('afn-transportation')).toContainText(
     '95 (10.1%)',
   )
   await expect(page.getByTestId('afn-medical-power')).toContainText('27')
+  await expect(page.getByTestId('afn-risk-baseline')).toContainText(
+    'National risk baseline: Relatively Moderate',
+  )
 
   await expect(
     page.getByRole('heading', { name: 'Who may need help' }),
@@ -46,6 +50,17 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     planningSheet.getByText('3 · Match response partners'),
   ).toBeVisible()
+  for (const criterion of [
+    'Actionable',
+    'Usable',
+    'Private',
+    'Equitable',
+    'Sustainable',
+  ]) {
+    await expect(
+      planningSheet.getByText(criterion, { exact: true }),
+    ).toBeVisible()
+  }
 
   await planningSheet
     .getByRole('button', { name: 'Confirm', exact: true })

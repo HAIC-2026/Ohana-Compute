@@ -12,16 +12,26 @@ export function CommunityAfnSummary({
   coordinates: [number, number]
 }) {
   const { status, profile } = useCommunityProfile(coordinates)
-  const sourceLabels = [
-    profile?.acs?.source,
-    profile?.svi?.source,
-    profile?.empower?.source,
+  const sourceDefinitions = [
+    { label: 'Census ACS', source: profile?.acs?.source },
+    { label: 'CDC/ATSDR SVI', source: profile?.svi?.source },
+    { label: 'HHS emPOWER', source: profile?.empower?.source },
+    {
+      label: 'FEMA National Risk Index',
+      source: profile?.fema_national_risk?.source,
+    },
   ]
-    .filter((source) => source !== undefined)
-    .map((source) => {
-      const version = source.vintage ?? source.upstream_last_modified
-      return version ? `${source.authority} · ${version}` : source.authority
-    })
+  const availableSourceCount = sourceDefinitions.filter(
+    ({ source }) => source !== undefined,
+  ).length
+  const sourceLabels = sourceDefinitions.flatMap(({ source }) => {
+    if (!source) return []
+    const version = source.vintage ?? source.upstream_last_modified
+    return [version ? `${source.authority} · ${version}` : source.authority]
+  })
+  const unavailableSourceLabels = sourceDefinitions
+    .filter(({ source }) => source === undefined)
+    .map(({ label }) => label)
 
   return (
     <div className="community-afn-summary" data-testid="afn-context">
@@ -31,8 +41,9 @@ export function CommunityAfnSummary({
           <strong>Official aggregate AFN context</strong>
           <span>
             {status === 'loading' && 'Checking public planning sources…'}
-            {status === 'ready' && 'Official public sources available'}
-            {status === 'partial' && 'Partial official source coverage'}
+            {status === 'ready' && 'Official public sources available · 4 of 4'}
+            {status === 'partial' &&
+              `Partial official source coverage · ${availableSourceCount} of 4`}
             {status === 'unavailable' && 'Official sources unavailable'}
           </span>
         </div>
@@ -93,7 +104,22 @@ export function CommunityAfnSummary({
                   'source geography unavailable'}
                 . No person-level records.
               </span>
+              {profile.fema_national_risk ? (
+                <span data-testid="afn-risk-baseline">
+                  National risk baseline:{' '}
+                  {profile.fema_national_risk.risk_rating || 'Unavailable'} ·
+                  Social vulnerability:{' '}
+                  {profile.fema_national_risk.social_vulnerability_rating ||
+                    'Unavailable'}{' '}
+                  · Community resilience:{' '}
+                  {profile.fema_national_risk.community_resilience_rating ||
+                    'Unavailable'}
+                </span>
+              ) : null}
               <span>Sources: {sourceLabels.join(' · ')}</span>
+              {unavailableSourceLabels.length > 0 ? (
+                <span>Unavailable: {unavailableSourceLabels.join(' · ')}</span>
+              ) : null}
             </div>
           </div>
         </>
