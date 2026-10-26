@@ -70,6 +70,11 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/fema-risk?lat={latitude}&lon={longitude}`
 
 ## Validate
 

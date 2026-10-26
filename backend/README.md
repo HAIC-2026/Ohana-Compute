@@ -13,10 +13,17 @@ in a portal.
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/fema-risk?lat={latitude}&lon={longitude}`
 - Normalized NOAA/NWS active alerts for Hawaiʻi
 - Normalized Hawaiʻi State GIS tsunami, FEMA DFIRM, coastal-planning, and
   DLNR wildfire-risk responses
 - Normalized FEMA ESF6 open shelters sorted by resident distance
+- Aggregate community-planning profiles from Census ACS, CDC/ATSDR SVI, HHS
+  emPOWER, and FEMA National Risk Index
 - Five-minute in-memory cache with ETag revalidation
 - Six-hour planning-layer cache and five-minute shelter cache
 - Explicit `fresh` or `stale` source status and warnings
@@ -45,6 +52,13 @@ Environment variables:
 - `PORT` — default `8080`
 - `ALLOWED_ORIGINS` — comma-separated origins; defaults to local Vite URLs
 - `NWS_CACHE_TTL` — Go duration; default `5m`
+- `CENSUS_API_KEY` — free Census data API key required for the ACS section
+
+The aggregate community profile remains available when one source fails. Each
+unavailable source appears in `source_errors`; without `CENSUS_API_KEY`, SVI,
+emPOWER, and FEMA NRI continue to return while ACS is explicitly unavailable.
+emPOWER values of `11` are marked as potentially privacy-masked because HHS
+uses `11` for cells containing 1–10 beneficiaries.
 
 ## Validate
 

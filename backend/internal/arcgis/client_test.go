@@ -118,3 +118,31 @@ func TestQueryRejectsArcGISErrorEnvelope(t *testing.T) {
 		t.Fatalf("expected ArcGIS error, got %v", err)
 	}
 }
+
+func TestQueryNormalizesEsriJSONAttributes(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{
+				"features":[{
+					"attributes":{"FIPS":"15003000120","RPL_THEMES":0.1185}
+				}]
+			}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{})
+	result, err := client.Query(context.Background(), Request{
+		SourceID:  "cdc-svi",
+		Authority: "CDC",
+		URL:       server.URL,
+		Params:    url.Values{"f": {"json"}},
+		CacheTTL:  time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if result.Collection.Features[0].Properties["FIPS"] != "15003000120" {
+		t.Fatalf("attributes were not normalized: %#v", result.Collection.Features[0])
+	}
+}

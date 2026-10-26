@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
@@ -26,6 +28,55 @@ type officialReaderStub struct {
 	err           error
 	lastLatitude  float64
 	lastLongitude float64
+}
+
+type communityReaderStub struct {
+	acs     census.Profile
+	svi     community.SVI
+	empower community.EmPOWER
+	risk    community.NationalRisk
+	profile community.Profile
+	err     error
+}
+
+func (stub *communityReaderStub) ACS(
+	context.Context,
+	float64,
+	float64,
+) (census.Profile, error) {
+	return stub.acs, stub.err
+}
+
+func (stub *communityReaderStub) SVI(
+	context.Context,
+	float64,
+	float64,
+) (community.SVI, error) {
+	return stub.svi, stub.err
+}
+
+func (stub *communityReaderStub) EmPOWER(
+	context.Context,
+	float64,
+	float64,
+) (community.EmPOWER, error) {
+	return stub.empower, stub.err
+}
+
+func (stub *communityReaderStub) NationalRisk(
+	context.Context,
+	float64,
+	float64,
+) (community.NationalRisk, error) {
+	return stub.risk, stub.err
+}
+
+func (stub *communityReaderStub) Profile(
+	context.Context,
+	float64,
+	float64,
+) (community.Profile, error) {
+	return stub.profile, stub.err
 }
 
 func (stub *officialReaderStub) TsunamiRisk(
@@ -86,6 +137,7 @@ func TestEventsEndpointReturnsProvenance(t *testing.T) {
 			},
 		}},
 		Official:       &officialReaderStub{},
+		Community:      &communityReaderStub{},
 		AllowedOrigins: []string{"http://127.0.0.1:3000"},
 	})
 
@@ -114,8 +166,9 @@ func TestEventsEndpointFailsClosed(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts:   alertReaderStub{err: errors.New("upstream unavailable")},
-		Official: &officialReaderStub{},
+		Alerts:    alertReaderStub{err: errors.New("upstream unavailable")},
+		Official:  &officialReaderStub{},
+		Community: &communityReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -132,8 +185,9 @@ func TestSourcesEndpointIncludesPhases(t *testing.T) {
 	t.Parallel()
 
 	server := NewServer(Config{
-		Alerts:   alertReaderStub{},
-		Official: &officialReaderStub{},
+		Alerts:    alertReaderStub{},
+		Official:  &officialReaderStub{},
+		Community: &communityReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -169,8 +223,9 @@ func TestRiskEndpointValidatesAndPassesCoordinates(t *testing.T) {
 		flood: official.FloodRisk{Classification: "undetermined"},
 	}
 	server := NewServer(Config{
-		Alerts:   alertReaderStub{},
-		Official: officialStub,
+		Alerts:    alertReaderStub{},
+		Official:  officialStub,
+		Community: &communityReaderStub{},
 	})
 
 	valid := httptest.NewRecorder()
@@ -215,6 +270,7 @@ func TestOfficialEndpointFailsClosed(t *testing.T) {
 		Official: &officialReaderStub{
 			err: errors.New("ArcGIS unavailable"),
 		},
+		Community: &communityReaderStub{},
 	})
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(
@@ -227,5 +283,39 @@ func TestOfficialEndpointFailsClosed(t *testing.T) {
 	)
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCommunityProfileEndpointReturnsPartialProfile(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:   alertReaderStub{},
+		Official: &officialReaderStub{},
+		Community: &communityReaderStub{
+			profile: community.Profile{
+				SVI:        &community.SVI{TractFIPS: "15003000120"},
+				Disclaimer: "Aggregate planning data.",
+			},
+		},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/community/profile?lat=21.29&lon=-157.68",
+			nil,
+		),
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var profile community.Profile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.SVI == nil || profile.SVI.TractFIPS != "15003000120" {
+		t.Fatalf("unexpected profile: %#v", profile)
 	}
 }

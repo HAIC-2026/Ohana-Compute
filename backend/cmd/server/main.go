@@ -13,6 +13,8 @@ import (
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
@@ -35,12 +37,21 @@ func main() {
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		CacheTTL:   cacheTTL,
 	})
-	officialSources := official.NewClient(arcgis.NewClient(arcgis.Config{
+	arcGISClient := arcgis.NewClient(arcgis.Config{
 		HTTPClient: &http.Client{Timeout: 12 * time.Second},
-	}))
+	})
+	officialSources := official.NewClient(arcGISClient)
+	communitySources := community.NewClient(
+		arcGISClient,
+		census.NewClient(census.Config{
+			HTTPClient: &http.Client{Timeout: 12 * time.Second},
+			APIKey:     os.Getenv("CENSUS_API_KEY"),
+		}),
+	)
 	apiServer := api.NewServer(api.Config{
 		Alerts:         alerts,
 		Official:       officialSources,
+		Community:      communitySources,
 		AllowedOrigins: allowedOrigins,
 		Logger:         logger,
 	})

@@ -69,8 +69,16 @@ type Client struct {
 
 type responseEnvelope struct {
 	Type     string       `json:"type"`
-	Features []Feature    `json:"features"`
+	Features []rawFeature `json:"features"`
 	Error    *arcGISError `json:"error"`
+}
+
+type rawFeature struct {
+	Type       string          `json:"type"`
+	ID         any             `json:"id,omitempty"`
+	Geometry   json.RawMessage `json:"geometry"`
+	Properties map[string]any  `json:"properties"`
+	Attributes map[string]any  `json:"attributes"`
 }
 
 type arcGISError struct {
@@ -169,10 +177,27 @@ func (client *Client) Query(ctx context.Context, query Request) (Result, error) 
 	if collectionType == "" {
 		collectionType = "FeatureCollection"
 	}
+	features := make([]Feature, 0, len(envelope.Features))
+	for _, raw := range envelope.Features {
+		properties := raw.Properties
+		if properties == nil {
+			properties = raw.Attributes
+		}
+		featureType := raw.Type
+		if featureType == "" {
+			featureType = "Feature"
+		}
+		features = append(features, Feature{
+			Type:       featureType,
+			ID:         raw.ID,
+			Geometry:   raw.Geometry,
+			Properties: properties,
+		})
+	}
 	result := Result{
 		Collection: FeatureCollection{
 			Type:     collectionType,
-			Features: envelope.Features,
+			Features: features,
 		},
 		Source: SourceStatus{
 			ID:                   query.SourceID,

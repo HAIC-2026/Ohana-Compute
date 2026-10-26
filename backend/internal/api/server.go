@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/catalog"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 )
@@ -27,9 +29,18 @@ type OfficialReader interface {
 	OpenShelters(context.Context, float64, float64) (official.OpenShelters, error)
 }
 
+type CommunityReader interface {
+	ACS(context.Context, float64, float64) (census.Profile, error)
+	SVI(context.Context, float64, float64) (community.SVI, error)
+	EmPOWER(context.Context, float64, float64) (community.EmPOWER, error)
+	NationalRisk(context.Context, float64, float64) (community.NationalRisk, error)
+	Profile(context.Context, float64, float64) (community.Profile, error)
+}
+
 type Config struct {
 	Alerts         AlertReader
 	Official       OfficialReader
+	Community      CommunityReader
 	AllowedOrigins []string
 	Logger         *slog.Logger
 }
@@ -44,6 +55,9 @@ func NewServer(config Config) *Server {
 	}
 	if config.Official == nil {
 		panic("api: Official is required")
+	}
+	if config.Community == nil {
+		panic("api: Community is required")
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -92,6 +106,31 @@ func NewServer(config Config) *Server {
 		logger,
 		"fema-open-shelters",
 		config.Official.OpenShelters,
+	))
+	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
+		logger,
+		"acs-5-year",
+		config.Community.ACS,
+	))
+	mux.HandleFunc("GET /api/v1/community/svi", coordinateHandler(
+		logger,
+		"cdc-svi-2022",
+		config.Community.SVI,
+	))
+	mux.HandleFunc("GET /api/v1/community/empower", coordinateHandler(
+		logger,
+		"hhs-empower",
+		config.Community.EmPOWER,
+	))
+	mux.HandleFunc("GET /api/v1/community/fema-risk", coordinateHandler(
+		logger,
+		"fema-nri",
+		config.Community.NationalRisk,
+	))
+	mux.HandleFunc("GET /api/v1/community/profile", coordinateHandler(
+		logger,
+		"community-profile",
+		config.Community.Profile,
 	))
 
 	handler := requestLogger(logger, cors(config.AllowedOrigins, mux))
