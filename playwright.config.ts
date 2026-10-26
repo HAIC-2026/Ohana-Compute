@@ -34,7 +34,9 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'npm run dev -- --host 127.0.0.1',
+      command:
+        process.env.PLAYWRIGHT_FRONTEND_COMMAND ??
+        'npm run dev -- --host 127.0.0.1',
       url: 'http://127.0.0.1:3000',
       reuseExistingServer: true,
       timeout: 120_000,

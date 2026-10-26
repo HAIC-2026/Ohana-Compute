@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { setWorkerUrl } from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import {
@@ -9,6 +16,7 @@ import {
   Source,
 } from 'react-map-gl/maplibre'
 import type { MapRef } from 'react-map-gl/maplibre'
+import { useShallow } from 'zustand/react/shallow'
 import {
   BusFront,
   HousePlus,
@@ -70,6 +78,9 @@ const mapStyle = {
       source: 'carto',
       minzoom: 0,
       maxzoom: 20,
+      paint: {
+        'raster-fade-duration': 0,
+      },
     },
   ],
 }
@@ -81,7 +92,20 @@ function readColor(name: string, fallback: string) {
     .trim()
 }
 
+type PlanningMapState = ReturnType<typeof usePlanningStore.getState>
+
 export function ResilienceMap() {
+  const planningState = usePlanningStore(useShallow((state) => state))
+  const deferredPlanningState = useDeferredValue(planningState)
+
+  return <ResilienceMapContent planningState={deferredPlanningState} />
+}
+
+const ResilienceMapContent = memo(function ResilienceMapContent({
+  planningState,
+}: {
+  planningState: PlanningMapState
+}) {
   const {
     activeLayers,
     hazard,
@@ -99,7 +123,7 @@ export function ResilienceMap() {
     setMobilePanel,
     selectResource,
     toggleLayer,
-  } = usePlanningStore()
+  } = planningState
   const [isClient, setIsClient] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [colorVersion, setColorVersion] = useState(0)
@@ -320,7 +344,7 @@ export function ResilienceMap() {
   }
 
   return (
-    <div className="map-frame">
+    <div className="map-frame" data-map-loaded={mapLoaded}>
       <nav className="map-story-chips" aria-label="Quick map layers">
         <button
           type="button"
@@ -401,6 +425,7 @@ export function ResilienceMap() {
         mapStyle={mapStyle}
         minZoom={8.6}
         maxZoom={16}
+        fadeDuration={0}
         attributionControl
       >
         <NavigationControl position="bottom-right" showCompass={false} />
@@ -837,4 +862,4 @@ export function ResilienceMap() {
       </MapLibre>
     </div>
   )
-}
+})

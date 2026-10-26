@@ -98,11 +98,21 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 
 ```bash
 npm run backend:test
+npm run test:journey
 npm run test:e2e
 npm run build
 npm run lint
 npm run check
 ```
+
+`npm run test:journey` runs the numbered resident story and writes raw timing
+metrics plus a summary to `test-results/performance/`. Important browser state
+changes use microsecond measurements with a 100,000 µs budget. Cached backend
+requests use millisecond measurements with a 100 ms median and 500 ms p95
+budget; cold authoritative source latency is recorded against a 1,000 ms target
+and reported separately. The production frontend must hydrate within 2,000 ms.
+Performance budgets run with one browser worker so parallel test-run contention
+does not distort the user-facing timings.
 
 ## Data truth and limitations
 
