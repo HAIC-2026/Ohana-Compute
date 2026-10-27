@@ -20,9 +20,9 @@ Success means a first-time planner can move from an island-wide event picture to
 
 The minimum complete planner journey is:
 
-1. **Map:** inspect official operational trigger context, then open a named
-   practice event and planning area and review aggregate AFN context with source
-   geography and privacy limitations.
+1. **Map:** inspect official operational trigger context and the six-domain
+   live-status boundary, then open a named practice event and planning area and
+   review aggregate AFN context with source geography and privacy limitations.
 2. **Model:** compare the affected-community estimate with shelter, backup
    power, transportation, and route gaps that still require confirmation. Use
    the deterministic resource-demand panel to inspect low/planning/high service
@@ -76,6 +76,14 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - County evacuation-order data is explicitly unavailable, accompanied by
   “Unavailable does not mean no order.” HANS is provisionally unavailable and
   production-disabled without a stable supported public machine contract.
+- The Response Plan carries one compact six-domain operational-status view.
+  FEMA National Shelter System records are reported live with authority,
+  coverage, freshness, and optional source fields. Evacuation orders,
+  emergency road passability, transit/paratransit, utility outages, and
+  Hawaiʻi-authoritative wildfire operations remain explicit unavailable
+  boundaries with the checked source/date, owning authority, exact missing
+  artifact, and limitations. Planned roadwork and reference data are visually
+  distinct and never promoted to live status.
 - Island-first navigation that displays one island at a time, divides it into recognizable response zones grounded in official planning-region and neighborhood-board geography, and then produces a local plan for the selected zone.
 - A statewide island selector with four distinct County-level representative
   workflows: Urban Honolulu, Central/West Maui, Hilo/Lower Puna, and East
@@ -128,7 +136,8 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.
 - A primary planning sequence that shows people who may need help, likely needs, resources and routes to confirm, and the first coordinated action.
 - A self-contained HTML field briefing that preserves Map–Model–Match evidence,
-  resource and route status, accountable actions, public guidance, and explicit
+  operational source and unavailable states, resource and route status,
+  accountable actions, public guidance, and explicit
   local checks for connectivity fallback, trusted multilingual outreach,
   elevator outages, pets, and working animals. It is printable, works without
   external assets, and excludes resident-entered addresses and coordinates.
@@ -179,6 +188,8 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 16. Keep source facts separate from planner interpretations; retain expired
     products as history, surface stale and unavailable states, and fail closed
     with `502` when no supported operational trigger source succeeds.
+17. Unsupported operational domains must render `unavailable`, never normal,
+    no incident, no outage, passable, contained, restored, or all clear.
 
 ## Accessibility & Inclusion
 

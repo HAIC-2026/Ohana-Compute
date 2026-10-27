@@ -22,6 +22,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
@@ -89,6 +90,9 @@ func main() {
 	eventTriggerService := eventtriggers.NewService(eventtriggers.Config{
 		NWS: alerts, PTWC: tsunamiProducts, ComCat: comCatEvents, HANS: hansProducts,
 	})
+	operationalStatusService := operationalstatus.NewService(operationalstatus.Config{
+		Shelters: officialSources,
+	})
 	transportationSources := transportation.NewClient(
 		arcGISClient,
 		transportation.Config{},
@@ -103,21 +107,22 @@ func main() {
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	apiServer := api.NewServer(api.Config{
-		Alerts:          alerts,
-		Cyclones:        cyclones,
-		TsunamiProducts: tsunamiProducts,
-		Official:        officialSources,
-		Community:       communitySources,
-		Transportation:  transportationSources,
-		ShelterPlans:    shelterPlanCatalog,
-		PlanningAreas:   planningAreaCatalog,
-		ResourceDemand:  resourceDemandCalculator,
-		PartnerMatching: partnerMatcher,
-		EventTriggers:   eventTriggerService,
-		AllowedOrigins:  allowedOrigins,
-		Logger:          logger,
-		Registry:        registry,
-		TelemetryRate:   telemetryRate,
+		Alerts:            alerts,
+		Cyclones:          cyclones,
+		TsunamiProducts:   tsunamiProducts,
+		Official:          officialSources,
+		Community:         communitySources,
+		Transportation:    transportationSources,
+		ShelterPlans:      shelterPlanCatalog,
+		PlanningAreas:     planningAreaCatalog,
+		ResourceDemand:    resourceDemandCalculator,
+		PartnerMatching:   partnerMatcher,
+		EventTriggers:     eventTriggerService,
+		OperationalStatus: operationalStatusService,
+		AllowedOrigins:    allowedOrigins,
+		Logger:            logger,
+		Registry:          registry,
+		TelemetryRate:     telemetryRate,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + port,

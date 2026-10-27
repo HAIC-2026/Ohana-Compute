@@ -566,11 +566,92 @@
       ],
       "title": "Event trigger snapshot states",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (source, outcome) (rate(hawaii_resilience_operational_status_source_requests_total[5m]))",
+          "legendFormat": "{{source}} / {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Operational status source outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (domain, status) (rate(hawaii_resilience_operational_status_domains_total[5m]))",
+          "legendFormat": "{{domain}} / {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Operational domain states",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 41,
-  "tags": ["hawaii-resilience", "browser", "backend", "afn", "event-triggers"],
+  "tags": [
+    "hawaii-resilience",
+    "browser",
+    "backend",
+    "afn",
+    "event-triggers",
+    "operational-status"
+  ],
   "templating": {
     "list": [
       {

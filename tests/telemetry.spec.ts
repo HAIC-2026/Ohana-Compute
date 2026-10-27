@@ -67,6 +67,10 @@ test('browser telemetry is batched and excludes private values', async ({
     .getByTestId('partner-matches')
     .getByRole('tab', { name: 'Sheltering' })
     .click()
+  await page
+    .getByTestId('live-operational-status')
+    .getByRole('tab', { name: /Roads/ })
+    .click()
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
@@ -84,6 +88,14 @@ test('browser telemetry is batched and excludes private values', async ({
       (event) =>
         event.kind === 'page_load' &&
         ['hydration', 'map_ready'].includes(event.action),
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'planning' &&
+        event.action === 'live_status_select',
     ),
   ).toBe(true)
   expect(

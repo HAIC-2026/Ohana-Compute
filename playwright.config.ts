@@ -29,7 +29,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run backend:run',
+      command: 'cd backend && PORT=8080 go run ./cmd/e2e-server',
       url: 'http://127.0.0.1:8080/healthz',
       reuseExistingServer: true,
       timeout: 120_000,
