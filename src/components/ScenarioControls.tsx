@@ -33,9 +33,6 @@ const layerIcons: Record<LayerId, typeof Shield> = {
 }
 
 export function ScenarioControls({ compact = false }: { compact?: boolean }) {
-  const oahuAreas = areas.filter(
-    (area) => area.island === 'Oʻahu' && area.showOnStatewideMap !== false,
-  )
   const {
     hazard,
     setHazard,
@@ -56,6 +53,12 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
       activeLayers: state.activeLayers,
       toggleLayer: state.toggleLayer,
     })),
+  )
+  const selectedArea =
+    areas.find((area) => area.id === selectedAreaId) ?? areas[0]
+  const islandAreas = areas.filter(
+    (area) =>
+      area.island === selectedArea.island && area.showOnStatewideMap !== false,
   )
 
   return (
@@ -108,7 +111,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
 
         <div className="area-select">
           <label htmlFor={`planning-area-${compact ? 'mobile' : 'desktop'}`}>
-            Which part of Oʻahu?
+            Which part of {selectedArea.island}?
           </label>
           <select
             id={`planning-area-${compact ? 'mobile' : 'desktop'}`}
@@ -116,7 +119,7 @@ export function ScenarioControls({ compact = false }: { compact?: boolean }) {
             data-telemetry-action="area_select"
             onChange={(event) => setSelectedAreaId(event.target.value)}
           >
-            {oahuAreas.map((area) => (
+            {islandAreas.map((area) => (
               <option key={area.id} value={area.id}>
                 {area.name}
               </option>

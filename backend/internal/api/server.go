@@ -17,6 +17,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
@@ -59,6 +60,10 @@ type ShelterPlanReader interface {
 	Snapshot(context.Context) (shelterplans.Snapshot, error)
 }
 
+type PlanningAreaReader interface {
+	Snapshot(context.Context) (planningareas.Snapshot, error)
+}
+
 type Config struct {
 	Alerts          AlertReader
 	Cyclones        CycloneReader
@@ -67,6 +72,7 @@ type Config struct {
 	Community       CommunityReader
 	Transportation  TransportationReader
 	ShelterPlans    ShelterPlanReader
+	PlanningAreas   PlanningAreaReader
 	AllowedOrigins  []string
 	Logger          *slog.Logger
 	Registry        *prometheus.Registry
@@ -99,6 +105,10 @@ func NewServer(config Config) *Server {
 	if config.ShelterPlans == nil {
 		defaultCatalog := shelterplans.NewCatalog()
 		config.ShelterPlans = defaultCatalog
+	}
+	if config.PlanningAreas == nil {
+		defaultCatalog := planningareas.NewCatalog()
+		config.PlanningAreas = defaultCatalog
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -170,6 +180,11 @@ func NewServer(config Config) *Server {
 		logger,
 		"county-shelter-plans",
 		config.ShelterPlans.Snapshot,
+	))
+	mux.HandleFunc("GET /api/v1/planning-areas", feedHandler(
+		logger,
+		"statewide-planning-areas",
+		config.PlanningAreas.Snapshot,
 	))
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,

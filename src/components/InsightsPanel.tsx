@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
+  AlertTriangle,
   ArrowUpRight,
   BatteryCharging,
   BusFront,
@@ -43,10 +44,19 @@ import {
 import { downloadFieldBriefing } from '../lib/field-briefing'
 import { hawaiiDhsReferences } from '../lib/official-references'
 import { analyzeAfnPlanning } from '../lib/planning-analysis'
+import {
+  findStatewidePlanningArea,
+  getCatalogBriefing,
+  getCatalogResourceInventory,
+  getCatalogRouteChecks,
+  usesCatalogWorkflow,
+  usePlanningAreaCatalog,
+} from '../lib/planning-areas'
 import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
+import { StatewidePlanningDepthPanel } from './StatewidePlanningDepthPanel'
 import {
   areas,
   activeEvents,
@@ -61,6 +71,12 @@ import {
   sources,
 } from '../lib/mock-data'
 import { usePlanningStore } from '../store/planning-store'
+
+const resourceKindLabels = {
+  shelter: 'Shelter',
+  'medical-power': 'Medical power',
+  transport: 'Transport',
+} as const
 
 export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const {
@@ -105,13 +121,23 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const [brief, setBrief] = useState<PlanningBrief | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
+  const planningAreaCatalog = usePlanningAreaCatalog()
+  const catalogArea = findStatewidePlanningArea(
+    planningAreaCatalog.snapshot,
+    area.id,
+  )
   const activeEvent =
     activeEvents.find((item) => item.id === selectedEventId) ?? null
   const selectedPlanningZone = locationFocus?.planningZones.find(
     (zone) => zone.id === selectedPlanningZoneId,
   )
   const selectedZonePlan = selectedPlanningZone?.hazardPlans[hazard]
-  const neighborhoodBriefings = getNeighborhoodBriefings(area.id)
+  const catalogBriefing = usesCatalogWorkflow(area)
+    ? getCatalogBriefing(area, catalogArea)
+    : null
+  const neighborhoodBriefings = catalogBriefing
+    ? [catalogBriefing]
+    : getNeighborhoodBriefings(area.id)
   const selectedNeighborhood =
     neighborhoodBriefings.find(
       (briefing) => briefing.id === selectedNeighborhoodId,
@@ -119,7 +145,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const neighborhoodDecision = selectedNeighborhood?.decisions[hazard]
   const displayPlace =
     selectedPlanningZone?.name ??
-    selectedNeighborhood?.name ??
+    (catalogBriefing ? area.name : selectedNeighborhood?.name) ??
     locationFocus?.name ??
     area.name
   const planningCoordinates =
@@ -136,9 +162,25 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     activeLayers,
     activeEvent,
   )
-  const challengeSnapshot = getChallengeSnapshot(area, scenario)
-  const resourceInventory = getLocalResourceInventory(area)
-  const routeChecks = getLocalRouteChecks(area)
+  const catalogResourceInventory = usesCatalogWorkflow(area)
+    ? getCatalogResourceInventory(area, catalogArea)
+    : null
+  const catalogRouteChecks = usesCatalogWorkflow(area)
+    ? getCatalogRouteChecks(catalogArea)
+    : null
+  const representativeCatalogPending = usesCatalogWorkflow(area) && !catalogArea
+  const resourceInventory =
+    catalogResourceInventory ??
+    (representativeCatalogPending ? [] : getLocalResourceInventory(area))
+  const routeChecks =
+    catalogRouteChecks ??
+    (representativeCatalogPending ? [] : getLocalRouteChecks(area))
+  const challengeSnapshot = getChallengeSnapshot(
+    area,
+    scenario,
+    resourceInventory,
+    routeChecks,
+  )
   const afnPlanningAnalysis = analyzeAfnPlanning({
     area,
     hazard,
@@ -156,21 +198,23 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const selectedResource =
     resourceInventory.find((site) => site.id === selectedResourceId) ??
     nextResourceCheck ??
-    resourceInventory[0]
+    resourceInventory.at(0)
   const confirmedResourceCount = resourceInventory.filter(
     (site) =>
       site.status === 'confirmed' || confirmedResourceIds.includes(site.id),
   ).length
   const nextRouteCheck =
     routeChecks.find((route) => route.status === 'needs-confirmation') ??
-    routeChecks[0]
+    routeChecks.at(0)
   const localSteps = selectedNeighborhood
     ? [
         {
           title:
             neighborhoodDecision?.action ??
             'Follow official local evacuation or shelter instructions.',
-          owner: `${selectedNeighborhood.name} neighborhood lead`,
+          owner: catalogBriefing
+            ? `${area.name} area lead`
+            : `${selectedNeighborhood.name} neighborhood lead`,
           timing: 'Before local access deteriorates',
         },
         {
@@ -258,6 +302,18 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             status: activeEvent.status,
             arrival: activeEvent.arrival,
             summary: activeEvent.summary,
+          }
+        : undefined,
+      planningContext: catalogArea
+        ? {
+            jurisdiction:
+              planningAreaCatalog.snapshot?.jurisdictions.find(
+                (jurisdiction) =>
+                  jurisdiction.id === catalogArea.jurisdiction_id,
+              )?.name ?? catalogArea.jurisdiction_id,
+            afnFixture: catalogArea.afn_fixture_key,
+            shelterPlanJurisdictionId: catalogArea.shelter_plan_jurisdiction_id,
+            provenance: 'Curated practice catalog · local validation required',
           }
         : undefined,
       map: {
@@ -369,6 +425,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
 
         <CommunityAfnSummary coordinates={planningCoordinates} detailed />
         <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
+        <StatewidePlanningDepthPanel areaId={area.id} />
 
         {activeEvent && (
           <div className="sheet-event-summary">
@@ -433,7 +490,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   Confirm
                 </button>
               </div>
-            ) : (
+            ) : resourceInventory.length > 0 ? (
               <div className="resource-check is-complete">
                 <CheckCircle2 size={17} />
                 <div>
@@ -441,14 +498,32 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   <strong>All listed local resources are confirmed</strong>
                 </div>
               </div>
+            ) : (
+              <div className="resource-check is-unavailable">
+                <AlertTriangle size={17} />
+                <div>
+                  <small>Practice resources unavailable</small>
+                  <strong>Retry the statewide planning catalog</strong>
+                </div>
+              </div>
             )}
-            <div className="route-check">
-              <RouteIcon size={15} />
-              <span>
-                <strong>{nextRouteCheck.name}</strong>
-                <small>Route needs confirmation before use</small>
-              </span>
-            </div>
+            {nextRouteCheck ? (
+              <div className="route-check">
+                <RouteIcon size={15} />
+                <span>
+                  <strong>{nextRouteCheck.name}</strong>
+                  <small>Route needs confirmation before use</small>
+                </span>
+              </div>
+            ) : (
+              <div className="route-check is-unavailable">
+                <AlertTriangle size={15} />
+                <span>
+                  <strong>Practice routes unavailable</strong>
+                  <small>No prior-island route was substituted</small>
+                </span>
+              </div>
+            )}
           </div>
           <div className="sheet-challenge-card is-action">
             <span>3 · Match response partners</span>
@@ -484,14 +559,14 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
               <button
                 key={site.id}
                 type="button"
-                className={site.id === selectedResource.id ? 'is-active' : ''}
+                className={site.id === selectedResource?.id ? 'is-active' : ''}
                 onClick={() => selectResource(site.id)}
               >
                 <span>
                   <strong>{site.name}</strong>
                   <small>
-                    {site.kind === 'transport' ? 'Transport' : 'Shelter'} ·
-                    capacity {site.capacity} · Practice record
+                    {resourceKindLabels[site.kind]} · capacity {site.capacity} ·
+                    Practice record
                   </small>
                 </span>
                 <em className={confirmed ? 'is-confirmed' : ''}>
@@ -501,33 +576,46 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             )
           })}
         </div>
-        <div className="inventory-detail">
-          <div>
-            <small>Selected resource</small>
-            <h3>{selectedResource.name}</h3>
-            <p>
-              Capacity {selectedResource.capacity} ·{' '}
-              {selectedResource.capabilities.join(' · ')}
-            </p>
-            <p>
-              Practice record · Opening status not reported · County validation
-              required
-            </p>
+        {selectedResource ? (
+          <div className="inventory-detail">
+            <div>
+              <small>Selected resource</small>
+              <h3>{selectedResource.name}</h3>
+              <p>
+                Capacity {selectedResource.capacity} ·{' '}
+                {selectedResource.capabilities.join(' · ')}
+              </p>
+              <p>
+                Practice record · Opening status not reported · County
+                validation required
+              </p>
+            </div>
+            {selectedResource.status === 'confirmed' ||
+            confirmedResourceIds.includes(selectedResource.id) ? (
+              <span className="inventory-confirmed">
+                <CheckCircle2 size={15} /> Practice confirmed
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => confirmResource(selectedResource.id)}
+              >
+                Confirm this resource
+              </button>
+            )}
           </div>
-          {selectedResource.status === 'confirmed' ||
-          confirmedResourceIds.includes(selectedResource.id) ? (
-            <span className="inventory-confirmed">
-              <CheckCircle2 size={15} /> Confirmed
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => confirmResource(selectedResource.id)}
-            >
-              Confirm this resource
-            </button>
-          )}
-        </div>
+        ) : (
+          <div className="inventory-detail is-unavailable">
+            <div>
+              <small>Selected resource</small>
+              <h3>Statewide practice catalog unavailable</h3>
+              <p>
+                No resource from another island was substituted. Retry the
+                catalog above.
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="challenge-readiness">

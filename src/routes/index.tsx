@@ -44,6 +44,14 @@ import {
 } from '../lib/mock-data'
 import type { HazardId } from '../lib/mock-data'
 import { hawaiiDhsReferences } from '../lib/official-references'
+import {
+  findStatewidePlanningArea,
+  getCatalogBriefing,
+  getCatalogResourceInventory,
+  getCatalogRouteChecks,
+  usesCatalogWorkflow,
+  usePlanningAreaCatalog,
+} from '../lib/planning-areas'
 import { usePlanningStore } from '../store/planning-store'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -136,14 +144,24 @@ function Home() {
     hazards.find((item) => item.id === hazard) ?? hazards[0]
   const activeEvent =
     activeEvents.find((item) => item.id === selectedEventId) ?? null
-  const residentPlan =
-    residentRoutePlans.find((item) => item.id === selectedResidentPlanId) ??
-    residentRoutePlans[0]
+  const residentPlan = residentRoutePlans.find(
+    (item) => item.id === selectedResidentPlanId,
+  )
   const residentResource =
-    residentPlan.resources.find(
+    residentPlan?.resources.find(
       (resource) => resource.id === selectedResidentResourceId,
-    ) ?? residentPlan.resources[0]
-  const neighborhoodBriefings = getNeighborhoodBriefings(area.id)
+    ) ?? residentPlan?.resources[0]
+  const planningAreaCatalog = usePlanningAreaCatalog()
+  const catalogArea = findStatewidePlanningArea(
+    planningAreaCatalog.snapshot,
+    area.id,
+  )
+  const catalogBriefing = usesCatalogWorkflow(area)
+    ? getCatalogBriefing(area, catalogArea)
+    : null
+  const neighborhoodBriefings = catalogBriefing
+    ? [catalogBriefing]
+    : getNeighborhoodBriefings(area.id)
   const selectedNeighborhood =
     neighborhoodBriefings.find(
       (briefing) => briefing.id === selectedNeighborhoodId,
@@ -156,12 +174,25 @@ function Home() {
     activeLayers,
     activeEvent,
   )
-  const challengeSnapshot = getChallengeSnapshot(area, scenario)
   const localSteps = activeEvent
     ? getEventReliefSteps(area, activeEvent)
     : getLocalReliefSteps(area, hazard)
-  const resourceInventory = getLocalResourceInventory(area)
-  const routeChecks = getLocalRouteChecks(area)
+  const resourceInventory =
+    (usesCatalogWorkflow(area)
+      ? getCatalogResourceInventory(area, catalogArea)
+      : null) ??
+    (usesCatalogWorkflow(area) && !catalogArea
+      ? []
+      : getLocalResourceInventory(area))
+  const routeChecks =
+    (usesCatalogWorkflow(area) ? getCatalogRouteChecks(catalogArea) : null) ??
+    (usesCatalogWorkflow(area) && !catalogArea ? [] : getLocalRouteChecks(area))
+  const challengeSnapshot = getChallengeSnapshot(
+    area,
+    scenario,
+    resourceInventory,
+    routeChecks,
+  )
   const nextResourceCheck =
     resourceInventory.find(
       (site) =>
@@ -170,7 +201,7 @@ function Home() {
     ) ?? null
   const nextRouteCheck =
     routeChecks.find((route) => route.status === 'needs-confirmation') ??
-    routeChecks[0]
+    routeChecks.at(0)
   const confirmedRoute =
     routeChecks.find((route) => route.status === 'clear') ?? null
   const islands = Array.from(
@@ -185,10 +216,13 @@ function Home() {
     (item) =>
       item.island === selectedIsland && item.showOnStatewideMap !== false,
   )
-  const displayPlace = selectedNeighborhood?.name ?? area.name
+  const displayPlace = catalogBriefing
+    ? area.name
+    : (selectedNeighborhood?.name ?? area.name)
   const mainNeed =
     neighborhoodDecision?.action ??
     activeEvent?.firstAction ??
+    catalogArea?.response_focus[hazard] ??
     area.responseFocus?.[hazard] ??
     supportFocus[scenario.primarySignal]
   const readinessMessage =
@@ -499,7 +533,7 @@ function Home() {
                     Confirm
                   </button>
                 </div>
-              ) : (
+              ) : resourceInventory.length > 0 ? (
                 <div className="resource-check is-complete">
                   <CheckCircle2 size={17} />
                   <div>
@@ -507,19 +541,37 @@ function Home() {
                     <strong>All listed local resources are confirmed</strong>
                   </div>
                 </div>
+              ) : (
+                <div className="resource-check is-unavailable">
+                  <HousePlus size={17} />
+                  <div>
+                    <small>Practice resources unavailable</small>
+                    <strong>Retry in the Response Plan</strong>
+                  </div>
+                </div>
               )}
-              <div className="route-check">
-                <RouteIcon size={15} />
-                <span>
-                  <strong>{nextRouteCheck.name}</strong>
-                  <small>
-                    Needs confirmation
-                    {confirmedRoute
-                      ? ` · practice alternate: ${confirmedRoute.name}; verify current conditions`
-                      : ' · no alternate route confirmed'}
-                  </small>
-                </span>
-              </div>
+              {nextRouteCheck ? (
+                <div className="route-check">
+                  <RouteIcon size={15} />
+                  <span>
+                    <strong>{nextRouteCheck.name}</strong>
+                    <small>
+                      Needs confirmation
+                      {confirmedRoute
+                        ? ` · practice alternate: ${confirmedRoute.name}; verify current conditions`
+                        : ' · no alternate route confirmed'}
+                    </small>
+                  </span>
+                </div>
+              ) : (
+                <div className="route-check is-unavailable">
+                  <RouteIcon size={15} />
+                  <span>
+                    <strong>Practice routes unavailable</strong>
+                    <small>No prior-island route was substituted</small>
+                  </span>
+                </div>
+              )}
               <p className="resource-gap">
                 Gap to address: {challengeSnapshot.topNeeds[0].toLowerCase()}.{' '}
                 {readinessMessage}
@@ -573,13 +625,21 @@ function Home() {
                 </p>
               </div>
             </div>
-            <div className="resident-route-entry-summary">
-              <small>Example public destination</small>
-              <strong>{residentResource.name}</strong>
-              <span>
-                {residentRouteSummary[hazard]} · {preferredLanguage}
-              </span>
-            </div>
+            {residentResource && residentPlan?.areaId === area.id ? (
+              <div className="resident-route-entry-summary">
+                <small>Example public destination</small>
+                <strong>{residentResource.name}</strong>
+                <span>
+                  {residentRouteSummary[hazard]} · {preferredLanguage}
+                </span>
+              </div>
+            ) : (
+              <div className="resident-route-entry-summary is-unavailable">
+                <small>Resident route scope</small>
+                <strong>Address-level preview not available</strong>
+                <span>No Oʻahu route or resource was substituted.</span>
+              </div>
+            )}
             <button type="button" onClick={() => setMobilePanel('resident')}>
               Open public guidance preview
               <ChevronRight size={17} />

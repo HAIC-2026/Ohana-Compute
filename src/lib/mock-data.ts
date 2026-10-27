@@ -2986,13 +2986,14 @@ export function getLocalRouteChecks(area: PlanningArea): LocalRouteCheck[] {
 export function getChallengeSnapshot(
   area: PlanningArea,
   scenario: ScenarioView,
+  resources = getLocalResourceInventory(area),
+  routes = getLocalRouteChecks(area),
 ): ChallengeSnapshot {
-  const inventory = getLocalResourceInventory(area)
   const topNeeds = [...scenario.cmist]
     .sort((first, second) => second.value - first.value)
     .slice(0, 2)
     .map((item) => plainNeedLabels[item.category] ?? item.category)
-  const shelters = inventory.filter((site) => site.kind === 'shelter')
+  const shelters = resources.filter((site) => site.kind === 'shelter')
 
   return {
     topNeeds,
@@ -3000,9 +3001,9 @@ export function getChallengeSnapshot(
     backupPowerSites: shelters.filter((site) =>
       site.capabilities.includes('Backup power'),
     ).length,
-    transportTeams: inventory.filter((site) => site.kind === 'transport')
+    transportTeams: resources.filter((site) => site.kind === 'transport')
       .length,
-    routesToVerify: getLocalRouteChecks(area).filter(
+    routesToVerify: routes.filter(
       (route) => route.status === 'needs-confirmation',
     ).length,
   }

@@ -69,6 +69,7 @@ const supportedLanguages = [
 
 export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
   const {
+    selectedAreaId,
     selectedResidentPlanId,
     selectedResidentResourceId,
     hazard,
@@ -85,6 +86,7 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     setPreferredLanguage,
   } = usePlanningStore(
     useShallow((state) => ({
+      selectedAreaId: state.selectedAreaId,
       selectedResidentPlanId: state.selectedResidentPlanId,
       selectedResidentResourceId: state.selectedResidentResourceId,
       hazard: state.hazard,
@@ -101,9 +103,11 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
       setPreferredLanguage: state.setPreferredLanguage,
     })),
   )
-  const plan =
-    residentRoutePlans.find((item) => item.id === selectedResidentPlanId) ??
-    residentRoutePlans[0]
+  const selectedPlan = residentRoutePlans.find(
+    (item) => item.id === selectedResidentPlanId,
+  )
+  const plan = selectedPlan ?? residentRoutePlans[0]
+  const showPlan = selectedPlan?.areaId === selectedAreaId
   const selectedResource =
     plan.resources.find(
       (resource) => resource.id === selectedResidentResourceId,
@@ -141,6 +145,12 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     setWildfireLookupFailed(false)
     setOpenShelters(null)
     setShelterLookupFailed(false)
+
+    if (!showPlan) {
+      return () => {
+        cancelled = true
+      }
+    }
 
     if (currentHazard === 'tsunami') {
       void fetchOfficialEvacuationZone(plan.startCoordinates)
@@ -183,7 +193,7 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [currentHazard, plan.id, plan.startCoordinates])
+  }, [currentHazard, plan.id, plan.startCoordinates, showPlan])
 
   const nearestOfficialShelter =
     openShelters &&
@@ -248,6 +258,32 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     window.speechSynthesis.speak(message)
     setLocationMessage(
       `Reading the written route aloud. ${preferredLanguage} help at the destination ${selectedResource.languages.includes(preferredLanguage) ? 'is listed' : 'must be confirmed'}.`,
+    )
+  }
+
+  if (!showPlan) {
+    return (
+      <div className={`resident-route-content ${compact ? 'is-compact' : ''}`}>
+        <section className="resident-location resident-route-unavailable">
+          <div className="resident-section-heading">
+            <div>
+              <h2>Resident route preview unavailable</h2>
+              <p>
+                This County representative workflow does not yet include
+                address-level resident routes.
+              </p>
+            </div>
+            <span>Practice scope</span>
+          </div>
+          <div className="resident-truth-note">
+            <AlertTriangle size={17} />
+            <p>
+              No Oʻahu route or resource was substituted. Use official County
+              alerts and validated local instructions for resident movement.
+            </p>
+          </div>
+        </section>
+      </div>
     )
   }
 

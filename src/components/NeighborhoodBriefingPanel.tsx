@@ -10,8 +10,14 @@ import {
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
-import { getNeighborhoodBriefings } from '../lib/mock-data'
+import { areas, getNeighborhoodBriefings } from '../lib/mock-data'
 import type { HazardId, NeighborhoodBriefing } from '../lib/mock-data'
+import {
+  findStatewidePlanningArea,
+  getCatalogBriefing,
+  usesCatalogWorkflow,
+  usePlanningAreaCatalog,
+} from '../lib/planning-areas'
 import { usePlanningStore } from '../store/planning-store'
 
 const fallbackDecisions: Record<
@@ -25,7 +31,7 @@ const fallbackDecisions: Record<
     reason:
       'The official evacuation boundary, not distance from the shoreline alone, determines whether you should move.',
     trigger:
-      'Move when a tsunami warning includes Oʻahu or after natural warning signs such as strong shaking or sudden ocean retreat.',
+      'Move when a tsunami warning includes the selected island or after natural warning signs such as strong shaking or sudden ocean retreat.',
   },
   wildfire: {
     label: 'Prepare to leave',
@@ -112,7 +118,16 @@ export function NeighborhoodBriefingPanel({
       selectNeighborhood: state.selectNeighborhood,
     })),
   )
-  const briefings = getNeighborhoodBriefings(areaId)
+  const catalog = usePlanningAreaCatalog()
+  const area = areas.find((item) => item.id === areaId)
+  const catalogArea = findStatewidePlanningArea(catalog.snapshot, areaId)
+  const catalogBriefing =
+    area && usesCatalogWorkflow(area)
+      ? getCatalogBriefing(area, catalogArea)
+      : null
+  const briefings = catalogBriefing
+    ? [catalogBriefing]
+    : getNeighborhoodBriefings(areaId)
 
   if (briefings.length === 0) return null
 
