@@ -2,6 +2,7 @@ import {
   communityProfile,
   countyShelterPlans,
   expect,
+  partnerMatchFixture,
   planningAreaCatalog,
   resourceDemandFixture,
   test,
@@ -605,6 +606,110 @@ test('resource demand endpoint failure stays unavailable until retry succeeds', 
   allowSuccess = true
   await demandPanel.getByRole('button', { name: 'Retry' }).click()
   await expect(demandPanel).toContainText('Planning service population')
+  expect(attempts).toBeGreaterThanOrEqual(2)
+})
+
+test('partner matches stay sourced, scoped, and non-operational', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  const requests: string[] = []
+  await page.route('**/api/v1/planning/partner-matches?*', async (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url.search)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        partnerMatchFixture(
+          url.searchParams.get('jurisdiction') ?? 'honolulu',
+          url.searchParams.getAll('capability'),
+        ),
+      ),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const panel = page
+    .locator('.planning-sheet:visible')
+    .getByTestId('partner-matches')
+  await expect(
+    panel.getByRole('heading', { name: 'Response partner matches' }),
+  ).toBeVisible()
+  await expect(panel).toContainText('Pets and service animals')
+  await expect(panel).toContainText('No sourced association')
+  await expect(panel).toContainText('Keep this as an explicit coordination gap')
+
+  await panel.getByRole('tab', { name: 'Sheltering' }).click()
+  await expect(panel).toContainText(
+    'Honolulu Department of Emergency Management',
+  )
+  await expect(panel).toContainText('American Red Cross Pacific Islands Region')
+  await expect(panel).toContainText('Operational status not validated')
+  await expect(panel).toContainText('Activation and capacity are not reported')
+  await expect(panel).toContainText(
+    'Source review current through Apr 24, 2027',
+  )
+
+  await page.getByLabel('Choose island').selectOption('Maui')
+  await expect.poll(() => requests.at(-1)).toContain('jurisdiction=maui')
+  await panel.getByRole('tab', { name: 'Sheltering' }).click()
+  await expect(panel).not.toContainText(
+    'Honolulu Department of Emergency Management',
+  )
+  await expect(panel).toContainText('American Red Cross Pacific Islands Region')
+  const serialized = requests.join('&')
+  expect(serialized).not.toContain('Maui Emergency Management Agency')
+  expect(serialized).not.toContain('address')
+  expect(serialized).not.toContain('coordinate')
+  expect(serialized).not.toContain('capacity')
+})
+
+test('partner matching failure assumes no organization until retry', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  let attempts = 0
+  let allowSuccess = false
+  await page.route('**/api/v1/planning/partner-matches?*', async (route) => {
+    attempts += 1
+    const url = new URL(route.request().url())
+    if (!allowSuccess) {
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'partner matching unavailable' }),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        partnerMatchFixture(
+          url.searchParams.get('jurisdiction') ?? 'honolulu',
+          url.searchParams.getAll('capability'),
+        ),
+      ),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const panel = page
+    .locator('.planning-sheet:visible')
+    .getByTestId('partner-matches')
+  await expect(panel).toContainText('Partner matching unavailable')
+  await expect(panel).toContainText('No organization is assumed available')
+  allowSuccess = true
+  await panel.getByRole('button', { name: 'Retry' }).click()
+  await expect(
+    panel.getByRole('heading', { name: 'Response partner matches' }),
+  ).toBeVisible()
   expect(attempts).toBeGreaterThanOrEqual(2)
 })
 

@@ -19,6 +19,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
@@ -71,6 +72,10 @@ type ResourceDemandCalculator interface {
 	Calculate(context.Context, resourcedemand.Request) (resourcedemand.Response, error)
 }
 
+type PartnerMatcher interface {
+	Match(context.Context, partnermatching.Query) (partnermatching.Response, error)
+}
+
 type Config struct {
 	Alerts          AlertReader
 	Cyclones        CycloneReader
@@ -81,6 +86,7 @@ type Config struct {
 	ShelterPlans    ShelterPlanReader
 	PlanningAreas   PlanningAreaReader
 	ResourceDemand  ResourceDemandCalculator
+	PartnerMatching PartnerMatcher
 	AllowedOrigins  []string
 	Logger          *slog.Logger
 	Registry        *prometheus.Registry
@@ -121,6 +127,10 @@ func NewServer(config Config) *Server {
 	if config.ResourceDemand == nil {
 		defaultCalculator := resourcedemand.NewCalculator()
 		config.ResourceDemand = defaultCalculator
+	}
+	if config.PartnerMatching == nil {
+		defaultMatcher := partnermatching.NewMatcher()
+		config.PartnerMatching = defaultMatcher
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -201,6 +211,10 @@ func NewServer(config Config) *Server {
 	mux.HandleFunc(
 		"POST /api/v1/planning/resource-demand",
 		resourceDemandHandler(logger, config.ResourceDemand),
+	)
+	mux.HandleFunc(
+		"GET /api/v1/planning/partner-matches",
+		partnerMatchHandler(logger, config.PartnerMatching),
 	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,
@@ -431,6 +445,56 @@ func resourceDemandHandler(
 				writer,
 				http.StatusBadGateway,
 				"resource demand model unavailable",
+				"",
+			)
+			return
+		}
+		writeJSON(writer, http.StatusOK, response)
+	}
+}
+
+func partnerMatchHandler(
+	logger *slog.Logger,
+	matcher PartnerMatcher,
+) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Cache-Control", "no-store")
+		values := request.URL.Query()
+		for key := range values {
+			if key != "jurisdiction" && key != "capability" {
+				writeAPIError(
+					writer,
+					http.StatusBadRequest,
+					"invalid partner match query",
+					"",
+				)
+				return
+			}
+		}
+		jurisdictions := values["jurisdiction"]
+		query := partnermatching.Query{
+			Capabilities: values["capability"],
+		}
+		if len(jurisdictions) == 1 {
+			query.JurisdictionID = jurisdictions[0]
+		}
+		if len(jurisdictions) != 1 || partnermatching.Validate(query) != nil {
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"invalid partner match query",
+				"",
+			)
+			return
+		}
+
+		response, err := matcher.Match(request.Context(), query)
+		if err != nil {
+			logger.Error("match response partners", "error", err)
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"partner matching unavailable",
 				"",
 			)
 			return

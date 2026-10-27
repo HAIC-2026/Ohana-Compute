@@ -20,6 +20,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
@@ -85,6 +86,7 @@ func main() {
 	shelterPlanCatalog := shelterplans.NewCatalog()
 	planningAreaCatalog := planningareas.NewCatalog()
 	resourceDemandCalculator := resourcedemand.NewCalculator()
+	partnerMatcher := partnermatching.NewMatcher()
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -100,6 +102,7 @@ func main() {
 		ShelterPlans:    shelterPlanCatalog,
 		PlanningAreas:   planningAreaCatalog,
 		ResourceDemand:  resourceDemandCalculator,
+		PartnerMatching: partnerMatcher,
 		AllowedOrigins:  allowedOrigins,
 		Logger:          logger,
 		Registry:        registry,

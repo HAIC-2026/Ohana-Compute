@@ -70,10 +70,13 @@ statewide planning-area, community, transportation, telemetry ingest, and
 metrics routes. It never uses the request URL or query string. County-plan
 requests use the bounded route label `/api/v1/shelter-plans`; statewide
 workflow requests use `/api/v1/planning-areas`; resource-demand calculations
-use `/api/v1/planning/resource-demand`. Browser interactions use only the
+use `/api/v1/planning/resource-demand`; partner matching uses
+`/api/v1/planning/partner-matches`. Browser interactions use only the
 controlled actions `shelter_county_select`, `shelter_provenance_open`,
 `shelter_plan_retry`, `resource_demand_duration`,
-`resource_demand_standard`, and `resource_demand_retry`, never County names,
+`resource_demand_standard`, `resource_demand_retry`,
+`partner_capability_select`, `partner_provenance_open`, and
+`partner_match_retry`, never County or organization names, capability claims,
 document titles, model values, calculation IDs, or source URLs.
 
 AFN source metrics use only four source labels: `acs-5-year`,

@@ -59,6 +59,10 @@ test('browser telemetry is batched and excludes private values', async ({
     .getByTestId('county-shelter-plans')
     .getByRole('tab', { name: 'Hawaiʻi' })
     .click()
+  await page
+    .getByTestId('partner-matches')
+    .getByRole('tab', { name: 'Sheltering' })
+    .click()
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
@@ -92,6 +96,14 @@ test('browser telemetry is batched and excludes private values', async ({
         event.kind === 'interaction' &&
         event.category === 'planning' &&
         event.action === 'resource_demand_duration',
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'planning' &&
+        event.action === 'partner_capability_select',
     ),
   ).toBe(true)
   expect(
