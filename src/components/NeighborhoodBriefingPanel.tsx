@@ -8,6 +8,7 @@ import {
   Radio,
   Route as RouteIcon,
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { getNeighborhoodBriefings } from '../lib/mock-data'
 import type { HazardId, NeighborhoodBriefing } from '../lib/mock-data'
@@ -105,7 +106,12 @@ export function NeighborhoodBriefingPanel({
   hazard: HazardId
   compact?: boolean
 }) {
-  const { selectedNeighborhoodId, selectNeighborhood } = usePlanningStore()
+  const { selectedNeighborhoodId, selectNeighborhood } = usePlanningStore(
+    useShallow((state) => ({
+      selectedNeighborhoodId: state.selectedNeighborhoodId,
+      selectNeighborhood: state.selectNeighborhood,
+    })),
+  )
   const briefings = getNeighborhoodBriefings(areaId)
 
   if (briefings.length === 0) return null

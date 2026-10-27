@@ -34,6 +34,9 @@ var (
 		"severity_change",
 		"area_select",
 		"layer_toggle",
+		"planning_brief_generate",
+		"planning_brief_update",
+		"field_packet_download",
 		"map_interact",
 		"activate",
 		"change",
@@ -50,6 +53,7 @@ var (
 		"checkbox",
 		"map",
 		"form",
+		"planning",
 		"document",
 		"other",
 	)

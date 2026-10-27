@@ -85,6 +85,8 @@ export const communityProfile = {
     with_disability: 220,
     limited_english: 150,
     no_vehicle_households: 80,
+    overall_percentile: 0.1185,
+    housing_transportation_percentile: 0.11,
     source: {
       id: 'cdc-svi-2022',
       authority: 'CDC/ATSDR',
@@ -93,6 +95,7 @@ export const communityProfile = {
   },
   fema_national_risk: {
     risk_rating: 'Relatively Moderate',
+    expected_annual_loss_rating: 'Relatively Moderate',
     social_vulnerability_rating: 'Relatively Low',
     community_resilience_rating: 'Relatively High',
     source: {

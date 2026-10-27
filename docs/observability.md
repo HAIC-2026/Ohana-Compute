@@ -16,9 +16,11 @@ Browser events use only these bounded labels:
 - `kind`: `page_load`, `interaction`, or `interaction_timing`
 - `action`: `navigation`, `dom_content_loaded`, `load`, `hydration`,
   `map_ready`, `hazard_select`, `severity_change`, `area_select`,
-  `layer_toggle`, `map_interact`, `activate`, `change`, `submit`, or `keyboard`
-- `category`: a fixed element category such as `button`, `select`, `map`, or
-  `page`
+  `layer_toggle`, `planning_brief_generate`, `planning_brief_update`,
+  `field_packet_download`, `map_interact`, `activate`, `change`, `submit`, or
+  `keyboard`
+- `category`: a fixed element category such as `button`, `select`, `map`,
+  `planning`, or `page`
 - `route`: `home` or `other`; raw paths and query strings are never sent
 - `viewport`: `small`, `medium`, or `large`
 - `outcome`: `success`, `error`, or `unknown`

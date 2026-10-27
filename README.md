@@ -34,6 +34,13 @@ households.
 - A TheBus Route 1L walk-bus-walk example for Hawaiʻi Kai
 - No-car, mobility, medical-power, language, written-direction, and read-aloud
   controls
+- Downloadable, self-contained field briefings for printing and
+  limited-connectivity coordination
+- Data-derived AFN planning hotspots across communication, medical,
+  independence, safety, and transportation domains
+- A bounded, injectable mock-AI response boundary that receives aggregate
+  planning evidence but no coordinates, addresses, identifiers, or raw source
+  errors
 - Desktop and mobile Playwright coverage
 
 ## Stack
@@ -100,6 +107,21 @@ coordinates, input values, visible text, user identifiers, or URLs/query
 strings. See [`docs/observability.md`](./docs/observability.md) for the metric
 contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 
+The backend coalesces identical concurrent official-source cache misses so a
+burst of planner requests produces one upstream refresh per source and
+coordinate. Coordinate caches are size-bounded, public errors omit upstream
+diagnostics and coordinates, and request-body/header timeouts bound slow
+clients. Raw source failures remain available in server logs.
+
+After generating the response checklist, planners can download a standalone
+HTML field briefing. The packet carries the selected Map → Model → Match
+context, official aggregate AFN values, resource and route checks, assigned
+actions, public guidance, required local validation checks, and direct Hawaiʻi
+DHS planning-reference URLs. It has embedded print styles and no external
+runtime dependencies, so it can be printed or opened after connectivity is
+lost. It intentionally excludes resident-entered addresses, coordinates,
+names, identifiers, and person-level medical data.
+
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
@@ -112,6 +134,7 @@ contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 npm run backend:test
 npm run test:integration
 npm run test:journey
+npm run test:matrix
 npm run test:e2e
 npm run build
 npm run lint
@@ -120,11 +143,13 @@ npm run check
 
 `npm run test:integration` starts the real frontend and Go API on isolated test
 ports, drives the complete Map → Model → Match planner journey, confirms a
-resource, generates the response checklist, exercises accessible public
-guidance, and then verifies the resulting AFN, HTTP, browser-interaction, and
-telemetry Prometheus metrics. The integration server uses deterministic
-aggregate official-source fixtures; unit tests separately cover the production
-community-source fan-out and partial-source behavior.
+resource, generates the response checklist, downloads and inspects the offline
+field briefing, exercises accessible public guidance, and then verifies the
+resulting AFN, HTTP, browser-interaction, and telemetry Prometheus metrics. The
+test also proves that a private address entered in the guidance flow is absent
+from both the downloaded packet and Prometheus output. The integration server
+uses deterministic aggregate official-source fixtures; unit tests separately
+cover the production community-source fan-out and partial-source behavior.
 
 `npm run test:journey` runs the numbered resident story and writes raw timing
 metrics plus a summary to `test-results/performance/`. Important browser state
@@ -135,6 +160,13 @@ and reported separately. The production frontend must hydrate within 2,000 ms.
 Performance budgets run with one browser worker so parallel test-run contention
 does not distort the user-facing timings.
 
+`npm run test:matrix` executes deterministic cross-island scenarios for Oʻahu,
+Maui, Hawaiʻi, and Kauaʻi. It verifies the expected AFN hotspot, score,
+supporting evidence, generated planning action, and privacy boundary supplied to
+the mock AI generator. See
+[`docs/afn-planning-matrix.md`](./docs/afn-planning-matrix.md) for the matrix,
+thresholds, limitations, and extension process.
+
 ## Data truth and limitations
 
 The planner consumes `GET /api/v1/community/profile` for privacy-safe aggregate
@@ -142,7 +174,10 @@ AFN context. It displays Census ACS disability, limited-English, and
 no-vehicle estimates together with HHS emPOWER medical-equipment dependence.
 The interface preserves privacy-masked emPOWER counts, supports partial source
 responses, and never represents these geographic estimates as person-level
-records.
+records. The response workspace also exposes population, age, poverty,
+health-service equipment, overall SVI, expected annual loss, retrieval time,
+and stale-source status so planners can assess both the signal and its
+provenance without opening another system.
 
 Official data is requested from:
 
@@ -151,6 +186,27 @@ Official data is requested from:
 - [Central Pacific Hurricane Center GIS feed](https://www.nhc.noaa.gov/gis-cp.xml)
 - [Pacific Tsunami Warning Center CAP feed](https://www.tsunami.gov/events/xml/PHEBCAP.xml)
 - [HDOT planned lane closures](https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0)
+
+Official Hawaiʻi DHS guidance is referenced separately from live or aggregate
+data:
+
+- [Hawaiʻi Department of Human Services](https://humanservices.hawaii.gov/)
+- [DHS emergency planning for disability and access needs](https://humanservices.hawaii.gov/communications/are-you-ready/special-needs/)
+- [DHS Maui wildfire recovery resources](https://humanservices.hawaii.gov/communications/)
+
+The DHS emergency-planning page informs checks for accessible warnings,
+mobility assistance, transportation for people without vehicles, language
+access, medication refrigeration, backup medical equipment, and service-animal
+supplies. The Maui recovery page documents a Maui-specific Disaster Case
+Management referral through 211. These references inform planning and recovery
+coordination; they are not hazard forecasts, live shelter status, or a statewide
+incident feed.
+
+The interface palette follows the official State of Hawaiʻi web style guide and
+the ETS site’s ʻĀina theme: state charcoal, teal (`#18828c`), deep teal
+(`#0b7482`), and aqua (`#73c9cf`) on accessible white and cool-neutral
+surfaces. Red, amber, and green remain reserved for hazard and operational
+status meaning.
 
 The official sources provide planning context, not a complete live incident
 picture:
@@ -172,7 +228,10 @@ instead of substituting a reassuring answer.
 
 - `src/lib/mock-data.ts` contains deterministic synthetic geospatial and
   planning data.
-- `src/lib/mock-api.ts` simulates the future Go API and managed Luna endpoint.
+- `src/lib/planning-analysis.ts` deterministically ranks aggregate AFN planning
+  weaknesses and keeps missing-source uncertainty explicit.
+- `src/lib/mock-api.ts` provides a bounded, injectable planning-response
+  generator; the default mock drafts language from the deterministic analysis.
 - `src/lib/backend-api.ts` is the configurable, typed request boundary between
   the separately hosted frontend and backend.
 - `src/lib/official-emergency-data.ts` maps normalized backend responses into

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   ArrowUpRight,
   BatteryCharging,
@@ -8,6 +9,8 @@ import {
   ChevronDown,
   CircleHelp,
   Clock3,
+  Download,
+  ExternalLink,
   FileText,
   Globe2,
   ListChecks,
@@ -32,6 +35,15 @@ import {
 
 import { generatePlanningBrief } from '../lib/mock-api'
 import type { PlanningBrief } from '../lib/mock-api'
+import {
+  formatAggregateMetric,
+  formatProtectedCount,
+  useCommunityProfile,
+} from '../lib/community-profile'
+import { downloadFieldBriefing } from '../lib/field-briefing'
+import { hawaiiDhsReferences } from '../lib/official-references'
+import { analyzeAfnPlanning } from '../lib/planning-analysis'
+import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
@@ -44,6 +56,7 @@ import {
   getLocalRouteChecks,
   getNeighborhoodBriefings,
   getScenarioView,
+  hazards,
   sources,
 } from '../lib/mock-data'
 import { usePlanningStore } from '../store/planning-store'
@@ -60,10 +73,34 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     activeLayers,
     confirmedResourceIds,
     selectedResourceId,
+    residentNoCar,
+    residentMobilityHelp,
+    residentMedicalPower,
+    preferredLanguage,
     confirmResource,
     selectResource,
     setBriefReady,
-  } = usePlanningStore()
+  } = usePlanningStore(
+    useShallow((state) => ({
+      selectedAreaId: state.selectedAreaId,
+      selectedEventId: state.selectedEventId,
+      locationFocus: state.locationFocus,
+      selectedPlanningZoneId: state.selectedPlanningZoneId,
+      selectedNeighborhoodId: state.selectedNeighborhoodId,
+      hazard: state.hazard,
+      severity: state.severity,
+      activeLayers: state.activeLayers,
+      confirmedResourceIds: state.confirmedResourceIds,
+      selectedResourceId: state.selectedResourceId,
+      residentNoCar: state.residentNoCar,
+      residentMobilityHelp: state.residentMobilityHelp,
+      residentMedicalPower: state.residentMedicalPower,
+      preferredLanguage: state.preferredLanguage,
+      confirmResource: state.confirmResource,
+      selectResource: state.selectResource,
+      setBriefReady: state.setBriefReady,
+    })),
+  )
   const [brief, setBrief] = useState<PlanningBrief | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
@@ -84,6 +121,13 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     selectedNeighborhood?.name ??
     locationFocus?.name ??
     area.name
+  const planningCoordinates =
+    selectedPlanningZone?.coordinates ??
+    locationFocus?.coordinates ??
+    area.coordinates
+  const communityProfileState = useCommunityProfile(planningCoordinates)
+  const selectedHazard =
+    hazards.find((item) => item.id === hazard) ?? hazards[0]
   const scenario = getScenarioView(
     area,
     hazard,
@@ -94,6 +138,14 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const challengeSnapshot = getChallengeSnapshot(area, scenario)
   const resourceInventory = getLocalResourceInventory(area)
   const routeChecks = getLocalRouteChecks(area)
+  const afnPlanningAnalysis = analyzeAfnPlanning({
+    area,
+    hazard,
+    scenario,
+    profile: communityProfileState.profile,
+    resources: resourceInventory,
+    routes: routeChecks,
+  })
   const nextResourceCheck =
     resourceInventory.find(
       (site) =>
@@ -159,18 +211,147 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       exposedPopulation: scenario.exposedPopulation,
       primarySignal: scenario.primarySignal,
       locationName: displayPlace,
-      localContext:
-        (selectedNeighborhood
-          ? `${selectedNeighborhood.summary} Shelter decision: ${neighborhoodDecision?.action ?? 'Follow official local alerts.'} Traffic hazards: ${selectedNeighborhood.trafficHazards.join(' ')}`
-          : selectedZonePlan?.summary) ??
-        (activeEvent
-          ? `${activeEvent.summary} Dominant threats: ${activeEvent.dominantThreats.join(', ')}.`
-          : (area.responseFocus?.[hazard] ?? area.summary)),
       localSteps,
+      analysis: afnPlanningAnalysis,
     })
     setBrief(response)
     setBriefReady(true)
     setIsGenerating(false)
+  }
+
+  const downloadPacket = () => {
+    if (!brief || communityProfileState.status === 'loading') return
+
+    const profile = communityProfileState.profile
+    const profileSources = [
+      profile?.acs?.source,
+      profile?.svi?.source,
+      profile?.empower?.source,
+      profile?.fema_national_risk?.source,
+    ].filter((source): source is NonNullable<typeof source> => Boolean(source))
+    const unavailableSources = [
+      !profile?.acs && 'Census ACS',
+      !profile?.svi && 'CDC/ATSDR SVI',
+      !profile?.empower && 'HHS emPOWER',
+      !profile?.fema_national_risk && 'FEMA National Risk Index',
+    ].filter((source): source is string => Boolean(source))
+    const guidancePreferences = [
+      `Preferred public language: ${preferredLanguage}`,
+      residentNoCar ? 'Transportation: plan for no private vehicle' : null,
+      residentMobilityHelp
+        ? 'Accessibility: include mobility assistance'
+        : null,
+      residentMedicalPower
+        ? 'Medical: include power-dependent equipment support'
+        : null,
+    ].filter((preference): preference is string => Boolean(preference))
+
+    downloadFieldBriefing({
+      place: displayPlace,
+      island: area.island,
+      hazard: selectedHazard.label,
+      severity,
+      event: activeEvent
+        ? {
+            name: activeEvent.name,
+            status: activeEvent.status,
+            arrival: activeEvent.arrival,
+            summary: activeEvent.summary,
+          }
+        : undefined,
+      map: {
+        exposedPopulation: scenario.exposedPopulation.toLocaleString(),
+        primarySignal: scenario.primarySignal,
+        sourceStatus:
+          communityProfileState.status === 'ready'
+            ? 'Complete'
+            : communityProfileState.status === 'partial'
+              ? 'Partial'
+              : 'Unavailable',
+        geography:
+          profile?.acs?.geography.name ??
+          profile?.svi?.location ??
+          profile?.empower?.county ??
+          'Official aggregate geography unavailable',
+        disability: formatAggregateMetric(
+          profile?.acs?.population_with_disability,
+          profile?.svi?.with_disability,
+        ),
+        limitedEnglish: formatAggregateMetric(
+          profile?.acs?.limited_english_population,
+          profile?.svi?.limited_english,
+        ),
+        noVehicle: formatAggregateMetric(
+          profile?.acs?.no_vehicle_households,
+          profile?.svi?.no_vehicle_households,
+        ),
+        medicalPower: formatProtectedCount(
+          profile?.empower?.power_dependent_dme,
+        ),
+        nationalRisk: profile?.fema_national_risk?.risk_rating ?? 'Unavailable',
+        socialVulnerability:
+          profile?.fema_national_risk?.social_vulnerability_rating ??
+          'Unavailable',
+        communityResilience:
+          profile?.fema_national_risk?.community_resilience_rating ??
+          'Unavailable',
+        sources: profileSources.map(
+          (source) =>
+            `${source.authority}${source.vintage ? ` (${source.vintage})` : ''}`,
+        ),
+        unavailableSources,
+      },
+      model: {
+        needs: challengeSnapshot.topNeeds,
+        hotspots: afnPlanningAnalysis.hotspots.map((hotspot) => ({
+          domain: hotspot.domain,
+          score: hotspot.score,
+          level: hotspot.level,
+          evidence: hotspot.evidence,
+          recommendedAction: hotspot.recommendedAction,
+        })),
+        cmist: scenario.cmist,
+        resources: resourceInventory.map((resource) => ({
+          name: resource.name,
+          kind: resource.kind,
+          capacity: resource.capacity,
+          confirmed:
+            resource.status === 'confirmed' ||
+            confirmedResourceIds.includes(resource.id),
+          capabilities: resource.capabilities,
+        })),
+        routes: routeChecks,
+      },
+      match: {
+        decision:
+          selectedNeighborhood && neighborhoodDecision
+            ? {
+                label: neighborhoodDecision.label,
+                action: neighborhoodDecision.action,
+                reason: neighborhoodDecision.reason,
+                trigger: neighborhoodDecision.trigger,
+                owner: selectedNeighborhood.coordination.decisionOwner,
+                communicationPath:
+                  selectedNeighborhood.coordination.communicationPath,
+              }
+            : undefined,
+        actions: brief.priorities,
+      },
+      communication: {
+        publicGuidance: activeEvent?.publicGuidance ?? [],
+        afnActions: selectedNeighborhood?.coordination.afnActions ?? [],
+        preferences: guidancePreferences,
+        localValidationChecks: [
+          'Confirm paper, radio, and phone-tree communication fallback for limited connectivity.',
+          'Confirm accessible warning delivery for people who are deaf or hard of hearing and people who use assistive technology.',
+          'Confirm transportation and shelter assistance for people with mobility needs and no private vehicle.',
+          'Confirm trusted multilingual and trauma-informed community messengers and translated materials.',
+          'Confirm medication refrigeration, oxygen and medical-equipment power, extra batteries, and service-animal supplies.',
+          'Confirm pets and working animals sheltering, transportation, and supply capacity.',
+          'Confirm elevator-outage support for high-rise residents with mobility needs.',
+        ],
+      },
+    })
   }
 
   return (
@@ -185,13 +366,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             area.summary}
         </p>
 
-        <CommunityAfnSummary
-          coordinates={
-            selectedPlanningZone?.coordinates ??
-            locationFocus?.coordinates ??
-            area.coordinates
-          }
-        />
+        <CommunityAfnSummary coordinates={planningCoordinates} detailed />
+        <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
 
         {activeEvent && (
           <div className="sheet-event-summary">
@@ -398,8 +574,9 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
               <p>
                 Every available island can be viewed one at a time. AFN,
                 accessible transport, medical power, and language actions are
-                explicit; rural and off-grid conditions, pets and working
-                animals, and detailed local validation require further work.
+                explicit. Field packets require local checks for off-grid
+                communication, high-rise elevator outages, pets, and working
+                animals; detailed county validation still requires field work.
               </p>
             </div>
           </article>
@@ -410,10 +587,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
               <strong>Open standards and maintainable services</strong>
               <p>
                 The responsive frontend, normalized Go API, browser telemetry,
-                and Prometheus metrics are implemented. Production source
-                caching, deployment rollout, operational alerting, and agency
-                validation remain required; low-connectivity planning packets
-                are not yet available.
+                Prometheus metrics, and self-contained low-connectivity field
+                packets are implemented. Production source caching, deployment
+                rollout, operational alerting, and agency validation remain
+                required.
               </p>
             </div>
           </article>
@@ -436,9 +613,15 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <Sparkles size={20} />
             <p>
               Create a prioritized list of actions from the selected event,
-              affected communities, resource checks, and route constraints.
+              affected communities, resource checks, and route constraints. The
+              completed list unlocks a printable offline field packet.
             </p>
-            <button type="button" onClick={generate}>
+            <button
+              type="button"
+              data-telemetry-action="planning_brief_generate"
+              data-telemetry-category="planning"
+              onClick={generate}
+            >
               Create response checklist
               <ArrowUpRight size={16} />
             </button>
@@ -489,9 +672,30 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                 </span>
                 <small>{brief.citations.join(' · ')}</small>
               </div>
-              <button type="button" onClick={generate}>
-                Update list
-              </button>
+              <div className="brief-actions">
+                <button
+                  className="field-packet-button"
+                  type="button"
+                  data-telemetry-action="field_packet_download"
+                  data-telemetry-category="planning"
+                  disabled={communityProfileState.status === 'loading'}
+                  aria-busy={communityProfileState.status === 'loading'}
+                  onClick={downloadPacket}
+                >
+                  <Download size={14} />
+                  {communityProfileState.status === 'loading'
+                    ? 'Preparing field packet'
+                    : 'Download field packet'}
+                </button>
+                <button
+                  type="button"
+                  data-telemetry-action="planning_brief_update"
+                  data-telemetry-category="planning"
+                  onClick={generate}
+                >
+                  Update list
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -578,6 +782,40 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                 <li key={source.name}>
                   <strong>{source.name}</strong>
                   <span>{source.updated}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="official-references">
+            <div className="section-heading">
+              <h2>Hawaiʻi DHS planning references</h2>
+              <span>
+                Official inclusion and recovery guidance, not scenario data
+              </span>
+            </div>
+            <p>
+              DHS guidance informs the planner&apos;s checks for accessible
+              warnings, mobility and no-vehicle support, language access,
+              medication refrigeration, medical equipment, service animals, and
+              survivor recovery referrals.
+            </p>
+            <ul>
+              {hawaiiDhsReferences.map((reference) => (
+                <li key={reference.id}>
+                  <a
+                    href={reference.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-telemetry-action="official_reference_open"
+                    data-telemetry-category="evidence"
+                  >
+                    <span>
+                      <strong>{reference.title}</strong>
+                      <small>{reference.description}</small>
+                    </span>
+                    <ExternalLink size={15} aria-hidden="true" />
+                  </a>
                 </li>
               ))}
             </ul>

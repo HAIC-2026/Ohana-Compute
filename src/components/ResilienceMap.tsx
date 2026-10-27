@@ -93,10 +93,31 @@ function readColor(name: string, fallback: string) {
     .trim()
 }
 
-type PlanningMapState = ReturnType<typeof usePlanningStore.getState>
+const selectPlanningMapState = (
+  state: ReturnType<typeof usePlanningStore.getState>,
+) => ({
+  activeLayers: state.activeLayers,
+  hazard: state.hazard,
+  selectedEventId: state.selectedEventId,
+  confirmedResourceIds: state.confirmedResourceIds,
+  selectedAreaId: state.selectedAreaId,
+  selectedResidentPlanId: state.selectedResidentPlanId,
+  selectedResidentResourceId: state.selectedResidentResourceId,
+  residentNoCar: state.residentNoCar,
+  mobilePanel: state.mobilePanel,
+  locationFocus: state.locationFocus,
+  selectedPlanningZoneId: state.selectedPlanningZoneId,
+  setSelectedAreaId: state.setSelectedAreaId,
+  selectPlanningZone: state.selectPlanningZone,
+  setMobilePanel: state.setMobilePanel,
+  selectResource: state.selectResource,
+  toggleLayer: state.toggleLayer,
+})
+
+type PlanningMapState = ReturnType<typeof selectPlanningMapState>
 
 export function ResilienceMap() {
-  const planningState = usePlanningStore(useShallow((state) => state))
+  const planningState = usePlanningStore(useShallow(selectPlanningMapState))
   const deferredPlanningState = useDeferredValue(planningState)
 
   return <ResilienceMapContent planningState={deferredPlanningState} />
@@ -379,11 +400,27 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           Transport needs
         </button>
       </nav>
-      <div className="hazard-legend">
-        <span aria-hidden="true" />
-        {selectedArea.island === 'Oʻahu'
-          ? `${activeEvent?.name ?? selectedHazard.shortLabel} forecast exposure · practice layer`
-          : `${selectedArea.island} regional exposure · validation pending`}
+      <div
+        className="hazard-legend"
+        aria-label={
+          selectedArea.island === 'Oʻahu'
+            ? `${activeEvent?.name ?? selectedHazard.shortLabel} synthetic scenario footprint; not an official forecast`
+            : `${selectedArea.island} regional scenario footprint; validation pending`
+        }
+      >
+        <span className="hazard-legend-swatch" aria-hidden="true" />
+        <span className="hazard-legend-copy">
+          <strong>
+            {selectedArea.island === 'Oʻahu'
+              ? `${activeEvent?.name ?? selectedHazard.shortLabel} scenario footprint`
+              : `${selectedArea.island} regional scenario footprint`}
+          </strong>
+          <small>
+            {selectedArea.island === 'Oʻahu'
+              ? 'Synthetic practice data · not an official forecast'
+              : 'Synthetic practice data · validation pending'}
+          </small>
+        </span>
       </div>
       {showTsunamiZone &&
         officialEvacuationZone &&
@@ -452,7 +489,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
             type="fill"
             paint={{
               'fill-color': colors.danger,
-              'fill-opacity': 0.1,
+              'fill-opacity': 0.045,
             }}
           />
           <Layer
@@ -460,8 +497,8 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
             type="line"
             paint={{
               'line-color': colors.danger,
-              'line-width': 1.8,
-              'line-opacity': 0.68,
+              'line-width': 2,
+              'line-opacity': 0.72,
               'line-dasharray': [2, 2],
             }}
           />

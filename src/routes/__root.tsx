@@ -55,7 +55,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `<!--
 THESIS: A statewide emergency atlas turns fragmented risk layers into one legible planning journey; it refuses the generic dashboard of interchangeable cards.
-OWN-WORLD: Cartographic paper and midnight operations surfaces, disciplined route lines, precise station-like controls, and a single deep-rose active signal.
+OWN-WORLD: State-charcoal and ʻĀina-teal civic surfaces, disciplined route lines, precise station-like controls, and semantic hazard colors reserved for operational meaning.
 STORY: Start with a hazard, reveal communities under pressure, understand CMIST needs, then generate a grounded coordinated action brief.
 FIRST VIEWPORT: A working island map owns the center, scenario layers run down the left, evidence and Luna interpretation run down the right, and the planning path stays visible above.
 FORM: Emergency atlas fused with a transit diagram; assigned grounded direction five; staging follows the map's active planning corridor; seed bdea18ed.

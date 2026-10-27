@@ -16,7 +16,10 @@ test('desktop selects an island response zone and creates local steps', async ({
   ).toBeVisible()
   await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
   await expect(
-    page.getByText('Hurricane Lala forecast exposure · practice layer'),
+    page.getByText('Hurricane Lala scenario footprint'),
+  ).toBeVisible()
+  await expect(
+    page.getByText('Synthetic practice data · not an official forecast'),
   ).toBeVisible()
   await expect(
     page.getByText('Damaging conditions possible in 48–72 hours'),
@@ -35,6 +38,9 @@ test('desktop selects an island response zone and creates local steps', async ({
   await expect(
     page.getByRole('heading', { name: 'Preview resident guidance' }),
   ).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: /Hawaiʻi DHS programs and services/ }),
+  ).toHaveAttribute('href', 'https://humanservices.hawaii.gov/')
 
   await page
     .getByLabel('Which part of Oʻahu?')
@@ -72,6 +78,12 @@ test('desktop selects an island response zone and creates local steps', async ({
   await expect(
     page.getByRole('heading', { name: 'Local resource inventory' }),
   ).toBeVisible()
+  const hotspotPanel = page.getByTestId('afn-planning-hotspots')
+  await expect(hotspotPanel).toBeVisible()
+  await expect(hotspotPanel).toContainText('AFN planning hotspots')
+  await expect(hotspotPanel).toContainText(
+    'Data-derived weaknesses · AI drafts wording only',
+  )
   await expect(page.getByText(/\d+\/\d+ confirmed/)).toBeVisible()
   await expect(
     page
@@ -93,11 +105,7 @@ test('desktop selects an island response zone and creates local steps', async ({
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Create response checklist' }).click()
-  await expect(
-    page.getByText(
-      'Start in East Honolulu: confirm powered shelter and accessible transportation capacity before damaging winds arrive.',
-    ),
-  ).toBeVisible()
+  await expect(page.getByText(/Start in East Honolulu: confirm /)).toBeVisible()
   await expect(
     page
       .locator('.priority-list')
@@ -105,7 +113,7 @@ test('desktop selects an island response zone and creates local steps', async ({
         'Confirm powered shelter and accessible transportation capacity before damaging winds arrive.',
       ),
   ).toBeVisible()
-  await expect(page.getByText('4 sources used')).toBeVisible()
+  await expect(page.getByText('5 sources used')).toBeVisible()
 })
 
 test('planner consumes official aggregate AFN context', async ({
@@ -279,8 +287,9 @@ test('island selector keeps one island visible and discloses coverage gaps', asy
   await expect(page.getByLabel('Which part of Maui?')).toHaveValue(
     'maui-central',
   )
+  await expect(page.getByText('Maui regional scenario footprint')).toBeVisible()
   await expect(
-    page.getByText('Maui regional exposure · validation pending'),
+    page.getByText('Synthetic practice data · validation pending'),
   ).toBeVisible()
   await expect(page.getByTestId('response-zone-maui-central')).toBeVisible()
   await expect(page.getByTestId('response-zone-oahu-town')).not.toBeVisible()
@@ -356,6 +365,22 @@ test('mobile controls preserve the selected response zone', async ({
     .getByText('Why am I seeing these recommendations?')
     .click()
   await expect(planningSheet.getByText('Needs considered')).toBeVisible()
+  await expect(
+    planningSheet.getByRole('heading', {
+      name: 'Hawaiʻi DHS planning references',
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByRole('link', {
+      name: /Hawaiʻi Department of Human Services/,
+    }),
+  ).toHaveAttribute('href', 'https://humanservices.hawaii.gov/')
+  const emergencyAccessReference = planningSheet.getByRole('link', {
+    name: /DHS emergency planning for disability and access needs/,
+  })
+  await expect(emergencyAccessReference).toContainText(
+    'medication refrigeration',
+  )
 })
 
 test('resident route adapts for address, no car, language, and resource need', async ({
@@ -649,7 +674,7 @@ test('all four challenge events switch the resident risk answer', async ({
   const affectedBefore = await page.locator('.people-total strong').innerText()
   await page.getByRole('button', { name: /Tropical Storm Nolo/ }).click()
   await expect(
-    page.getByText('Tropical Storm Nolo forecast exposure · practice layer'),
+    page.getByText('Tropical Storm Nolo scenario footprint'),
   ).toBeVisible()
   await expect(
     page.getByText('Heaviest rain bands possible in 24–48 hours'),
