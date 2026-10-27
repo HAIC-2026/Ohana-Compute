@@ -307,3 +307,161 @@ test('statewide County planning depth stays distinct', async ({
     /hawaii_resilience_http_requests_total\{method="GET",route="\/api\/v1\/planning-areas",status="200"\} [1-9]\d*/,
   )
 })
+
+test('resource demand stays bounded and reproducible', async ({
+  page,
+  request,
+}) => {
+  const privateValue = 'integration-private-demand-value'
+  const modelRequest = {
+    schema_version: 'resource-demand-request.v1',
+    geography: {
+      id: 'oahu-town',
+      kind: 'planning_area',
+    },
+    population: {
+      status: 'available',
+      estimate: 2361,
+      margin_of_error: 100,
+      source: {
+        id: 'acs-5-year',
+        freshness: 'fresh',
+      },
+    },
+    medical_power: {
+      status: 'available',
+      masked: true,
+      source_id: 'hhs-empower',
+    },
+    scenario: {
+      service_days: 3,
+      shelter_standard: 'evacuation',
+    },
+    practice_supplies: [
+      {
+        category: 'shelter_spaces',
+        unit: 'people',
+        quantity: 300,
+        geography_id: 'oahu-town',
+        validation_status: 'practice_confirmed',
+      },
+      {
+        category: 'shelter_spaces',
+        unit: 'people',
+        quantity: 150,
+        geography_id: 'maui-central',
+        validation_status: 'practice_confirmed',
+      },
+    ],
+  }
+  const firstResponse = await request.post(
+    `${backendURL}/api/v1/planning/resource-demand`,
+    { data: modelRequest },
+  )
+  expect(firstResponse.ok()).toBe(true)
+  const first = await firstResponse.json()
+  const secondResponse = await request.post(
+    `${backendURL}/api/v1/planning/resource-demand`,
+    { data: modelRequest },
+  )
+  expect(secondResponse.ok()).toBe(true)
+  const second = await secondResponse.json()
+  expect(second).toEqual(first)
+  expect(first).toMatchObject({
+    schema_version: 'resource-demand-response.v1',
+    model_version: 'mass-care-demand-v0.1',
+    assumption_version: 'hawaii-mass-care-scenario-v0.1',
+    status: 'partial',
+  })
+
+  const shelter = first.lines.find(
+    (line: { id: string }) => line.id === 'shelter_spaces',
+  )
+  expect(shelter.supply.applied_quantity).toBe(300)
+  expect(shelter.gap.planning).toBe(
+    shelter.demand.planning - shelter.supply.applied_quantity,
+  )
+  expect(first.supply_assessments).toContainEqual(
+    expect.objectContaining({
+      quantity: 150,
+      status: 'excluded',
+      reason: 'geography_mismatch',
+    }),
+  )
+  expect(first.lines).toContainEqual(
+    expect.objectContaining({
+      id: 'medical_power_support',
+      status: 'unavailable',
+      unavailable_reason: 'privacy_masked',
+    }),
+  )
+
+  const missingPopulationResponse = await request.post(
+    `${backendURL}/api/v1/planning/resource-demand`,
+    {
+      data: {
+        ...modelRequest,
+        population: {
+          status: 'unavailable',
+          source: {
+            id: 'unavailable',
+            freshness: 'unavailable',
+          },
+        },
+      },
+    },
+  )
+  expect(missingPopulationResponse.ok()).toBe(true)
+  const missingPopulation = await missingPopulationResponse.json()
+  expect(missingPopulation.status).toBe('unavailable')
+  expect(
+    missingPopulation.lines.every(
+      (line: { demand?: unknown }) => line.demand === undefined,
+    ),
+  ).toBe(true)
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const demandPanel = planningSheet.getByTestId('resource-demand')
+  await expect(demandPanel).toContainText('mass-care-demand-v0.1')
+  await expect(demandPanel).toContainText('Planning service population')
+  await expect(demandPanel).toContainText('Unavailable is not zero')
+  const serviceDuration = demandPanel.getByLabel('Service duration')
+  await serviceDuration.selectOption('7')
+  await serviceDuration.focus()
+  await page.keyboard.press('Tab')
+  await expect(demandPanel).toContainText('7-day meals')
+
+  await planningSheet
+    .getByRole('button', { name: 'Create response checklist' })
+    .click()
+  await expect(
+    planningSheet.getByRole('button', { name: 'Download field packet' }),
+  ).toBeEnabled()
+  const downloadPromise = page.waitForEvent('download')
+  await planningSheet
+    .getByRole('button', { name: 'Download field packet' })
+    .click()
+  const download = await downloadPromise
+  const downloadedPath = await download.path()
+  const packet = await readFile(downloadedPath, 'utf8')
+  expect(packet).toContain('Quantitative resource demand')
+  expect(packet).toContain('mass-care-demand-v0.1')
+  expect(packet).toContain('hawaii-mass-care-scenario-v0.1')
+  expect(packet).toContain('Unavailable is not zero')
+  expect(packet).not.toContain(privateValue)
+
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  expect(metricsResponse.ok()).toBe(true)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toMatch(
+    /hawaii_resilience_http_requests_total\{method="POST",route="\/api\/v1\/planning\/resource-demand",status="200"\} [1-9]\d*/,
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_browser_events_total{action="resource_demand_duration",category="planning"',
+  )
+  expect(metrics).not.toContain(privateValue)
+})

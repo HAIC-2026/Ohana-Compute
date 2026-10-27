@@ -48,6 +48,13 @@ test('browser telemetry is batched and excludes private values', async ({
     .first()
     .click()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const resourceDemandDuration = page
+    .getByTestId('resource-demand')
+    .getByLabel('Service duration')
+  await resourceDemandDuration.selectOption('7')
+  await resourceDemandDuration.focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByTestId('resource-demand')).toContainText('7-day meals')
   await page
     .getByTestId('county-shelter-plans')
     .getByRole('tab', { name: 'Hawaiʻi' })
@@ -55,6 +62,13 @@ test('browser telemetry is batched and excludes private values', async ({
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
+  await expect
+    .poll(() =>
+      batches
+        .flatMap((batch) => batch.events)
+        .some((event) => event.action === 'resource_demand_duration'),
+    )
+    .toBe(true)
   const events = batches.flatMap((batch) => batch.events)
   expect(batches.every((batch) => batch.version === 1)).toBe(true)
   expect(
@@ -70,6 +84,14 @@ test('browser telemetry is batched and excludes private values', async ({
         event.kind === 'interaction' &&
         event.category === 'planning' &&
         event.action === 'shelter_county_select',
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'planning' &&
+        event.action === 'resource_demand_duration',
     ),
   ).toBe(true)
   expect(

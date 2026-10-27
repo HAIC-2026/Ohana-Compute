@@ -108,6 +108,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelter-plans`
 - `GET /api/v1/planning-areas`
+- `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -142,6 +143,18 @@ the browser does not substitute an Oʻahu resource or route. Molokaʻi, Lānaʻi
 Niʻihau, and Kalawao remain explicit coverage gaps rather than inferred local
 workflows.
 
+`POST /api/v1/planning/resource-demand` turns an aggregate ACS population,
+its margin of error, a bounded service duration, a shelter standard, and
+unit-matched practice supply into deterministic low/planning/high ranges. The
+versioned v0.1 model covers mass-care service population, shelter spaces and
+floor area, cots, meals, and potable water. Sanitation, role-specific staffing,
+accessible transportation, medical power, refrigeration, oxygen, backup
+power, and animal support remain explicit unavailable or local-assumption
+lines where no defensible statewide coefficient exists. Privacy-masked HHS
+emPOWER values are never converted into numeric demand, and missing evidence is
+never treated as zero. Requests are strict JSON, limited to 64 KiB, use bounded
+enums and quantities, and return `Cache-Control: no-store`.
+
 Hawaiʻi has five political counties but four County emergency-management
 jurisdictions under
 [HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
@@ -153,11 +166,12 @@ special case instead of inventing an independent Kalawao shelter agency.
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
 context, official aggregate AFN values, resource and route checks, assigned
-actions, public guidance, required local validation checks, and direct Hawaiʻi
-DHS planning-reference URLs. It has embedded print styles and no external
-runtime dependencies, so it can be printed or opened after connectivity is
-lost. It intentionally excludes resident-entered addresses, coordinates,
-names, identifiers, and person-level medical data.
+actions, quantitative resource-demand ranges and unavailable lines, public
+guidance, required local validation checks, and direct Hawaiʻi DHS
+planning-reference URLs. It has embedded print styles and no external runtime
+dependencies, so it can be printed or opened after connectivity is lost. It
+intentionally excludes resident-entered addresses, coordinates, names,
+identifiers, and person-level medical data.
 
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -181,12 +195,14 @@ npm run check
 `npm run test:integration` starts the real frontend and Go API on isolated test
 ports, drives the complete Map → Model → Match planner journey, confirms a
 resource, generates the response checklist, downloads and inspects the offline
-field briefing, exercises accessible public guidance, and then verifies the
-resulting AFN, HTTP, browser-interaction, and telemetry Prometheus metrics. The
-test also proves that a private address entered in the guidance flow is absent
-from both the downloaded packet and Prometheus output. The integration server
-uses deterministic aggregate official-source fixtures; unit tests separately
-cover the production community-source fan-out and partial-source behavior.
+field briefing, exercises the deterministic resource-demand model and
+accessible public guidance, and then verifies the resulting AFN, HTTP,
+browser-interaction, and telemetry Prometheus metrics. The test also proves
+that a private address entered in the guidance flow is absent from both the
+downloaded packet and Prometheus output. The integration server uses
+deterministic aggregate official-source fixtures; unit tests separately cover
+the production community-source fan-out, partial-source behavior, demand-model
+determinism, ACS uncertainty propagation, and fail-closed supply matching.
 
 `npm run test:journey` runs the numbered resident story and writes raw timing
 metrics plus a summary to `test-results/performance/`. Important browser state
@@ -281,10 +297,14 @@ instead of substituting a reassuring answer.
 - `src/lib/planning-areas.ts` loads and caches the deterministic statewide
   practice workflow catalog, maps its resources/routes/briefings into existing
   planner models, and preserves fail-closed retry behavior.
+- `src/lib/resource-demand.ts` sends only bounded aggregate inputs and
+  unit-labeled practice supply to the deterministic Go resource-demand model;
+  it preserves unavailable, partial, privacy-masked, and retry states.
 - `src/store/planning-store.ts` holds the client scenario state.
 - `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
   event adapters, official hazard and shelter adapters, community-planning
-  sources, and HDOT planned-closure context.
+  sources, deterministic resource-demand calculator, and HDOT planned-closure
+  context.
 
 The frontend already treats inference as an asynchronous service and passes a
 structured area, hazard, severity, exposure, and primary planning signal. The

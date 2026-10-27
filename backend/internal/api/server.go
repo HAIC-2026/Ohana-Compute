@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 	"github.com/prometheus/client_golang/prometheus"
@@ -64,6 +67,10 @@ type PlanningAreaReader interface {
 	Snapshot(context.Context) (planningareas.Snapshot, error)
 }
 
+type ResourceDemandCalculator interface {
+	Calculate(context.Context, resourcedemand.Request) (resourcedemand.Response, error)
+}
+
 type Config struct {
 	Alerts          AlertReader
 	Cyclones        CycloneReader
@@ -73,6 +80,7 @@ type Config struct {
 	Transportation  TransportationReader
 	ShelterPlans    ShelterPlanReader
 	PlanningAreas   PlanningAreaReader
+	ResourceDemand  ResourceDemandCalculator
 	AllowedOrigins  []string
 	Logger          *slog.Logger
 	Registry        *prometheus.Registry
@@ -109,6 +117,10 @@ func NewServer(config Config) *Server {
 	if config.PlanningAreas == nil {
 		defaultCatalog := planningareas.NewCatalog()
 		config.PlanningAreas = defaultCatalog
+	}
+	if config.ResourceDemand == nil {
+		defaultCalculator := resourcedemand.NewCalculator()
+		config.ResourceDemand = defaultCalculator
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -186,6 +198,10 @@ func NewServer(config Config) *Server {
 		"statewide-planning-areas",
 		config.PlanningAreas.Snapshot,
 	))
+	mux.HandleFunc(
+		"POST /api/v1/planning/resource-demand",
+		resourceDemandHandler(logger, config.ResourceDemand),
+	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,
 		"acs-5-year",
@@ -343,6 +359,84 @@ func parseCoordinates(request *http.Request) (float64, float64, error) {
 		return 0, 0, errors.New("lon must be between -180 and 180")
 	}
 	return latitude, longitude, nil
+}
+
+func resourceDemandHandler(
+	logger *slog.Logger,
+	calculator ResourceDemandCalculator,
+) http.HandlerFunc {
+	const maxBodyBytes = 64 << 10
+
+	return func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Cache-Control", "no-store")
+		mediaType, _, err := mime.ParseMediaType(
+			request.Header.Get("Content-Type"),
+		)
+		if err != nil || mediaType != "application/json" {
+			writeAPIError(
+				writer,
+				http.StatusUnsupportedMediaType,
+				"Content-Type must be application/json",
+				"",
+			)
+			return
+		}
+
+		request.Body = http.MaxBytesReader(writer, request.Body, maxBodyBytes)
+		decoder := json.NewDecoder(request.Body)
+		decoder.DisallowUnknownFields()
+		var input resourcedemand.Request
+		if err := decoder.Decode(&input); err != nil {
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				writeAPIError(
+					writer,
+					http.StatusRequestEntityTooLarge,
+					"resource demand request is too large",
+					"",
+				)
+				return
+			}
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"invalid resource demand request",
+				"",
+			)
+			return
+		}
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"resource demand request must contain one JSON object",
+				"",
+			)
+			return
+		}
+		if err := resourcedemand.Validate(input); err != nil {
+			writeAPIError(
+				writer,
+				http.StatusBadRequest,
+				"invalid resource demand request",
+				"",
+			)
+			return
+		}
+
+		response, err := calculator.Calculate(request.Context(), input)
+		if err != nil {
+			logger.Error("calculate resource demand", "error", err)
+			writeAPIError(
+				writer,
+				http.StatusBadGateway,
+				"resource demand model unavailable",
+				"",
+			)
+			return
+		}
+		writeJSON(writer, http.StatusOK, response)
+	}
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {

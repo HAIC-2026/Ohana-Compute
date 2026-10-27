@@ -17,6 +17,7 @@ in a portal.
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelter-plans`
 - `GET /api/v1/planning-areas`
+- `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -76,6 +77,31 @@ local validation and never imply that a facility is open or a road is
 passable. Molokaʻi, Lānaʻi, Niʻihau, and Kalawao are returned as unsupported
 workflow scope. Reader failures return `502` with `Cache-Control: no-store`; no
 Oʻahu-shaped success response is synthesized.
+
+`POST /api/v1/planning/resource-demand` accepts a strict, versioned aggregate
+request and returns deterministic low/planning/high scenario ranges. The
+calculator propagates ACS population margins of error and subtracts practice
+supply only when category, unit, planning geography, and
+`practice_confirmed` status match. Mismatched supply remains in the response as
+an excluded assessment with a bounded reason. The model never treats a missing
+or privacy-masked count as zero and never derives person-level demand from HHS
+emPOWER.
+
+The v0.1 numeric lines are mass-care service population, shelter spaces,
+evacuation or short-term floor area, cots, meals, and potable water. Sanitation
+and staffing remain role/local-assumption lines; transport uptake, generator
+load, medication refrigeration, oxygen, and animal support remain unavailable
+until an authorized coefficient or scenario input exists. The 11% / 23% / 35%
+service envelope is an explicit versioned stress-test assumption, not an
+observed shelter-uptake rate or forecast. Identical canonical requests return
+the same calculation ID and response.
+
+The handler requires `application/json`, rejects unknown fields, accepts one
+JSON object, limits bodies to 64 KiB, validates bounded identifiers, enums,
+durations, quantities, and record counts, and returns `Cache-Control: no-store`.
+Malformed requests return `400`, unsupported content types return `415`,
+oversized bodies return `413`, and calculator failures return `502` without
+internal error details.
 
 HDOT closure results are planned roadwork, not emergency road status or proof
 that a route is passable. The PTWC endpoint exposes the latest product and its
