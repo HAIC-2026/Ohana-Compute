@@ -677,6 +677,43 @@
       ],
       "title": "Collaborative plan operations",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome, provider_class) (rate(hawaii_resilience_grounded_planning_operations_total[5m]))",
+          "legendFormat": "{{operation}} / {{outcome}} / {{provider_class}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Grounded planning operations",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
@@ -687,7 +724,8 @@
     "backend",
     "afn",
     "event-triggers",
-    "operational-status"
+    "operational-status",
+    "grounded-planning"
   ],
   "templating": {
     "list": [
@@ -712,5 +750,5 @@
   "timezone": "browser",
   "title": "Hawaiʻi Mass Care Planner",
   "uid": "hawaii-resilience",
-  "version": 2
+  "version": 3
 }

@@ -38,19 +38,41 @@ type OutputReference struct {
 }
 
 type Snapshot struct {
-	Checklist  []ChecklistAction `json:"checklist"`
-	SourceRefs []string          `json:"source_refs"`
-	Outputs    []OutputReference `json:"outputs"`
+	Checklist           []ChecklistAction           `json:"checklist"`
+	SourceRefs          []string                    `json:"source_refs"`
+	Outputs             []OutputReference           `json:"outputs"`
+	DemandLines         []DemandEvidence            `json:"demand_lines,omitempty"`
+	PartnerCapabilities []PartnerCapabilityEvidence `json:"partner_capabilities,omitempty"`
+}
+
+type DemandEvidence struct {
+	ID       string `json:"id"`
+	Status   string `json:"status"`
+	GapState string `json:"gap_state"`
+}
+
+type PartnerCapabilityEvidence struct {
+	Capability        string `json:"capability"`
+	Status            string `json:"status"`
+	OperationalStatus string `json:"operational_status"`
+	CapacityStatus    string `json:"capacity_status"`
+	ActivationStatus  string `json:"activation_status"`
 }
 
 type Version struct {
-	Version   int        `json:"version"`
-	Title     string     `json:"title"`
-	Summary   string     `json:"summary"`
-	Status    PlanStatus `json:"status"`
-	Snapshot  Snapshot   `json:"snapshot"`
-	ActorRole string     `json:"actor_role"`
-	CreatedAt time.Time  `json:"created_at"`
+	Version      int                   `json:"version"`
+	Title        string                `json:"title"`
+	Summary      string                `json:"summary"`
+	Status       PlanStatus            `json:"status"`
+	Snapshot     Snapshot              `json:"snapshot"`
+	ActorRole    string                `json:"actor_role"`
+	AIAssistance *AIAssistanceMetadata `json:"ai_assistance,omitempty"`
+	CreatedAt    time.Time             `json:"created_at"`
+}
+
+type AIAssistanceMetadata struct {
+	ProviderPolicyVersion string `json:"provider_policy_version"`
+	InputContextHash      string `json:"input_context_hash"`
 }
 
 type Comment struct {
@@ -81,12 +103,13 @@ type Approval struct {
 }
 
 type AuditEvent struct {
-	ID           string    `json:"id"`
-	Action       string    `json:"action"`
-	ResourceType string    `json:"resource_type"`
-	ActorRole    string    `json:"actor_role"`
-	Outcome      string    `json:"outcome"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string            `json:"id"`
+	Action       string            `json:"action"`
+	ResourceType string            `json:"resource_type"`
+	ActorRole    string            `json:"actor_role"`
+	Outcome      string            `json:"outcome"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
 }
 
 type Plan struct {
@@ -127,6 +150,13 @@ type UpdateInput struct {
 	Summary          string     `json:"summary"`
 	Status           PlanStatus `json:"status"`
 	Snapshot         Snapshot   `json:"snapshot"`
+}
+
+type AIApplyInput struct {
+	ExpectedRevision int
+	Summary          string
+	Snapshot         Snapshot
+	Assistance       AIAssistanceMetadata
 }
 
 type CommentInput struct {
@@ -179,6 +209,42 @@ func ValidateUpdate(input UpdateInput) error {
 		return errors.New("expected_revision must be positive")
 	}
 	return validateVersionFields(input.Title, input.Summary, input.Status, input.Snapshot)
+}
+
+func ValidateAIApply(input AIApplyInput) error {
+	if input.ExpectedRevision < 1 {
+		return errors.New("expected_revision must be positive")
+	}
+	if err := validateBounded(
+		"provider_policy_version",
+		input.Assistance.ProviderPolicyVersion,
+		1,
+		80,
+	); err != nil {
+		return err
+	}
+	if err := validateContextHash(input.Assistance.InputContextHash); err != nil {
+		return err
+	}
+	return validateVersionFields(
+		"AI-assisted planning draft",
+		input.Summary,
+		StatusDraft,
+		input.Snapshot,
+	)
+}
+
+func validateContextHash(value string) error {
+	if len(value) != 64 {
+		return errors.New("input_context_hash must be a SHA-256 hex digest")
+	}
+	for _, character := range value {
+		if (character < '0' || character > '9') &&
+			(character < 'a' || character > 'f') {
+			return errors.New("input_context_hash must be a SHA-256 hex digest")
+		}
+	}
+	return nil
 }
 
 func ValidateComment(input CommentInput) error {
@@ -259,7 +325,11 @@ func validateVersionFields(
 	}, string(status)) {
 		return errors.New("status is invalid")
 	}
-	if len(snapshot.Checklist) > 20 || len(snapshot.SourceRefs) > 30 || len(snapshot.Outputs) > 18 {
+	if len(snapshot.Checklist) > 20 ||
+		len(snapshot.SourceRefs) > 30 ||
+		len(snapshot.Outputs) > 18 ||
+		len(snapshot.DemandLines) > 20 ||
+		len(snapshot.PartnerCapabilities) > 12 {
 		return errors.New("snapshot collection exceeds the supported size")
 	}
 	for _, action := range snapshot.Checklist {
@@ -299,6 +369,38 @@ func validateVersionFields(
 		}
 		if err := rejectSensitivePlanningText(output.Summary); err != nil {
 			return err
+		}
+	}
+	for _, line := range snapshot.DemandLines {
+		if err := validateToken("demand line id", line.ID, 64); err != nil {
+			return err
+		}
+		if !contains([]string{"modeled", "unavailable"}, line.Status) {
+			return errors.New("demand line status is invalid")
+		}
+		if !contains([]string{
+			"modeled_gap",
+			"no_modeled_gap",
+			"unavailable",
+		}, line.GapState) {
+			return errors.New("demand line gap state is invalid")
+		}
+	}
+	for _, capability := range snapshot.PartnerCapabilities {
+		if err := validateToken(
+			"partner capability",
+			capability.Capability,
+			64,
+		); err != nil {
+			return err
+		}
+		if !contains([]string{"matched", "unmatched", "stale"}, capability.Status) {
+			return errors.New("partner capability status is invalid")
+		}
+		if capability.OperationalStatus != "not_validated" ||
+			capability.CapacityStatus != "not_reported" ||
+			capability.ActivationStatus != "not_reported" {
+			return errors.New("partner operational fields must remain unvalidated")
 		}
 	}
 	return nil

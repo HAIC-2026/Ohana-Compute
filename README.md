@@ -51,9 +51,9 @@ households.
   limited-connectivity coordination
 - Data-derived AFN planning hotspots across communication, medical,
   independence, safety, and transportation domains
-- A bounded, injectable mock-AI response boundary that receives aggregate
-  planning evidence but no coordinates, addresses, identifiers, or raw source
-  errors
+- Disabled-by-default grounded planning assist with an injectable provider,
+  server-built structured evidence, mandatory source citations, hard policy
+  validation, explicit human review, and no arbitrary browser prompt
 - A disabled-by-default identity boundary with a privacy-safe session endpoint,
   fail-closed collaborative-write guard, and explicit local-only planner state
 - Disabled-by-default durable shared plans with immutable versions, bounded
@@ -115,6 +115,8 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/collaboration/plans/{planID}`
 - `PUT /api/v1/collaboration/plans/{planID}`
 - Collaboration comment, assignment, approval, and version-comparison routes
+- Collaboration planning-assist status, generate, reject, and explicit-apply
+  routes
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -151,7 +153,11 @@ approval capability guards. Provider-backed OIDC verification remains blocked
 on approved tenant/application configuration and a cryptographic verifier; OIDC
 metadata alone fails closed. See
 [`docs/identity-foundation.md`](./docs/identity-foundation.md) and
-[`docs/collaborative-plans.md`](./docs/collaborative-plans.md).
+[`docs/collaborative-plans.md`](./docs/collaborative-plans.md). Grounded
+planning assist additionally requires configured identity and collaboration,
+is unavailable to anonymous/local-only use, and never changes a plan until a
+human explicitly applies selected draft content. See
+[`docs/grounded-planning.md`](./docs/grounded-planning.md).
 
 The backend coalesces identical concurrent official-source cache misses so a
 burst of planner requests produces one upstream refresh per source and

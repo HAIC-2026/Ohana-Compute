@@ -16,6 +16,10 @@ in a portal.
 - `POST /api/v1/collaboration/plans/{planID}/assignments`
 - `POST /api/v1/collaboration/plans/{planID}/approvals`
 - `GET /api/v1/collaboration/plans/{planID}/compare?from={version}&to={version}`
+- `GET /api/v1/collaboration/plans/{planID}/planning-assist/status`
+- `POST /api/v1/collaboration/plans/{planID}/planning-drafts`
+- `POST /api/v1/collaboration/plans/{planID}/planning-drafts/{draftID}/apply`
+- `POST /api/v1/collaboration/plans/{planID}/planning-drafts/{draftID}/reject`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -69,6 +73,9 @@ in a portal.
 - Disabled-by-default SQLite collaboration persistence with atomic migrations,
   WAL, foreign keys, busy timeout, immutable versions, optimistic concurrency,
   and append-only audit records
+- Disabled-by-default grounded planning provider boundary with strict
+  structured output, source allowlist citations, policy validation, bounded
+  requests and responses, and explicit human application
 
 Every official-data response includes the source ID, authority, upstream URL,
 retrieval time, cache freshness deadline, and `fresh` or `stale` status.
@@ -226,6 +233,23 @@ Environment variables:
 - `COLLABORATION_PERSISTENCE` — `disabled` by default; `sqlite` is the only
   durable driver
 - `COLLABORATION_SQLITE_PATH` — required absolute path when SQLite is enabled
+- `GROUNDED_AI_MODE` — `disabled` by default; `openai-compatible` enables the
+  constrained production adapter
+- `GROUNDED_AI_ENDPOINT` and `GROUNDED_AI_ALLOWED_ENDPOINTS` — required exact
+  HTTPS endpoint and comma-separated allowlist
+- `GROUNDED_AI_MODEL` and `GROUNDED_AI_ALLOWED_MODELS` — required selected
+  model and comma-separated allowlist; keep deployed values out of source
+  control and telemetry
+- `GROUNDED_AI_API_KEY` or `GROUNDED_AI_API_KEY_FILE` — external credential;
+  prefer the mounted secret file
+- `GROUNDED_AI_TIMEOUT` and `GROUNDED_AI_MAX_OUTPUT_TOKENS` — required bounded
+  request limits
+
+Planning assist requires authenticated collaboration read/write access and a
+durable plan. The provider receives only server-built controlled evidence; it
+never receives titles, summaries, comments, resident input, coordinates,
+identifiers, raw payloads, or tokens. See
+[`../docs/grounded-planning.md`](../docs/grounded-planning.md).
 
 The current production server does not include a provider-backed OIDC verifier.
 Complete OIDC metadata therefore reports `unavailable` and keeps protected

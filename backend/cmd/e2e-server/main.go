@@ -15,6 +15,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/groundedplanning"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
@@ -286,6 +287,7 @@ func main() {
 		os.Exit(1)
 	}
 	var collaborationStore collaboration.Store
+	var groundedPlanningService *groundedplanning.Service
 	if os.Getenv("E2E_ENABLE_COLLABORATION") == "1" {
 		identityService, err = identity.NewService(identity.Config{
 			Mode: identity.ModeOIDC,
@@ -313,6 +315,14 @@ func main() {
 			os.Exit(1)
 		}
 		defer collaborationStore.Close()
+		if os.Getenv("E2E_ENABLE_GROUNDED_PLANNING") == "1" {
+			groundedPlanningService = groundedplanning.NewService(
+				groundedplanning.Config{
+					Provider: &groundedplanning.FakeProvider{},
+					Store:    collaborationStore,
+				},
+			)
+		}
 	}
 	server := api.NewServer(api.Config{
 		Alerts:            fixtures,
@@ -329,9 +339,11 @@ func main() {
 		OperationalStatus: operationalStatusFixtures,
 		Identity:          identityService,
 		Collaboration:     collaborationStore,
+		GroundedPlanning:  groundedPlanningService,
 		AllowedOrigins: []string{
 			"http://127.0.0.1:3000",
 			"http://127.0.0.1:13000",
+			"http://127.0.0.1:13001",
 		},
 		Logger: slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	})

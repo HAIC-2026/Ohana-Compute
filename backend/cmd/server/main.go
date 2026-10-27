@@ -20,6 +20,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/groundedplanning"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
@@ -65,6 +66,11 @@ func main() {
 	}
 	if collaborationStore != nil {
 		defer collaborationStore.Close()
+	}
+	groundedPlanningProvider, err := groundedPlanningProviderFromEnvironment()
+	if err != nil {
+		logger.Error("invalid grounded planning configuration", "error", err)
+		os.Exit(1)
 	}
 
 	port := envOrDefault("PORT", "8080")
@@ -141,10 +147,14 @@ func main() {
 		OperationalStatus: operationalStatusService,
 		Identity:          identityService,
 		Collaboration:     collaborationStore,
-		AllowedOrigins:    allowedOrigins,
-		Logger:            logger,
-		Registry:          registry,
-		TelemetryRate:     telemetryRate,
+		GroundedPlanning: groundedplanning.NewService(groundedplanning.Config{
+			Provider: groundedPlanningProvider,
+			Store:    collaborationStore,
+		}),
+		AllowedOrigins: allowedOrigins,
+		Logger:         logger,
+		Registry:       registry,
+		TelemetryRate:  telemetryRate,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -177,6 +187,100 @@ func main() {
 		logger.Error("backend stopped unexpectedly", "error", err)
 		os.Exit(1)
 	}
+}
+
+func groundedPlanningProviderFromEnvironment() (
+	groundedplanning.Provider,
+	error,
+) {
+	mode := strings.TrimSpace(os.Getenv("GROUNDED_AI_MODE"))
+	settingNames := []string{
+		"GROUNDED_AI_ENDPOINT",
+		"GROUNDED_AI_ALLOWED_ENDPOINTS",
+		"GROUNDED_AI_MODEL",
+		"GROUNDED_AI_ALLOWED_MODELS",
+		"GROUNDED_AI_API_KEY",
+		"GROUNDED_AI_API_KEY_FILE",
+		"GROUNDED_AI_TIMEOUT",
+		"GROUNDED_AI_MAX_OUTPUT_TOKENS",
+	}
+	if mode == "" || mode == "disabled" {
+		for _, name := range settingNames {
+			if strings.TrimSpace(os.Getenv(name)) != "" {
+				return nil, fmt.Errorf("%s requires GROUNDED_AI_MODE=openai-compatible", name)
+			}
+		}
+		return nil, nil
+	}
+	if mode != "openai-compatible" {
+		return nil, fmt.Errorf("unsupported GROUNDED_AI_MODE %q", mode)
+	}
+	apiKey, err := secretFromEnvironmentOrFile(
+		"GROUNDED_AI_API_KEY",
+		"GROUNDED_AI_API_KEY_FILE",
+	)
+	if err != nil {
+		return nil, err
+	}
+	timeout, err := requiredDuration("GROUNDED_AI_TIMEOUT")
+	if err != nil {
+		return nil, err
+	}
+	maxOutputTokens, err := requiredPositiveInt(
+		"GROUNDED_AI_MAX_OUTPUT_TOKENS",
+	)
+	if err != nil {
+		return nil, err
+	}
+	return groundedplanning.NewOpenAICompatibleProvider(
+		groundedplanning.OpenAICompatibleConfig{
+			Endpoint: strings.TrimSpace(os.Getenv("GROUNDED_AI_ENDPOINT")),
+			AllowedEndpoints: splitRequiredList(
+				os.Getenv("GROUNDED_AI_ALLOWED_ENDPOINTS"),
+			),
+			Model: strings.TrimSpace(os.Getenv("GROUNDED_AI_MODEL")),
+			AllowedModels: splitRequiredList(
+				os.Getenv("GROUNDED_AI_ALLOWED_MODELS"),
+			),
+			APIKey:          apiKey,
+			Timeout:         timeout,
+			MaxOutputTokens: maxOutputTokens,
+		},
+	)
+}
+
+func requiredDuration(name string) (time.Duration, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return 0, fmt.Errorf("%s is required", name)
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration", name)
+	}
+	return parsed, nil
+}
+
+func requiredPositiveInt(name string) (int, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return 0, fmt.Errorf("%s is required", name)
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", name)
+	}
+	return parsed, nil
+}
+
+func splitRequiredList(value string) []string {
+	result := []string{}
+	for _, item := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func collaborationStoreFromEnvironment() (collaboration.Store, error) {

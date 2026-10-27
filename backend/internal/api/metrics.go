@@ -11,28 +11,29 @@ import (
 )
 
 type Metrics struct {
-	httpRequests              *prometheus.CounterVec
-	httpDuration              *prometheus.HistogramVec
-	httpInFlight              prometheus.Gauge
-	browserEvents             *prometheus.CounterVec
-	browserDuration           *prometheus.HistogramVec
-	telemetryBatches          *prometheus.CounterVec
-	telemetryRejected         *prometheus.CounterVec
-	afnSourceRequests         *prometheus.CounterVec
-	afnSourceDuration         *prometheus.HistogramVec
-	afnProfiles               *prometheus.CounterVec
-	afnSourceRetrieved        *prometheus.GaugeVec
-	afnSourceStale            *prometheus.GaugeVec
-	afnMaskedValues           *prometheus.CounterVec
-	eventSourceRequests       *prometheus.CounterVec
-	eventSourceDuration       *prometheus.HistogramVec
-	eventSnapshots            *prometheus.CounterVec
-	operationalSourceRequests *prometheus.CounterVec
-	operationalSourceDuration *prometheus.HistogramVec
-	operationalSnapshots      *prometheus.CounterVec
-	operationalDomains        *prometheus.CounterVec
-	identityAuthorization     *prometheus.CounterVec
-	collaborationOperations   *prometheus.CounterVec
+	httpRequests               *prometheus.CounterVec
+	httpDuration               *prometheus.HistogramVec
+	httpInFlight               prometheus.Gauge
+	browserEvents              *prometheus.CounterVec
+	browserDuration            *prometheus.HistogramVec
+	telemetryBatches           *prometheus.CounterVec
+	telemetryRejected          *prometheus.CounterVec
+	afnSourceRequests          *prometheus.CounterVec
+	afnSourceDuration          *prometheus.HistogramVec
+	afnProfiles                *prometheus.CounterVec
+	afnSourceRetrieved         *prometheus.GaugeVec
+	afnSourceStale             *prometheus.GaugeVec
+	afnMaskedValues            *prometheus.CounterVec
+	eventSourceRequests        *prometheus.CounterVec
+	eventSourceDuration        *prometheus.HistogramVec
+	eventSnapshots             *prometheus.CounterVec
+	operationalSourceRequests  *prometheus.CounterVec
+	operationalSourceDuration  *prometheus.HistogramVec
+	operationalSnapshots       *prometheus.CounterVec
+	operationalDomains         *prometheus.CounterVec
+	identityAuthorization      *prometheus.CounterVec
+	collaborationOperations    *prometheus.CounterVec
+	groundedPlanningOperations *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -225,6 +226,14 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"operation", "outcome"},
 		),
+		groundedPlanningOperations: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "grounded_planning_operations_total",
+				Help:      "Grounded planning operations by bounded operation, outcome, and provider class.",
+			},
+			[]string{"operation", "outcome", "provider_class"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -249,6 +258,7 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.operationalDomains,
 		metrics.identityAuthorization,
 		metrics.collaborationOperations,
+		metrics.groundedPlanningOperations,
 	)
 	return metrics
 }
@@ -259,6 +269,27 @@ func (metrics *Metrics) observeIdentityAuthorization(outcome identity.Authorizat
 
 func (metrics *Metrics) observeCollaboration(operation string, outcome string) {
 	metrics.collaborationOperations.WithLabelValues(operation, outcome).Inc()
+}
+
+func (metrics *Metrics) observeGroundedPlanning(
+	operation string,
+	outcome string,
+	providerClass string,
+) {
+	metrics.groundedPlanningOperations.WithLabelValues(
+		operation,
+		outcome,
+		boundedGroundedPlanningProviderClass(providerClass),
+	).Inc()
+}
+
+func boundedGroundedPlanningProviderClass(value string) string {
+	switch value {
+	case "openai-compatible", "deterministic-fake", "validated", "bounded":
+		return value
+	default:
+		return "other"
+	}
 }
 
 func instrumentHTTP(metrics *Metrics, next http.Handler) http.Handler {

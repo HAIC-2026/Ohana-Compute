@@ -128,3 +128,67 @@ func TestCollaborationStoreFromEnvironmentOpensDurableSQLite(t *testing.T) {
 		t.Fatalf("store.Close() error = %v", err)
 	}
 }
+
+func TestGroundedPlanningProviderDefaultsDisabled(t *testing.T) {
+	clearGroundedPlanningEnvironment(t)
+
+	provider, err := groundedPlanningProviderFromEnvironment()
+	if err != nil {
+		t.Fatalf("groundedPlanningProviderFromEnvironment() error = %v", err)
+	}
+	if provider != nil {
+		t.Fatal("disabled grounded planning unexpectedly returned a provider")
+	}
+}
+
+func TestGroundedPlanningProviderRejectsPartialConfiguration(t *testing.T) {
+	clearGroundedPlanningEnvironment(t)
+	t.Setenv("GROUNDED_AI_MODE", "disabled")
+	t.Setenv(
+		"GROUNDED_AI_ENDPOINT",
+		"https://provider.example.test/v1/responses",
+	)
+
+	if _, err := groundedPlanningProviderFromEnvironment(); err == nil {
+		t.Fatal("groundedPlanningProviderFromEnvironment() returned nil error")
+	}
+}
+
+func TestGroundedPlanningProviderRequiresAllowlistedConfiguration(t *testing.T) {
+	clearGroundedPlanningEnvironment(t)
+	t.Setenv("GROUNDED_AI_MODE", "openai-compatible")
+	t.Setenv(
+		"GROUNDED_AI_ENDPOINT",
+		"https://provider.example.test/v1/responses",
+	)
+	t.Setenv(
+		"GROUNDED_AI_ALLOWED_ENDPOINTS",
+		"https://different.example.test/v1/responses",
+	)
+	t.Setenv("GROUNDED_AI_MODEL", "approved-model")
+	t.Setenv("GROUNDED_AI_ALLOWED_MODELS", "approved-model")
+	t.Setenv("GROUNDED_AI_API_KEY", "test-only-key")
+	t.Setenv("GROUNDED_AI_TIMEOUT", "10s")
+	t.Setenv("GROUNDED_AI_MAX_OUTPUT_TOKENS", "512")
+
+	if _, err := groundedPlanningProviderFromEnvironment(); err == nil {
+		t.Fatal("groundedPlanningProviderFromEnvironment() returned nil error")
+	}
+}
+
+func clearGroundedPlanningEnvironment(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		"GROUNDED_AI_MODE",
+		"GROUNDED_AI_ENDPOINT",
+		"GROUNDED_AI_ALLOWED_ENDPOINTS",
+		"GROUNDED_AI_MODEL",
+		"GROUNDED_AI_ALLOWED_MODELS",
+		"GROUNDED_AI_API_KEY",
+		"GROUNDED_AI_API_KEY_FILE",
+		"GROUNDED_AI_TIMEOUT",
+		"GROUNDED_AI_MAX_OUTPUT_TOKENS",
+	} {
+		t.Setenv(name, "")
+	}
+}

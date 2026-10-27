@@ -75,6 +75,7 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_operational_status_domains_total`
 - `hawaii_resilience_identity_authorization_total`
 - `hawaii_resilience_collaboration_operations_total`
+- `hawaii_resilience_grounded_planning_operations_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -122,6 +123,12 @@ values (`success`, `conflict`, `not_found`, `invalid`, `error`). Plan and
 version IDs, titles, summaries, note and rationale text, assignments, subject
 IDs, emails, and tokens are never labels. The Grafana dashboard includes a
 **Collaborative plan operations** panel based only on these bounded labels.
+
+Grounded planning metrics use bounded `operation` values (`generate`, `apply`,
+`reject`), bounded outcomes, and bounded provider classes. Provider endpoint,
+model identifier, key, prompt/context, response text, plan/draft ID, input
+hash, subject, and token are never labels or log fields. The Grafana dashboard
+includes a **Grounded planning operations** panel.
 
 AFN source metrics use only four source labels: `acs-5-year`,
 `cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
@@ -221,6 +228,12 @@ sum by (outcome) (
 ```promql
 sum by (operation, outcome) (
   rate(hawaii_resilience_collaboration_operations_total[5m])
+)
+```
+
+```promql
+sum by (operation, outcome, provider_class) (
+  rate(hawaii_resilience_grounded_planning_operations_total[5m])
 )
 ```
 

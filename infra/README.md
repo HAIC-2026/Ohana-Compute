@@ -30,6 +30,15 @@ the cluster volume-snapshot/backup service and plan an external database driver
 before scaling the backend horizontally. See
 [`docs/collaborative-plans.md`](../docs/collaborative-plans.md).
 
+Grounded planning assist is independently disabled by default. It can be
+enabled only with configured application identity, SQLite collaboration
+persistence, exact endpoint/model allowlists, bounded timeout/output settings,
+and an externally provisioned API key mounted from Key Vault. No provider
+credential, private endpoint, tenant identifier, or deployed model identifier
+belongs in GitHub variables, chart defaults, logs, metrics, screenshots, or
+pull request text. See
+[`docs/grounded-planning.md`](../docs/grounded-planning.md).
+
 ## Prerequisites
 
 - Azure CLI signed in to the intended subscription
@@ -124,4 +133,8 @@ future approved OIDC metadata + cryptographic verifier -> guarded server writes
 Collaborative plan storage:
 disabled by default -> local checklist/export only
 explicit SQLite + PVC + one replica -> durable versions and audit history
+
+Grounded planning provider:
+disabled by default -> shared planning works without AI
+external Key Vault secret + exact public config allowlists -> review-only drafts
 ```

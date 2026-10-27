@@ -46,6 +46,13 @@ type Evidence struct {
 	Freshness     string    `json:"freshness"`
 }
 
+type EvidenceDescriptor struct {
+	SourceID  string
+	Publisher string
+	SourceURL string
+	Claim     string
+}
+
 type Partner struct {
 	ID                 string   `json:"id"`
 	Name               string   `json:"name"`
@@ -109,6 +116,20 @@ type Matcher struct {
 
 func NewMatcher() Matcher {
 	return Matcher{Now: time.Now}
+}
+
+func FindEvidence(sourceID string) (EvidenceDescriptor, bool) {
+	for _, item := range associations() {
+		if item.SourceID == sourceID {
+			return EvidenceDescriptor{
+				SourceID:  item.SourceID,
+				Publisher: item.Publisher,
+				SourceURL: item.SourceURL,
+				Claim:     item.Claim,
+			}, true
+		}
+	}
+	return EvidenceDescriptor{}, false
 }
 
 func (matcher Matcher) Match(_ context.Context, query Query) (Response, error) {

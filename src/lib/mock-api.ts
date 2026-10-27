@@ -109,7 +109,7 @@ export const mockPlanningResponseGenerator: PlanningResponseGenerator = {
       explanation:
         context.hotspot === null
           ? `The practice map shows about ${context.exposedPopulation.toLocaleString()} people in areas that may be affected by ${hazardNames[context.hazard]}. Use this list as a starting point, then confirm local conditions before sending people or supplies.`
-          : `${context.hotspot.domain} is the highest data-derived planning weakness at ${context.hotspot.score}/100. ${context.hotspot.summary} ${context.hotspot.evidence.join(' · ')}. AI is used only to draft this response; planners must confirm conditions and assignments.`,
+          : `${context.hotspot.domain} is the highest data-derived planning weakness at ${context.hotspot.score}/100. ${context.hotspot.summary} ${context.hotspot.evidence.join(' · ')}. This practice synthesis requires planner confirmation of conditions and assignments.`,
       priorities:
         context.localSteps.length > 0
           ? [
