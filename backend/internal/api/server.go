@@ -18,6 +18,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -54,6 +55,10 @@ type TransportationReader interface {
 	PlannedClosures(context.Context, float64, float64) (transportation.Snapshot, error)
 }
 
+type ShelterPlanReader interface {
+	Snapshot(context.Context) (shelterplans.Snapshot, error)
+}
+
 type Config struct {
 	Alerts          AlertReader
 	Cyclones        CycloneReader
@@ -61,6 +66,7 @@ type Config struct {
 	Official        OfficialReader
 	Community       CommunityReader
 	Transportation  TransportationReader
+	ShelterPlans    ShelterPlanReader
 	AllowedOrigins  []string
 	Logger          *slog.Logger
 	Registry        *prometheus.Registry
@@ -89,6 +95,10 @@ func NewServer(config Config) *Server {
 	}
 	if config.Transportation == nil {
 		panic("api: Transportation is required")
+	}
+	if config.ShelterPlans == nil {
+		defaultCatalog := shelterplans.NewCatalog()
+		config.ShelterPlans = defaultCatalog
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -155,6 +165,11 @@ func NewServer(config Config) *Server {
 		logger,
 		"fema-open-shelters",
 		config.Official.OpenShelters,
+	))
+	mux.HandleFunc("GET /api/v1/shelter-plans", feedHandler(
+		logger,
+		"county-shelter-plans",
+		config.ShelterPlans.Snapshot,
 	))
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,

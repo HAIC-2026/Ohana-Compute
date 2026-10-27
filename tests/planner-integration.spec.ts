@@ -70,6 +70,16 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     planningSheet.getByTestId('afn-planning-hotspots'),
   ).toContainText('Data-derived weaknesses · AI drafts wording only')
+  const shelterPlanPanel = planningSheet.getByTestId('county-shelter-plans')
+  await expect(shelterPlanPanel).toContainText('County shelter plans')
+  await expect(shelterPlanPanel).toContainText('Emergency Shelter Handbook')
+  await expect(shelterPlanPanel).toContainText('Official facility records')
+  await expect(shelterPlanPanel).toContainText(
+    'They are not ingested from a County plan',
+  )
+  await shelterPlanPanel.getByRole('tab', { name: 'Hawaiʻi' }).click()
+  await expect(shelterPlanPanel).toContainText('Plan unavailable')
+  await shelterPlanPanel.getByRole('tab', { name: 'Honolulu' }).click()
   await expect(planningSheet.getByText('Planning population')).toBeVisible()
   await expect(planningSheet.getByText('Overall SVI ranking')).toBeVisible()
   await expect(planningSheet.getByText('12th percentile')).toBeVisible()
@@ -159,11 +169,17 @@ test('planner completes the Map Model Match journey through the Go API', async (
   expect(metrics).toMatch(
     /hawaii_resilience_http_requests_total\{method="GET",route="\/api\/v1\/community\/profile",status="200"\} [1-9]\d*/,
   )
+  expect(metrics).toMatch(
+    /hawaii_resilience_http_requests_total\{method="GET",route="\/api\/v1\/shelter-plans",status="200"\} [1-9]\d*/,
+  )
   expect(metrics).toContain(
     'hawaii_resilience_http_requests_total{method="POST",route="/api/v1/telemetry/browser",status="202"}',
   )
   expect(metrics).toContain(
     'hawaii_resilience_browser_events_total{action="field_packet_download",category="planning"',
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_browser_events_total{action="shelter_county_select",category="planning"',
   )
   expect(metrics).not.toContain(privateAddress)
 })

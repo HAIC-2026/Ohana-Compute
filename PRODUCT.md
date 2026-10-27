@@ -72,6 +72,11 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - The State’s 1%-annual-chance coastal flood area with 3.2 ft of sea-level rise is shown only as a long-range planning exposure, never as the current storm forecast.
 - Official resident risk is event-dependent: hurricane and flood show FEMA flood risk, tsunami shows the tsunami evacuation classification, and wildfire shows the community fire-risk classification. Unrelated hazard cards and polygons are hidden.
 - The resident route checks FEMA National Shelter System open-shelter data live. If no open Hawaiʻi shelter is reported, the interface says so explicitly and keeps all practice destinations secondary and unverified.
+- The Response Plan shows curated County shelter-plan provenance and coverage
+  for Honolulu, Hawaiʻi, Maui, and Kauaʻi counties, including stale,
+  unavailable, and local-validation-required states. This planning catalog has
+  no official facility records and stays separate from FEMA live status and
+  synthetic practice inventory.
 - Route guidance changes for residents without cars, residents needing mobility help, and residents needing powered medical support.
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.
@@ -98,7 +103,7 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - The official HAIC 2026 DHS challenge pitch defines the required framework as **Map, Model, Match**: map people with AFN and hazard exposure, model hazard-specific resource needs and gaps, then match needs to agencies and community partners with clear roles, decision points, and ways to reach residents.
 - Counties lead mass care, with State ESF-6 supporting County efforts. Evaluation is explicitly based on whether the framework is actionable, usable, private, equitable, and sustainable.
 - The prompt names Census ACS, CDC/ATSDR Social Vulnerability Index, HHS emPOWER, FEMA risk and flood data, tsunami evacuation zones, wildfire risk layers, and Hawaiʻi Statewide GIS data.
-- The prototype now reads Hawaiʻi Statewide GIS tsunami, DFIRM flood, and DLNR wildfire-risk services plus the FEMA National Shelter System open-shelter service directly. County incident perimeters, shelter openings, road closures, customer claims, measured impact, and current local resource inventories are not yet integrated.
+- The prototype now reads Hawaiʻi Statewide GIS tsunami, DFIRM flood, and DLNR wildfire-risk services plus the FEMA National Shelter System open-shelter service directly. It also exposes curated County shelter-plan provenance without inferring facilities or operating status. County incident perimeters, County shelter openings and capacity, road closures, customer claims, measured impact, and current local resource inventories are not yet integrated.
 
 ## Product Principles
 

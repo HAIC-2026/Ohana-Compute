@@ -21,6 +21,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -79,6 +80,7 @@ func main() {
 		arcGISClient,
 		transportation.Config{},
 	)
+	shelterPlanCatalog := shelterplans.NewCatalog()
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -91,6 +93,7 @@ func main() {
 		Official:        officialSources,
 		Community:       communitySources,
 		Transportation:  transportationSources,
+		ShelterPlans:    shelterPlanCatalog,
 		AllowedOrigins:  allowedOrigins,
 		Logger:          logger,
 		Registry:        registry,

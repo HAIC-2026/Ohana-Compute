@@ -15,6 +15,7 @@ in a portal.
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
+- `GET /api/v1/shelter-plans`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -28,6 +29,8 @@ in a portal.
 - Normalized Hawaiʻi State GIS tsunami, FEMA DFIRM, coastal-planning, and
   DLNR wildfire-risk responses
 - Normalized FEMA ESF6 open shelters sorted by resident distance
+- Curated County shelter-plan provenance, freshness, coverage gaps, and local
+  validation requirements for Honolulu, Hawaiʻi, Maui, and Kauaʻi counties
 - Aggregate community-planning profiles from Census ACS, CDC/ATSDR SVI, HHS
   emPOWER, and FEMA National Risk Index
 - Five-minute in-memory cache with ETag revalidation
@@ -41,6 +44,14 @@ retrieval time, cache freshness deadline, and `fresh` or `stale` status.
 Planning layers remain labeled as planning context; they do not become live
 incident perimeters, inundation forecasts, road closures, or evacuation
 orders.
+
+`GET /api/v1/shelter-plans` is a provenance catalog rather than an operational
+shelter feed. Its curated records may identify published or reference-only
+County planning documents, but its official facility arrays remain empty until
+an authorized County roster is integrated. It never derives capacity,
+capabilities, accessibility, or opening status from planning prose. Catalog
+references become explicitly stale after their bounded review window, and a
+reader failure returns `502` without a success-shaped fallback.
 
 HDOT closure results are planned roadwork, not emergency road status or proof
 that a route is passable. The PTWC endpoint exposes the latest product and its

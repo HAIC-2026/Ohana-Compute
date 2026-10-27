@@ -42,6 +42,16 @@ test('browser telemetry is batched and excludes private values', async ({
     .click()
   await page.getByLabel('Home address or landmark').fill(privateValue)
   await page.getByRole('button', { name: 'Find routes' }).click()
+  await page
+    .locator('.planning-sheet:visible')
+    .getByRole('button', { name: 'Close panel' })
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  await page
+    .getByTestId('county-shelter-plans')
+    .getByRole('tab', { name: 'Hawaiʻi' })
+    .click()
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
@@ -52,6 +62,14 @@ test('browser telemetry is batched and excludes private values', async ({
       (event) =>
         event.kind === 'page_load' &&
         ['hydration', 'map_ready'].includes(event.action),
+    ),
+  ).toBe(true)
+  expect(
+    events.some(
+      (event) =>
+        event.kind === 'interaction' &&
+        event.category === 'planning' &&
+        event.action === 'shelter_county_select',
     ),
   ).toBe(true)
   expect(
