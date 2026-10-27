@@ -36,6 +36,11 @@ households.
   controls
 - Downloadable, self-contained field briefings for printing and
   limited-connectivity coordination
+- Data-derived AFN planning hotspots across communication, medical,
+  independence, safety, and transportation domains
+- A bounded, injectable mock-AI response boundary that receives aggregate
+  planning evidence but no coordinates, addresses, identifiers, or raw source
+  errors
 - Desktop and mobile Playwright coverage
 
 ## Stack
@@ -129,6 +134,7 @@ names, identifiers, and person-level medical data.
 npm run backend:test
 npm run test:integration
 npm run test:journey
+npm run test:matrix
 npm run test:e2e
 npm run build
 npm run lint
@@ -153,6 +159,13 @@ budget; cold authoritative source latency is recorded against a 1,000 ms target
 and reported separately. The production frontend must hydrate within 2,000 ms.
 Performance budgets run with one browser worker so parallel test-run contention
 does not distort the user-facing timings.
+
+`npm run test:matrix` executes deterministic cross-island scenarios for Oʻahu,
+Maui, Hawaiʻi, and Kauaʻi. It verifies the expected AFN hotspot, score,
+supporting evidence, generated planning action, and privacy boundary supplied to
+the mock AI generator. See
+[`docs/afn-planning-matrix.md`](./docs/afn-planning-matrix.md) for the matrix,
+thresholds, limitations, and extension process.
 
 ## Data truth and limitations
 
@@ -215,7 +228,10 @@ instead of substituting a reassuring answer.
 
 - `src/lib/mock-data.ts` contains deterministic synthetic geospatial and
   planning data.
-- `src/lib/mock-api.ts` simulates the future Go API and managed Luna endpoint.
+- `src/lib/planning-analysis.ts` deterministically ranks aggregate AFN planning
+  weaknesses and keeps missing-source uncertainty explicit.
+- `src/lib/mock-api.ts` provides a bounded, injectable planning-response
+  generator; the default mock drafts language from the deterministic analysis.
 - `src/lib/backend-api.ts` is the configurable, typed request boundary between
   the separately hosted frontend and backend.
 - `src/lib/official-emergency-data.ts` maps normalized backend responses into

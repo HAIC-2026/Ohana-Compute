@@ -78,6 +78,12 @@ test('desktop selects an island response zone and creates local steps', async ({
   await expect(
     page.getByRole('heading', { name: 'Local resource inventory' }),
   ).toBeVisible()
+  const hotspotPanel = page.getByTestId('afn-planning-hotspots')
+  await expect(hotspotPanel).toBeVisible()
+  await expect(hotspotPanel).toContainText('AFN planning hotspots')
+  await expect(hotspotPanel).toContainText(
+    'Data-derived weaknesses · AI drafts wording only',
+  )
   await expect(page.getByText(/\d+\/\d+ confirmed/)).toBeVisible()
   await expect(
     page
@@ -99,11 +105,7 @@ test('desktop selects an island response zone and creates local steps', async ({
   ).toBeVisible()
 
   await page.getByRole('button', { name: 'Create response checklist' }).click()
-  await expect(
-    page.getByText(
-      'Start in East Honolulu: confirm powered shelter and accessible transportation capacity before damaging winds arrive.',
-    ),
-  ).toBeVisible()
+  await expect(page.getByText(/Start in East Honolulu: confirm /)).toBeVisible()
   await expect(
     page
       .locator('.priority-list')
@@ -111,7 +113,7 @@ test('desktop selects an island response zone and creates local steps', async ({
         'Confirm powered shelter and accessible transportation capacity before damaging winds arrive.',
       ),
   ).toBeVisible()
-  await expect(page.getByText('4 sources used')).toBeVisible()
+  await expect(page.getByText('5 sources used')).toBeVisible()
 })
 
 test('planner consumes official aggregate AFN context', async ({

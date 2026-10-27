@@ -2410,6 +2410,140 @@ select:focus-visible {
   margin: 0;
 }
 
+.afn-hotspots {
+  display: flex;
+  padding: 11px;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  background: var(--cp-surface);
+}
+
+.afn-hotspots-heading,
+.afn-hotspots-heading > div {
+  display: flex;
+}
+
+.afn-hotspots-heading {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.afn-hotspots-heading > div {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.afn-hotspots-heading strong {
+  font-size: 12px;
+}
+
+.afn-hotspots-heading span {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+}
+
+.afn-hotspots-heading em {
+  min-width: 56px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  color: var(--cp-text);
+  background: var(--cp-surface-soft);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
+}
+
+.afn-hotspots-heading em.is-high {
+  color: #7a4600;
+  background: color-mix(in srgb, var(--cp-warning) 18%, var(--cp-surface));
+}
+
+.afn-hotspots-heading em.is-critical {
+  color: var(--cp-danger);
+  background: color-mix(in srgb, var(--cp-danger) 10%, var(--cp-surface));
+}
+
+.afn-hotspot-primary {
+  display: flex;
+  padding: 9px;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: 10px;
+  background: var(--cp-surface-soft);
+}
+
+.afn-hotspot-primary > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--cp-warning);
+}
+
+.afn-hotspot-primary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.afn-hotspot-primary strong {
+  font-size: 11px;
+}
+
+.afn-hotspot-primary p,
+.afn-hotspots > p {
+  margin: 0;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.afn-hotspot-primary span {
+  color: var(--cp-text-soft);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.afn-hotspots ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 7px;
+  list-style: none;
+}
+
+.afn-hotspots li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.afn-hotspots li > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--cp-accent);
+}
+
+.afn-hotspots li span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.afn-hotspots li strong {
+  font-size: 10px;
+}
+
+.afn-hotspots li small {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .resource-grid {
   display: grid;
   margin-top: 9px;

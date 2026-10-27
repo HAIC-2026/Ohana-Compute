@@ -29,6 +29,13 @@ export type FieldBriefingInput = {
   }
   model: {
     needs: string[]
+    hotspots: Array<{
+      domain: string
+      score: number
+      level: string
+      evidence: string[]
+      recommendedAction: string
+    }>
     cmist: Array<{ category: string; value: number }>
     resources: Array<{
       name: string
@@ -162,6 +169,17 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
         <tr>
           <td>${escapeHTML(need.category)}</td>
           <td>${need.value}/100</td>
+        </tr>`,
+    )
+    .join('')
+  const hotspots = input.model.hotspots
+    .map(
+      (hotspot) => `
+        <tr>
+          <td>${escapeHTML(hotspot.domain)}</td>
+          <td>${hotspot.score}/100 · ${escapeHTML(hotspot.level)}</td>
+          <td>${escapeHTML(hotspot.evidence.join(' · '))}</td>
+          <td>${escapeHTML(hotspot.recommendedAction)}</td>
         </tr>`,
     )
     .join('')
@@ -299,6 +317,12 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
 
       <section>
         <h2>2 · Model needs and gaps</h2>
+        <h3>Data-derived AFN planning hotspots</h3>
+        <p class="note">Hotspot selection is deterministic. AI drafts wording only; planners must confirm conditions and assignments.</p>
+        <table>
+          <thead><tr><th>AFN domain</th><th>Score</th><th>Aggregate evidence</th><th>Planning action</th></tr></thead>
+          <tbody>${hotspots}</tbody>
+        </table>
         <div class="split">
           <div>
             <h3>Priority needs</h3>

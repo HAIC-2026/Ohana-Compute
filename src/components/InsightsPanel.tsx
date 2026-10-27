@@ -42,6 +42,8 @@ import {
 } from '../lib/community-profile'
 import { downloadFieldBriefing } from '../lib/field-briefing'
 import { hawaiiDhsReferences } from '../lib/official-references'
+import { analyzeAfnPlanning } from '../lib/planning-analysis'
+import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
@@ -136,6 +138,14 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const challengeSnapshot = getChallengeSnapshot(area, scenario)
   const resourceInventory = getLocalResourceInventory(area)
   const routeChecks = getLocalRouteChecks(area)
+  const afnPlanningAnalysis = analyzeAfnPlanning({
+    area,
+    hazard,
+    scenario,
+    profile: communityProfileState.profile,
+    resources: resourceInventory,
+    routes: routeChecks,
+  })
   const nextResourceCheck =
     resourceInventory.find(
       (site) =>
@@ -201,14 +211,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       exposedPopulation: scenario.exposedPopulation,
       primarySignal: scenario.primarySignal,
       locationName: displayPlace,
-      localContext:
-        (selectedNeighborhood
-          ? `${selectedNeighborhood.summary} Shelter decision: ${neighborhoodDecision?.action ?? 'Follow official local alerts.'} Traffic hazards: ${selectedNeighborhood.trafficHazards.join(' ')}`
-          : selectedZonePlan?.summary) ??
-        (activeEvent
-          ? `${activeEvent.summary} Dominant threats: ${activeEvent.dominantThreats.join(', ')}.`
-          : (area.responseFocus?.[hazard] ?? area.summary)),
       localSteps,
+      analysis: afnPlanningAnalysis,
     })
     setBrief(response)
     setBriefReady(true)
@@ -299,6 +303,13 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       },
       model: {
         needs: challengeSnapshot.topNeeds,
+        hotspots: afnPlanningAnalysis.hotspots.map((hotspot) => ({
+          domain: hotspot.domain,
+          score: hotspot.score,
+          level: hotspot.level,
+          evidence: hotspot.evidence,
+          recommendedAction: hotspot.recommendedAction,
+        })),
         cmist: scenario.cmist,
         resources: resourceInventory.map((resource) => ({
           name: resource.name,
@@ -356,6 +367,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         </p>
 
         <CommunityAfnSummary coordinates={planningCoordinates} detailed />
+        <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
 
         {activeEvent && (
           <div className="sheet-event-summary">

@@ -67,6 +67,9 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     planningSheet.getByText('2 · Model needs and gaps'),
   ).toBeVisible()
+  await expect(
+    planningSheet.getByTestId('afn-planning-hotspots'),
+  ).toContainText('Data-derived weaknesses · AI drafts wording only')
   await expect(planningSheet.getByText('Planning population')).toBeVisible()
   await expect(planningSheet.getByText('Overall SVI ranking')).toBeVisible()
   await expect(planningSheet.getByText('12th percentile')).toBeVisible()
@@ -110,6 +113,10 @@ test('planner completes the Map Model Match journey through the Go API', async (
   expect(packet).toContain('Hawaiʻi Mass Care Field Briefing')
   expect(packet).toContain('1 · Map affected communities')
   expect(packet).toContain('2 · Model needs and gaps')
+  expect(packet).toContain('Data-derived AFN planning hotspots')
+  expect(packet).toContain(
+    'Hotspot selection is deterministic. AI drafts wording only',
+  )
   expect(packet).toContain('3 · Match response partners')
   expect(packet).toContain('320 (13.6%)')
   expect(packet).toContain('27')
