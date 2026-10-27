@@ -61,10 +61,19 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - An active-event briefing model that combines a named event, expected arrival window, forecast trend, confidence, severity, dominant threats, and event-specific public guidance.
 - Practice active events cover all four challenge scenarios: Hurricane Lala, Tropical Storm Nolo flooding, a Pacific Tsunami Warning, and Leeward Wildfire Koa.
 - Island-first navigation that displays one island at a time, divides it into recognizable response zones grounded in official planning-region and neighborhood-board geography, and then produces a local plan for the selected zone.
-- A statewide island selector with honest coverage states: Oʻahu currently has the deepest local prototype, while Maui, Hawaiʻi, and Kauaʻi expose regional practice views and a visible validation-pending state instead of reusing Oʻahu geometry.
+- A statewide island selector with four distinct County-level representative
+  workflows: Urban Honolulu, Central/West Maui, Hilo/Lower Puna, and East
+  Kauaʻi. Each has a unique briefing, AFN fixture, practice resources, route
+  checks, coordination owner, communications path, and County shelter-plan
+  linkage. Molokaʻi, Lānaʻi, Niʻihau, and Kalawao remain explicit unsupported
+  workflow scope rather than inheriting another island's content.
 - Town neighborhood briefings for Mānoa–Makiki, Kakaʻako–Ala Moana, Kaimukī–Kāhala, Waikīkī–Kapahulu, and Downtown–Kalihi.
 - A resident-guidance preview with address/landmark/ZIP lookup, current-location support, road-level practice routes, mapped flood-avoidance zones, shelter, food and water, medical-power, and accessible-transport destinations.
 - Practice resident-route coverage currently includes Mānoa–Makiki, Kakaʻako–Ala Moana, Kaimukī–Kāhala, and Hawaiʻi Kai, including 96816 and 96825 lookup examples.
+- Address-level resident-route coverage remains Oʻahu-only. Selecting a Maui,
+  Hawaiʻi, or Kauaʻi representative workflow clears the prior Oʻahu resident
+  route and reports the limitation instead of displaying stale Oʻahu
+  destinations or directions.
 - The Hawaiʻi Kai reference route uses street-snapped geometry for driving and a current TheBus GTFS Route 1L walk–bus–walk itinerary; realtime arrivals and disaster detours remain unavailable until the required TheBus API integration is added.
 - The resident route checks the selected point against the official Hawaiʻi Statewide GIS tsunami evacuation layer and renders the matched standard, extreme, or safe-zone polygon separately from synthetic flood overlays.
 - The resident route checks the selected point against the statewide June 2026 FEMA DFIRM layer, classifies high, moderate, lower-mapped, undetermined, or unmapped flood status, and outlines nearby 1% and 0.2% annual-chance flood areas.
@@ -106,7 +115,13 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - The official HAIC 2026 DHS challenge pitch defines the required framework as **Map, Model, Match**: map people with AFN and hazard exposure, model hazard-specific resource needs and gaps, then match needs to agencies and community partners with clear roles, decision points, and ways to reach residents.
 - Counties lead mass care, with State ESF-6 supporting County efforts. Evaluation is explicitly based on whether the framework is actionable, usable, private, equitable, and sustainable.
 - The prompt names Census ACS, CDC/ATSDR Social Vulnerability Index, HHS emPOWER, FEMA risk and flood data, tsunami evacuation zones, wildfire risk layers, and Hawaiʻi Statewide GIS data.
-- The prototype now reads Hawaiʻi Statewide GIS tsunami, DFIRM flood, and DLNR wildfire-risk services plus the FEMA National Shelter System open-shelter service directly. It also exposes curated County shelter-plan provenance without inferring facilities or operating status. County incident perimeters, County shelter openings and capacity, road closures, customer claims, measured impact, and current local resource inventories are not yet integrated.
+- The prototype now reads Hawaiʻi Statewide GIS tsunami, DFIRM flood, and DLNR wildfire-risk services plus the FEMA National Shelter System open-shelter service directly. It also exposes curated County shelter-plan provenance without inferring facilities or operating status.
+- The backend exposes a deterministic statewide planning-area catalog for four
+  representative workflows. This closes the product-depth gap for Maui,
+  Hawaiʻi, and Kauaʻi without claiming operational County inventory. County
+  incident perimeters, County shelter openings and capacity, live road
+  closures, customer claims, measured impact, and current local resource
+  inventories remain unintegrated.
 
 ## Product Principles
 

@@ -66,9 +66,10 @@ rate limiting and are never exported as labels.
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
 health, source catalog, event, risk, live shelter, County shelter-plan,
-community, transportation, telemetry ingest, and metrics routes. It never uses
-the request URL or query string. County-plan requests use the bounded route
-label `/api/v1/shelter-plans`; browser interactions use only the controlled
+statewide planning-area, community, transportation, telemetry ingest, and
+metrics routes. It never uses the request URL or query string. County-plan
+requests use the bounded route label `/api/v1/shelter-plans`; statewide
+workflow requests use `/api/v1/planning-areas`; browser interactions use only the controlled
 actions `shelter_county_select`, `shelter_provenance_open`, and
 `shelter_plan_retry`, never County names, document titles, or source URLs.
 

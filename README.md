@@ -33,6 +33,10 @@ households.
 - County shelter-plan provenance across four emergency-management
   jurisdictions covering Hawaiʻi's five political counties, kept separate from
   live FEMA status and practice facility records
+- Four distinct County-level representative planning workflows for Urban
+  Honolulu, Central/West Maui, Hilo/Lower Puna, and East Kauaʻi, each with a
+  bounded AFN fixture, named practice resources, locally specific route checks,
+  accountable coordination, and an explicit County shelter-plan link
 - Road-following driving and walking practice routes
 - A TheBus Route 1L walk-bus-walk example for Hawaiʻi Kai
 - No-car, mobility, medical-power, language, written-direction, and read-aloud
@@ -103,6 +107,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelter-plans`
+- `GET /api/v1/planning-areas`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -124,6 +129,18 @@ does not infer a facility roster, capacity, accessibility, backup power, pet
 support, or opening status from planning documents. Existing synthetic
 facilities remain labeled `Practice record`; only the separate FEMA National
 Shelter System endpoint can report an officially open shelter.
+
+The separate `GET /api/v1/planning-areas` catalog supplies deterministic
+statewide workflow depth. It covers four Chapter 127A emergency-management
+jurisdictions and five political counties while preserving Kalawao's sourced
+special scope under Maui. The catalog is fetched once per browser session and
+reused by the map, response workspace, neighborhood briefing, and field packet.
+Maui, Hawaiʻi, and Kauaʻi receive distinct resources, routes, AFN fixtures, and
+coordination details rather than cloned Oʻahu content. If the catalog is
+unavailable, those representative workflows fail closed with retry controls;
+the browser does not substitute an Oʻahu resource or route. Molokaʻi, Lānaʻi,
+Niʻihau, and Kalawao remain explicit coverage gaps rather than inferred local
+workflows.
 
 Hawaiʻi has five political counties but four County emergency-management
 jurisdictions under
@@ -261,6 +278,9 @@ instead of substituting a reassuring answer.
   directly from the browser.
 - `src/lib/county-shelter-plans.ts` loads the curated County planning envelope
   and preserves unavailable, partial, stale, and retry states.
+- `src/lib/planning-areas.ts` loads and caches the deterministic statewide
+  practice workflow catalog, maps its resources/routes/briefings into existing
+  planner models, and preserves fail-closed retry behavior.
 - `src/store/planning-store.ts` holds the client scenario state.
 - `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
   event adapters, official hazard and shelter adapters, community-planning

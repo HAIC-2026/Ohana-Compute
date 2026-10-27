@@ -42,6 +42,12 @@ import {
   fetchOfficialWildfireRisk,
 } from '../lib/official-emergency-data'
 import { markBrowserLifecycle } from '../lib/browser-telemetry'
+import {
+  findStatewidePlanningArea,
+  getCatalogResourceInventory,
+  usesCatalogWorkflow,
+  usePlanningAreaCatalog,
+} from '../lib/planning-areas'
 import type {
   OfficialEvacuationZone,
   OfficialFloodRisk,
@@ -162,6 +168,11 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   )
   const selectedArea =
     areas.find((area) => area.id === selectedAreaId) ?? areas[0]
+  const planningAreaCatalog = usePlanningAreaCatalog()
+  const catalogArea = findStatewidePlanningArea(
+    planningAreaCatalog.snapshot,
+    selectedArea.id,
+  )
   const selectedHazard =
     hazards.find((item) => item.id === hazard) ?? hazards[0]
   const activeEvent =
@@ -218,7 +229,13 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       },
     })),
   }
-  const localResources = getLocalResourceInventory(selectedArea)
+  const localResources =
+    (usesCatalogWorkflow(selectedArea)
+      ? getCatalogResourceInventory(selectedArea, catalogArea)
+      : null) ??
+    (usesCatalogWorkflow(selectedArea) && !catalogArea
+      ? []
+      : getLocalResourceInventory(selectedArea))
   const resourceGroups = (['shelter', 'transport'] as const)
     .map((kind) => {
       const sites = localResources.filter((site) => site.kind === kind)
@@ -262,6 +279,11 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
     setOfficialEvacuationZone(null)
     setOfficialFloodRisk(null)
     setOfficialWildfireRisk(null)
+    if (!showResidentRoute) {
+      return () => {
+        cancelled = true
+      }
+    }
     if (currentHazard === 'tsunami') {
       void fetchOfficialEvacuationZone(residentPlan.startCoordinates)
         .then((result) => {
@@ -292,7 +314,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
     return () => {
       cancelled = true
     }
-  }, [currentHazard, residentPlan.id, residentPlan.startCoordinates])
+  }, [
+    currentHazard,
+    residentPlan.id,
+    residentPlan.startCoordinates,
+    showResidentRoute,
+  ])
 
   useEffect(() => {
     const focus = selectedPlanningZone ?? locationFocus

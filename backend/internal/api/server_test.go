@@ -17,6 +17,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
@@ -46,6 +47,11 @@ type transportationReaderStub struct {
 
 type shelterPlanReaderStub struct {
 	snapshot shelterplans.Snapshot
+	err      error
+}
+
+type planningAreaReaderStub struct {
+	snapshot planningareas.Snapshot
 	err      error
 }
 
@@ -192,6 +198,12 @@ func (stub *transportationReaderStub) PlannedClosures(
 func (stub shelterPlanReaderStub) Snapshot(
 	context.Context,
 ) (shelterplans.Snapshot, error) {
+	return stub.snapshot, stub.err
+}
+
+func (stub planningAreaReaderStub) Snapshot(
+	context.Context,
+) (planningareas.Snapshot, error) {
 	return stub.snapshot, stub.err
 }
 
@@ -505,6 +517,86 @@ func TestShelterPlansEndpointFailsClosed(t *testing.T) {
 		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
 	}
 	if strings.Contains(response.Body.String(), "curated catalog unavailable") {
+		t.Fatalf("response leaked internal error: %s", response.Body.String())
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
+	}
+}
+
+func TestPlanningAreasEndpointReturnsDistinctPracticeWorkflows(t *testing.T) {
+	t.Parallel()
+
+	snapshot, err := planningareas.NewCatalog().Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("build planning-area fixture: %v", err)
+	}
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		PlanningAreas:   planningAreaReaderStub{snapshot: snapshot},
+	})
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/planning-areas", nil),
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var body planningareas.Snapshot
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode planning-area snapshot: %v", err)
+	}
+	if body.Provenance.DatasetMode != "practice" {
+		t.Fatalf("dataset mode = %q, want practice", body.Provenance.DatasetMode)
+	}
+	if body.Summary.PlanningJurisdictionsTotal != 4 ||
+		body.Summary.PoliticalCountiesTotal != 5 ||
+		body.Summary.RepresentativeWorkflows != 4 {
+		t.Fatalf("unexpected statewide summary: %+v", body.Summary)
+	}
+	if len(body.Jurisdictions) != 4 {
+		t.Fatalf("jurisdictions = %d, want 4", len(body.Jurisdictions))
+	}
+	if body.Jurisdictions[1].PoliticalCounties[1] != "Kalawao" {
+		t.Fatalf(
+			"Maui scope missing Kalawao: %+v",
+			body.Jurisdictions[1].PoliticalCounties,
+		)
+	}
+}
+
+func TestPlanningAreasEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		PlanningAreas: planningAreaReaderStub{
+			err: errors.New("planning catalog unavailable"),
+		},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/planning-areas", nil),
+	)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "planning catalog unavailable") {
 		t.Fatalf("response leaked internal error: %s", response.Body.String())
 	}
 	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
@@ -970,6 +1062,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/risk/wildfire" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/shelters/open" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/shelter-plans"},
+		{method: http.MethodGet, path: "/api/v1/planning-areas"},
 		{method: http.MethodGet, path: "/api/v1/community/acs" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/svi" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/empower" + coordinateQuery},
@@ -1010,6 +1103,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		"/api/v1/risk/wildfire",
 		"/api/v1/shelters/open",
 		"/api/v1/shelter-plans",
+		"/api/v1/planning-areas",
 		"/api/v1/community/acs",
 		"/api/v1/community/svi",
 		"/api/v1/community/empower",

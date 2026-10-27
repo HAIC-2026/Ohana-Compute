@@ -198,3 +198,112 @@ test('planner completes the Map Model Match journey through the Go API', async (
   )
   expect(metrics).not.toContain(privateAddress)
 })
+
+test('statewide County planning depth stays distinct', async ({
+  page,
+  request,
+}) => {
+  const catalogResponse = await request.get(
+    `${backendURL}/api/v1/planning-areas`,
+  )
+  expect(catalogResponse.ok()).toBe(true)
+  const catalog = await catalogResponse.json()
+  expect(catalog.summary).toMatchObject({
+    planning_jurisdictions_total: 4,
+    political_counties_total: 5,
+    representative_workflows: 4,
+  })
+  expect(catalog.jurisdictions[1].political_counties).toEqual([
+    'Maui',
+    'Kalawao',
+  ])
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByLabel('Choose island').selectOption('Maui')
+  await expect(
+    page.getByText('Address-level preview not available'),
+  ).toBeVisible()
+  await expect(
+    page.getByText('No Oʻahu route or resource was substituted.'),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const planningDepth = planningSheet.getByRole('region', {
+    name: 'Statewide planning depth',
+  })
+  await expect(
+    planningDepth.getByText('Maui corridor continuity workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Central Maui practice reception site').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Honoapiʻilani Highway west access').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText('H-1 urban corridor')
+  await expect(planningSheet).not.toContainText('TheBus')
+  await expect(planningSheet).not.toContainText('Urban Honolulu')
+
+  await planningSheet
+    .getByRole('button', { name: 'Create response checklist' })
+    .click()
+  await expect(
+    planningSheet.getByRole('button', { name: 'Download field packet' }),
+  ).toBeEnabled()
+  const downloadPromise = page.waitForEvent('download')
+  await planningSheet
+    .getByRole('button', { name: 'Download field packet' })
+    .click()
+  const download = await downloadPromise
+  const downloadedPath = await download.path()
+  const packet = await readFile(downloadedPath, 'utf8')
+  expect(packet).toContain('County of Maui')
+  expect(packet).toContain('maui-central-wildfire-continuity')
+  expect(packet).toContain('Central Maui practice reception site')
+  expect(packet).toContain('Honoapiʻilani Highway west access')
+  expect(packet).not.toContain('H-1 urban corridor')
+  expect(packet).not.toContain('TheBus')
+
+  await page.getByLabel('Choose island').selectOption('Hawaiʻi')
+  await expect(
+    planningDepth.getByText('East Hawaiʻi medical continuity workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Puna practice medical-power support hub').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Hawaiʻi Belt Road Hilo–Puna access').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText(
+    'Central Maui practice reception site',
+  )
+
+  await page.getByLabel('Choose island').selectOption('Kauaʻi')
+  await expect(
+    planningDepth.getByText('East Kauaʻi flood-isolation workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('East Kauaʻi practice shelter').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Kūhiō Highway Wailua crossing').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText(
+    'Hawaiʻi Belt Road Hilo–Puna access',
+  )
+
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  expect(metricsResponse.ok()).toBe(true)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toMatch(
+    /hawaii_resilience_http_requests_total\{method="GET",route="\/api\/v1\/planning-areas",status="200"\} [1-9]\d*/,
+  )
+})

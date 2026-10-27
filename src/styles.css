@@ -3315,6 +3315,142 @@ select:focus-visible {
   line-height: 1.4;
 }
 
+.planning-depth-panel {
+  display: flex;
+  padding: 14px;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--cp-accent) 24%, var(--cp-border));
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--cp-accent) 9%, transparent),
+      transparent 58%
+    ),
+    var(--cp-surface);
+}
+
+.planning-depth-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.planning-depth-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.planning-depth-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cp-accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.planning-depth-heading strong,
+.planning-depth-panel > strong {
+  color: var(--cp-text);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.planning-depth-panel p,
+.planning-depth-panel small {
+  margin: 0;
+  color: var(--cp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.planning-depth-panel small {
+  display: block;
+}
+
+.planning-depth-status {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-success) 14%, transparent);
+  color: var(--cp-success);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.planning-depth-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.planning-depth-summary span {
+  display: flex;
+  min-width: 0;
+  padding: 7px;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 0.5rem;
+  background: var(--cp-surface-soft);
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.planning-depth-summary strong {
+  color: var(--cp-text);
+  font-size: 16px;
+}
+
+.planning-depth-panel.is-loading,
+.planning-depth-panel.is-error,
+.planning-depth-panel.is-limited {
+  align-items: flex-start;
+}
+
+.planning-depth-panel.is-error {
+  flex-direction: row;
+  justify-content: space-between;
+  border-color: color-mix(in srgb, var(--cp-danger) 35%, var(--cp-border));
+}
+
+.planning-depth-panel.is-error > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planning-depth-panel.is-error button {
+  display: inline-flex;
+  min-height: 34px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--cp-accent);
+  border-radius: 0.5rem;
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.planning-depth-skeleton {
+  width: 100%;
+  height: 34px;
+  border-radius: 0.5rem;
+  background: var(--cp-surface-soft);
+}
+
 .county-shelter-plans {
   display: flex;
   padding: 16px;
@@ -3487,6 +3623,36 @@ select:focus-visible {
 .county-shelter-status span.is-published {
   background: color-mix(in srgb, var(--cp-success) 14%, transparent);
   color: var(--cp-success);
+}
+
+.resource-check.is-unavailable,
+.route-check.is-unavailable,
+.inventory-detail.is-unavailable,
+.resident-route-entry-summary.is-unavailable,
+.resident-route-unavailable .resident-truth-note {
+  border-color: color-mix(in srgb, var(--cp-warning) 32%, var(--cp-border));
+  background: color-mix(in srgb, var(--cp-warning) 8%, var(--cp-surface));
+}
+
+.resident-route-unavailable .resident-truth-note {
+  display: flex;
+  padding: 12px;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--cp-warning) 32%, var(--cp-border));
+  border-radius: 0.65rem;
+}
+
+.resident-route-unavailable .resident-truth-note svg {
+  flex: 0 0 auto;
+  color: var(--cp-warning);
+}
+
+.resident-route-unavailable .resident-truth-note p {
+  margin: 0;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .county-shelter-status span.is-partial,
@@ -4830,6 +4996,29 @@ select:focus-visible {
   .resource-check button {
     min-height: 40px;
     font-size: 14px;
+  }
+
+  .planning-depth-heading,
+  .planning-depth-panel.is-error {
+    flex-direction: column;
+  }
+
+  .planning-depth-heading strong,
+  .planning-depth-panel > strong {
+    font-size: 15px;
+  }
+
+  .planning-depth-panel p,
+  .planning-depth-panel small {
+    font-size: 12px;
+  }
+
+  .planning-depth-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-depth-summary span {
+    font-size: 11px;
   }
 
   .county-shelter-heading {

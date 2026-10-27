@@ -45,6 +45,14 @@ type PlanningState = {
   selectResource: (resourceId: string | null) => void
 }
 
+function residentSelectionForArea(areaId: string) {
+  const plan = residentRoutePlans.find((item) => item.areaId === areaId)
+  return {
+    selectedResidentPlanId: plan?.id ?? '',
+    selectedResidentResourceId: plan?.resources[0]?.id ?? '',
+  }
+}
+
 export const usePlanningStore = create<PlanningState>((set) => ({
   hazard: 'hurricane',
   severity: 4,
@@ -81,6 +89,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
   setSelectedAreaId: (selectedAreaId) =>
     set({
       selectedAreaId,
+      ...residentSelectionForArea(selectedAreaId),
       locationFocus: null,
       selectedPlanningZoneId: null,
       selectedNeighborhoodId: null,
@@ -98,6 +107,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
     set({
       selectedPlanningZoneId,
       selectedAreaId,
+      ...residentSelectionForArea(selectedAreaId),
       selectedNeighborhoodId: null,
       briefReady: false,
     }),
@@ -131,6 +141,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
       selectedPlanningZoneId: null,
       selectedNeighborhoodId: null,
       selectedAreaId,
+      ...residentSelectionForArea(selectedAreaId),
       briefReady: false,
     }),
   toggleLayer: (layer) =>

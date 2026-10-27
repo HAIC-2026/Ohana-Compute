@@ -16,6 +16,7 @@ in a portal.
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelter-plans`
+- `GET /api/v1/planning-areas`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -32,6 +33,9 @@ in a portal.
 - Curated County shelter-plan provenance, freshness, coverage gaps, and local
   validation requirements for four Chapter 127A emergency-management
   jurisdictions covering Hawaiʻi's five political counties
+- Curated deterministic practice workflows for one representative area in each
+  of the four jurisdictions, with distinct AFN fixture keys, resources, routes,
+  briefings, County-plan links, and explicit unsupported-island scope
 - Aggregate community-planning profiles from Census ACS, CDC/ATSDR SVI, HHS
   emPOWER, and FEMA National Risk Index
 - Five-minute in-memory cache with ETag revalidation
@@ -63,6 +67,15 @@ while
 includes Kalawao in Maui for emergency-management responsibilities. The API
 therefore exposes four planning jurisdictions, five political counties, and an
 explicit sourced Kalawao note.
+
+`GET /api/v1/planning-areas` is a practice-data boundary, not a live County
+resource feed. Its four representative workflows cover Urban Honolulu,
+Central/West Maui, Hilo/Lower Puna, and East Kauaʻi. Resource capacities,
+capabilities, and route states are deterministic product fixtures that require
+local validation and never imply that a facility is open or a road is
+passable. Molokaʻi, Lānaʻi, Niʻihau, and Kalawao are returned as unsupported
+workflow scope. Reader failures return `502` with `Cache-Control: no-store`; no
+Oʻahu-shaped success response is synthesized.
 
 HDOT closure results are planned roadwork, not emergency road status or proof
 that a route is passable. The PTWC endpoint exposes the latest product and its

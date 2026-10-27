@@ -1,4 +1,10 @@
-import { communityProfile, countyShelterPlans, expect, test } from './fixtures'
+import {
+  communityProfile,
+  countyShelterPlans,
+  expect,
+  planningAreaCatalog,
+  test,
+} from './fixtures'
 
 import { mockOfficialHawaiiKaiStatus } from './support/mock-backend'
 
@@ -391,6 +397,127 @@ test('island selector keeps one island visible and discloses coverage gaps', asy
   ).toBeVisible()
   await expect(page.getByTestId('response-zone-maui-central')).toBeVisible()
   await expect(page.getByTestId('response-zone-oahu-town')).not.toBeVisible()
+})
+
+test('statewide County planning depth stays distinct in the frontend', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  let catalogRequests = 0
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/planning-areas') {
+      catalogRequests += 1
+    }
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByLabel('Choose island').selectOption('Maui')
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const planningDepth = planningSheet.getByRole('region', {
+    name: 'Statewide planning depth',
+  })
+  await expect(
+    planningDepth.getByText('Maui corridor continuity workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Central Maui practice reception site').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Honoapiʻilani Highway west access').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText('H-1 urban corridor')
+  await expect(planningSheet).not.toContainText('TheBus')
+  await expect(planningSheet).not.toContainText('Urban Honolulu')
+
+  await page.getByLabel('Choose island').selectOption('Hawaiʻi')
+  await expect(
+    planningDepth.getByText('East Hawaiʻi medical continuity workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Puna practice medical-power support hub').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Hawaiʻi Belt Road Hilo–Puna access').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText(
+    'Central Maui practice reception site',
+  )
+
+  await page.getByLabel('Choose island').selectOption('Kauaʻi')
+  await expect(
+    planningDepth.getByText('East Kauaʻi flood-isolation workflow', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('East Kauaʻi practice shelter').first(),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Kūhiō Highway Wailua crossing').first(),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText(
+    'Hawaiʻi Belt Road Hilo–Puna access',
+  )
+  expect(catalogRequests).toBe(1)
+  expect(planningAreaCatalog.summary.political_counties_total).toBe(5)
+})
+
+test('statewide planning catalog failure does not substitute Oahu content', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  let catalogAttempts = 0
+  await page.route('**/api/v1/planning-areas', async (route) => {
+    catalogAttempts += 1
+    if (catalogAttempts > 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(planningAreaCatalog),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'planning area source unavailable' }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByLabel('Choose island').selectOption('Maui')
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const planningSheet = page.locator('.planning-sheet:visible')
+  await expect(
+    planningSheet.getByText('Representative workflow unavailable'),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText(/No Oʻahu workflow was substituted/),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Practice resources unavailable'),
+  ).toBeVisible()
+  await expect(planningSheet).not.toContainText('H-1 urban corridor')
+  await expect(planningSheet).not.toContainText('Maui Community Shelter')
+  await planningSheet.getByRole('button', { name: 'Retry' }).click()
+  await expect(
+    planningSheet
+      .getByRole('region', { name: 'Statewide planning depth' })
+      .getByText('Maui corridor continuity workflow', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    planningSheet.getByText('Central Maui practice reception site').first(),
+  ).toBeVisible()
+  expect(catalogAttempts).toBe(2)
 })
 
 test('mobile controls preserve the selected response zone', async ({

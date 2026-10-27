@@ -12,6 +12,12 @@ export type FieldBriefingInput = {
     arrival: string
     summary: string
   }
+  planningContext?: {
+    jurisdiction: string
+    afnFixture: string
+    shelterPlanJurisdictionId: string
+    provenance: string
+  }
   map: {
     exposedPopulation: string
     primarySignal: string
@@ -132,6 +138,23 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
       : input.map.sourceStatus === 'Partial'
         ? 'partial'
         : 'unavailable'
+  const planningContext = input.planningContext
+    ? `
+      <section>
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Statewide planning depth</p>
+            <h2>${escapeHTML(input.planningContext.jurisdiction)}</h2>
+          </div>
+          <span class="status partial">${escapeHTML(input.planningContext.provenance)}</span>
+        </div>
+        <div class="baseline">
+          <div><span>AFN fixture</span><strong>${escapeHTML(input.planningContext.afnFixture)}</strong></div>
+          <div><span>County shelter-plan link</span><strong>${escapeHTML(input.planningContext.shelterPlanJurisdictionId)}</strong></div>
+        </div>
+        <p>Representative practice workflow only. No facility opening status or operational capacity is asserted.</p>
+      </section>`
+    : ''
   const resources = input.model.resources
     .map(
       (resource) => `
@@ -292,6 +315,7 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
       </header>
       <p class="notice">Practice planning artifact. Confirm forecasts, shelter status, routes, assignments, and local conditions before operational use.</p>
       ${eventSummary}
+      ${planningContext}
 
       <section>
         <div class="section-title">
