@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: 'planner-integration.spec.ts',
+  testIgnore: ['planner-integration.spec.ts', 'collaborative-plans.spec.ts'],
   fullyParallel: true,
   reporter: 'line',
   use: {

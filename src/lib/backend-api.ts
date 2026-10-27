@@ -42,7 +42,10 @@ export async function backendGet<T>(
   const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
   try {
     const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...authorizationHeaders(),
+      },
       signal: controller.signal,
     })
     if (!response.ok) {
@@ -78,15 +81,31 @@ export async function backendPost<TRequest, TResponse>(
   path: string,
   body: TRequest,
 ): Promise<TResponse> {
+  return backendMutation<TRequest, TResponse>('POST', path, body)
+}
+
+export async function backendPut<TRequest, TResponse>(
+  path: string,
+  body: TRequest,
+): Promise<TResponse> {
+  return backendMutation<TRequest, TResponse>('PUT', path, body)
+}
+
+async function backendMutation<TRequest, TResponse>(
+  method: 'POST' | 'PUT',
+  path: string,
+  body: TRequest,
+): Promise<TResponse> {
   const url = new URL(path, `${getBackendApiUrl()}/`)
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...authorizationHeaders(),
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -118,6 +137,19 @@ export async function backendPost<TRequest, TResponse>(
   } finally {
     window.clearTimeout(timeout)
   }
+}
+
+function authorizationHeaders(): Record<string, string> {
+  if (
+    import.meta.env.VITE_ENABLE_TEST_IDENTITY !== 'true' ||
+    typeof window === 'undefined'
+  ) {
+    return {}
+  }
+  const token = window.sessionStorage.getItem(
+    'hawaii-resilience-collaboration-token',
+  )
+  return token ? { Authorization: 'Bearer ' + token } : {}
 }
 
 export function describeBackendSources(sources: BackendSourceStatus[]) {

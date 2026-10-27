@@ -8,8 +8,12 @@ export type IdentitySession = {
   state: 'anonymous' | 'authenticated'
   configuration_status: 'disabled' | 'configured' | 'unavailable'
   collaboration_write: 'unavailable' | 'denied' | 'available'
-  roles: Array<'viewer' | 'plan_editor'>
-  capabilities: Array<'collaboration:write'>
+  collaboration_read: 'unavailable' | 'denied' | 'available'
+  collaboration_approve: 'unavailable' | 'denied' | 'available'
+  roles: Array<'viewer' | 'plan_editor' | 'plan_approver'>
+  capabilities: Array<
+    'collaboration:read' | 'collaboration:write' | 'collaboration:approve'
+  >
 }
 
 export type IdentitySessionState =

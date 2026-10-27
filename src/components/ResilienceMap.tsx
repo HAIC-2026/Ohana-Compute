@@ -126,13 +126,23 @@ export function ResilienceMap() {
   const planningState = usePlanningStore(useShallow(selectPlanningMapState))
   const deferredPlanningState = useDeferredValue(planningState)
 
-  return <ResilienceMapContent planningState={deferredPlanningState} />
+  return (
+    <ResilienceMapContent
+      planningState={deferredPlanningState}
+      displayEventId={planningState.selectedEventId}
+      displayHazard={planningState.hazard}
+    />
+  )
 }
 
 const ResilienceMapContent = memo(function ResilienceMapContent({
   planningState,
+  displayEventId,
+  displayHazard,
 }: {
   planningState: PlanningMapState
+  displayEventId: string | null
+  displayHazard: PlanningMapState['hazard']
 }) {
   const {
     activeLayers,
@@ -173,10 +183,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
     planningAreaCatalog.snapshot,
     selectedArea.id,
   )
-  const selectedHazard =
-    hazards.find((item) => item.id === hazard) ?? hazards[0]
   const activeEvent =
     activeEvents.find((item) => item.id === selectedEventId) ?? null
+  const displayEvent =
+    activeEvents.find((item) => item.id === displayEventId) ?? null
+  const displaySelectedHazard =
+    hazards.find((item) => item.id === displayHazard) ?? hazards[0]
   const currentHazard = activeEvent?.hazard ?? hazard
   const residentPlan =
     residentRoutePlans.find((item) => item.id === selectedResidentPlanId) ??
@@ -204,31 +216,37 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       ],
     [residentNoCar, residentTravel],
   )
-  const residentRouteGeometry = {
-    type: 'FeatureCollection' as const,
-    features: residentRouteSegments.map((segment) => ({
-      type: 'Feature' as const,
-      properties: {
-        mode: segment.mode,
-        label: segment.label,
-      },
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: segment.coordinates,
-      },
-    })),
-  }
-  const residentFloodGeometry = {
-    type: 'FeatureCollection' as const,
-    features: residentPlan.floodZones.map((zone) => ({
-      type: 'Feature' as const,
-      properties: { name: zone.name },
-      geometry: {
-        type: 'Polygon' as const,
-        coordinates: [zone.coordinates],
-      },
-    })),
-  }
+  const residentRouteGeometry = useMemo(
+    () => ({
+      type: 'FeatureCollection' as const,
+      features: residentRouteSegments.map((segment) => ({
+        type: 'Feature' as const,
+        properties: {
+          mode: segment.mode,
+          label: segment.label,
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: segment.coordinates,
+        },
+      })),
+    }),
+    [residentRouteSegments],
+  )
+  const residentFloodGeometry = useMemo(
+    () => ({
+      type: 'FeatureCollection' as const,
+      features: residentPlan.floodZones.map((zone) => ({
+        type: 'Feature' as const,
+        properties: { name: zone.name },
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [zone.coordinates],
+        },
+      })),
+    }),
+    [residentPlan.floodZones],
+  )
   const localResources =
     (usesCatalogWorkflow(selectedArea)
       ? getCatalogResourceInventory(selectedArea, catalogArea)
@@ -431,7 +449,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         className="hazard-legend"
         aria-label={
           selectedArea.island === 'Oʻahu'
-            ? `${activeEvent?.name ?? selectedHazard.shortLabel} synthetic scenario footprint; not an official forecast`
+            ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} synthetic scenario footprint; not an official forecast`
             : `${selectedArea.island} regional scenario footprint; validation pending`
         }
       >
@@ -439,7 +457,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         <span className="hazard-legend-copy">
           <strong>
             {selectedArea.island === 'Oʻahu'
-              ? `${activeEvent?.name ?? selectedHazard.shortLabel} scenario footprint`
+              ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} scenario footprint`
               : `${selectedArea.island} regional scenario footprint`}
           </strong>
           <small>

@@ -21,6 +21,15 @@ Graph token belongs in Key Vault or the chart for this foundation slice. The
 provider verifier and approved tenant/application setup remain blocked
 external. See [`docs/identity-foundation.md`](../docs/identity-foundation.md).
 
+Collaborative plan persistence is also disabled by default. To enable the
+single-replica SQLite deployment, set
+`collaboration.persistence=sqlite`; the chart creates a `ReadWriteOnce` PVC,
+mounts the configured database directory, and rejects `replicaCount != 1`.
+SQLite is durable for this deployment shape but is not multi-replica HA. Use
+the cluster volume-snapshot/backup service and plan an external database driver
+before scaling the backend horizontally. See
+[`docs/collaborative-plans.md`](../docs/collaborative-plans.md).
+
 ## Prerequisites
 
 - Azure CLI signed in to the intended subscription
@@ -111,4 +120,8 @@ Azure Key Vault -> AKS Workload Identity -> Secrets Store CSI Driver
 Planner application identity:
 disabled by default -> anonymous local-only planner
 future approved OIDC metadata + cryptographic verifier -> guarded server writes
+
+Collaborative plan storage:
+disabled by default -> local checklist/export only
+explicit SQLite + PVC + one replica -> durable versions and audit history
 ```

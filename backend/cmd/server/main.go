@@ -16,6 +16,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/collaboration"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
@@ -56,6 +57,14 @@ func main() {
 	if err != nil {
 		logger.Error("initialize identity boundary", "error", err)
 		os.Exit(1)
+	}
+	collaborationStore, err := collaborationStoreFromEnvironment()
+	if err != nil {
+		logger.Error("invalid collaboration persistence configuration", "error", err)
+		os.Exit(1)
+	}
+	if collaborationStore != nil {
+		defer collaborationStore.Close()
 	}
 
 	port := envOrDefault("PORT", "8080")
@@ -131,6 +140,7 @@ func main() {
 		EventTriggers:     eventTriggerService,
 		OperationalStatus: operationalStatusService,
 		Identity:          identityService,
+		Collaboration:     collaborationStore,
 		AllowedOrigins:    allowedOrigins,
 		Logger:            logger,
 		Registry:          registry,
@@ -167,6 +177,31 @@ func main() {
 		logger.Error("backend stopped unexpectedly", "error", err)
 		os.Exit(1)
 	}
+}
+
+func collaborationStoreFromEnvironment() (collaboration.Store, error) {
+	mode := strings.TrimSpace(os.Getenv("COLLABORATION_PERSISTENCE"))
+	if mode == "" || mode == "disabled" {
+		if strings.TrimSpace(os.Getenv("COLLABORATION_SQLITE_PATH")) != "" {
+			return nil, errors.New(
+				"COLLABORATION_SQLITE_PATH requires COLLABORATION_PERSISTENCE=sqlite",
+			)
+		}
+		return nil, nil
+	}
+	if mode != "sqlite" {
+		return nil, fmt.Errorf(
+			"unsupported COLLABORATION_PERSISTENCE %q",
+			mode,
+		)
+	}
+	path := strings.TrimSpace(os.Getenv("COLLABORATION_SQLITE_PATH"))
+	if path == "" {
+		return nil, errors.New(
+			"COLLABORATION_SQLITE_PATH is required for SQLite persistence",
+		)
+	}
+	return collaboration.OpenSQLite(path)
 }
 
 func identityConfigFromEnvironment() (identity.Config, error) {

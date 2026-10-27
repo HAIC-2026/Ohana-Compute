@@ -640,6 +640,43 @@
       ],
       "title": "Operational domain states",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (rate(hawaii_resilience_collaboration_operations_total[5m]))",
+          "legendFormat": "{{operation}} / {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Collaborative plan operations",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
@@ -675,5 +712,5 @@
   "timezone": "browser",
   "title": "Hawaiʻi Mass Care Planner",
   "uid": "hawaii-resilience",
-  "version": 1
+  "version": 2
 }

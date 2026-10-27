@@ -1,0 +1,15 @@
+{{- if eq .Values.collaboration.persistence "sqlite" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hawaii-resilience-collaboration
+spec:
+  accessModes:
+    - ReadWriteOnce
+{{- with .Values.collaboration.sqlite.storageClassName }}
+  storageClassName: {{ . | quote }}
+{{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.collaboration.sqlite.size | quote }}
+{{- end }}

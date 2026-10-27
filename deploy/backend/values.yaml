@@ -31,6 +31,13 @@ identity:
     clientID: ''
     rolesClaim: roles
 
+collaboration:
+  persistence: disabled
+  sqlite:
+    path: /var/lib/hawaii-resilience/collaboration.db
+    storageClassName: ''
+    size: 2Gi
+
 azure:
   tenantId: ''
   workloadIdentityClientId: ''

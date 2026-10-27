@@ -162,6 +162,12 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   contract may expose only controlled mode, state, roles, capabilities, and
   collaboration availability, never user identifiers, tokens, claims, issuer
   metadata, or authentication errors.
+- When identity and persistence are explicitly configured, the Response Plan
+  can save a durable collaborative plan with immutable versions, bounded
+  operational decision notes, controlled team/role assignments, authorized
+  version-specific approvals, comparison, optimistic concurrency, and
+  append-only audit history. Anonymous users retain the full local checklist
+  and field-packet workflow.
 - Future collaborative writes must cross a reusable fail-closed authentication
   and `collaboration:write` authorization guard. Disabled, unavailable,
   missing, invalid, unknown-role, and insufficient-capability states must not

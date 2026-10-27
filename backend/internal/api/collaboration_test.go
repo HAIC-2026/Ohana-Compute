@@ -1,0 +1,127 @@
+package api
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+type collaborationVerifier struct {
+	roles []string
+}
+
+func (verifier collaborationVerifier) Verify(
+	context.Context,
+	string,
+) (identity.VerifiedIdentity, error) {
+	return identity.VerifiedIdentity{
+		Subject: "api-test-subject",
+		Roles:   verifier.roles,
+	}, nil
+}
+
+func TestCollaborationRoutesFailClosedWithoutPersistence(t *testing.T) {
+	t.Parallel()
+
+	authenticator := collaborationAuthenticator(
+		t,
+		[]string{string(identity.RolePlanEditor)},
+	)
+	mux := http.NewServeMux()
+	registerCollaborationRoutes(
+		mux,
+		nil,
+		authenticator,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		newMetrics(prometheus.NewRegistry()),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/collaboration/plans",
+		strings.NewReader(`{
+			"jurisdiction":"honolulu",
+			"area_ref":"oahu-town",
+			"event_ref":"hurricane-lala",
+			"hazard":"hurricane",
+			"title":"Aggregate response plan",
+			"summary":"Aggregate coordination summary.",
+			"status":"draft",
+			"snapshot":{"checklist":[],"source_refs":[],"outputs":[]}
+		}`),
+	)
+	request.Header.Set("Authorization", "Bearer fixture-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
+}
+
+func TestCollaborationApprovalRequiresApprovalCapability(t *testing.T) {
+	t.Parallel()
+
+	authenticator := collaborationAuthenticator(
+		t,
+		[]string{string(identity.RolePlanEditor)},
+	)
+	mux := http.NewServeMux()
+	registerCollaborationRoutes(
+		mux,
+		nil,
+		authenticator,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		newMetrics(prometheus.NewRegistry()),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/collaboration/plans/plan_fixture/approvals",
+		strings.NewReader(`{
+			"expected_revision":1,
+			"version":1,
+			"decision":"approved",
+			"rationale":"Aggregate checks complete."
+		}`),
+	)
+	request.Header.Set("Authorization", "Bearer fixture-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", response.Code, response.Body.String())
+	}
+}
+
+func collaborationAuthenticator(
+	t *testing.T,
+	roles []string,
+) *identity.Service {
+	t.Helper()
+	service, err := identity.NewService(identity.Config{
+		Mode: identity.ModeOIDC,
+		OIDC: identity.OIDCConfig{
+			IssuerURL:  "https://identity.example.test/tenant",
+			Audience:   "api://planner",
+			ClientID:   "planner-web",
+			RolesClaim: "roles",
+		},
+	}, collaborationVerifier{roles: roles})
+	if err != nil {
+		t.Fatalf("identity.NewService() error = %v", err)
+	}
+	return service
+}

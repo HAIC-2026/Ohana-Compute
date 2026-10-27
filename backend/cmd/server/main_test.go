@@ -90,3 +90,41 @@ func TestIdentityConfigFromEnvironmentRejectsPartialSettings(t *testing.T) {
 		t.Fatal("identityConfigFromEnvironment() returned nil error")
 	}
 }
+
+func TestCollaborationStoreFromEnvironmentDefaultsDisabled(t *testing.T) {
+	t.Setenv("COLLABORATION_PERSISTENCE", "")
+	t.Setenv("COLLABORATION_SQLITE_PATH", "")
+
+	store, err := collaborationStoreFromEnvironment()
+	if err != nil {
+		t.Fatalf("collaborationStoreFromEnvironment() error = %v", err)
+	}
+	if store != nil {
+		t.Fatal("disabled collaboration unexpectedly returned a store")
+	}
+}
+
+func TestCollaborationStoreFromEnvironmentRequiresExplicitSQLiteMode(t *testing.T) {
+	t.Setenv("COLLABORATION_PERSISTENCE", "disabled")
+	t.Setenv("COLLABORATION_SQLITE_PATH", filepath.Join(t.TempDir(), "plans.db"))
+
+	if _, err := collaborationStoreFromEnvironment(); err == nil {
+		t.Fatal("collaborationStoreFromEnvironment() returned nil error")
+	}
+}
+
+func TestCollaborationStoreFromEnvironmentOpensDurableSQLite(t *testing.T) {
+	t.Setenv("COLLABORATION_PERSISTENCE", "sqlite")
+	t.Setenv("COLLABORATION_SQLITE_PATH", filepath.Join(t.TempDir(), "plans.db"))
+
+	store, err := collaborationStoreFromEnvironment()
+	if err != nil {
+		t.Fatalf("collaborationStoreFromEnvironment() error = %v", err)
+	}
+	if store == nil {
+		t.Fatal("SQLite collaboration returned nil store")
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("store.Close() error = %v", err)
+	}
+}

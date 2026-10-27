@@ -246,9 +246,31 @@ func TestSessionReportsBoundedConfiguredAndUnavailableStates(t *testing.T) {
 	if len(session.Roles) != 1 || session.Roles[0] != RolePlanEditor {
 		t.Fatalf("unexpected roles: %#v", session.Roles)
 	}
-	if len(session.Capabilities) != 1 ||
-		session.Capabilities[0] != CapabilityCollaborationWrite {
+	if len(session.Capabilities) != 2 ||
+		session.Capabilities[0] != CapabilityCollaborationRead ||
+		session.Capabilities[1] != CapabilityCollaborationWrite {
 		t.Fatalf("unexpected capabilities: %#v", session.Capabilities)
+	}
+}
+
+func TestApproverReceivesReadAndApprovalWithoutWrite(t *testing.T) {
+	t.Parallel()
+
+	service := mustService(
+		t,
+		validOIDCConfig(),
+		verifierStub{identity: VerifiedIdentity{
+			Subject: "fixture-approver",
+			Roles:   []string{string(RolePlanApprover)},
+		}},
+	)
+	request := httptest.NewRequest(http.MethodGet, "/session", nil)
+	request.Header.Set("Authorization", "Bearer fixture-token")
+	session := service.Session(request)
+	if session.CollaborationRead != CollaborationAvailable ||
+		session.CollaborationApprove != CollaborationAvailable ||
+		session.CollaborationWrite != CollaborationDenied {
+		t.Fatalf("unexpected approver session: %#v", session)
 	}
 }
 

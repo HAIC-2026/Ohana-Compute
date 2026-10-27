@@ -32,6 +32,7 @@ type Metrics struct {
 	operationalSnapshots      *prometheus.CounterVec
 	operationalDomains        *prometheus.CounterVec
 	identityAuthorization     *prometheus.CounterVec
+	collaborationOperations   *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -216,6 +217,14 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"outcome"},
 		),
+		collaborationOperations: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "collaboration_operations_total",
+				Help:      "Collaborative plan operations by bounded operation and outcome.",
+			},
+			[]string{"operation", "outcome"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -239,12 +248,17 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.operationalSnapshots,
 		metrics.operationalDomains,
 		metrics.identityAuthorization,
+		metrics.collaborationOperations,
 	)
 	return metrics
 }
 
 func (metrics *Metrics) observeIdentityAuthorization(outcome identity.AuthorizationOutcome) {
 	metrics.identityAuthorization.WithLabelValues(string(outcome)).Inc()
+}
+
+func (metrics *Metrics) observeCollaboration(operation string, outcome string) {
+	metrics.collaborationOperations.WithLabelValues(operation, outcome).Inc()
 }
 
 func instrumentHTTP(metrics *Metrics, next http.Handler) http.Handler {
@@ -290,7 +304,7 @@ func (recorder *statusRecorder) Write(body []byte) (int, error) {
 
 func boundedMethod(method string) string {
 	switch method {
-	case http.MethodGet, http.MethodPost, http.MethodOptions:
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodOptions:
 		return method
 	default:
 		return "OTHER"
