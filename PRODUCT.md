@@ -28,7 +28,9 @@ The minimum complete planner journey is:
    ranges, matched practice supply, ACS uncertainty, and unavailable
    coefficients without presenting the result as a forecast.
 3. **Match:** identify the accountable response partner, first action, and
-   decision window.
+   decision window. Treat partner-directory results as sourced planning
+   associations only; activation, capacity, agreements, contacts, and incident
+   assignment require official validation.
 4. Confirm a local resource and generate a human-reviewable response
    checklist.
 5. Download a self-contained field briefing for printing or
@@ -102,6 +104,14 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   locally required rather than inventing values. HHS emPOWER remains
   Medicare-only aggregate context, and privacy-masked cells never become
   numeric demand.
+- The Response Plan maps controlled mass-care capability needs to a curated
+  partner directory with source claims, geographic scope, validation state,
+  freshness, and explicit operational gaps. Initial roles cover State ESF-6
+  coordination, human services, temporary shelter support, feeding and supply
+  distribution, statewide information/referral, and Honolulu County shelter
+  coordination. The directory never claims availability, activation, capacity,
+  agreements, credentials, contacts, response time, or assignment; stale and
+  unsupported associations remain unmatched.
 - Route guidance changes for residents without cars, residents needing mobility help, and residents needing powered medical support.
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.

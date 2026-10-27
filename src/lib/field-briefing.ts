@@ -81,6 +81,26 @@ export type FieldBriefingInput = {
     }
   }
   match: {
+    partnerMatches?: {
+      status: string
+      groups: Array<{
+        capability: string
+        status: string
+        gap?: string
+        partners: Array<{
+          name: string
+          role: string
+          coverage: string[]
+          validationState: string
+          operationalStatus: string
+          sourceTitle: string
+          sourceURL: string
+          claim: string
+          sourceFreshness: string
+          freshUntil: string
+        }>
+      }>
+    }
     decision?: {
       label: string
       action: string
@@ -240,6 +260,33 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
         </tr>`,
     )
     .join('')
+  const partnerMatches = input.match.partnerMatches
+    ? `
+      <div class="resource-demand">
+        <div class="section-title">
+          <div>
+            <h3>Sourced partner associations</h3>
+            <p>Documented roles only. Availability, activation, capacity, agreements, and assignment remain unvalidated.</p>
+          </div>
+          <span class="status partial">${escapeHTML(input.match.partnerMatches.status)}</span>
+        </div>
+        <table>
+          <thead><tr><th>Capability</th><th>Association</th><th>Source and scope</th><th>Operational status</th></tr></thead>
+          <tbody>${input.match.partnerMatches.groups
+            .flatMap((group) =>
+              group.partners.length > 0
+                ? group.partners.map(
+                    (partner) =>
+                      `<tr><td>${escapeHTML(group.capability.replaceAll('-', ' '))}</td><td><strong>${escapeHTML(partner.name)}</strong><br>${escapeHTML(partner.role)}</td><td><a href="${escapeHTML(partner.sourceURL)}">${escapeHTML(partner.sourceTitle)}</a><br>${escapeHTML(partner.validationState.replaceAll('_', ' '))} · ${escapeHTML(partner.coverage.join(', '))}<br>Source ${escapeHTML(partner.sourceFreshness)} through ${escapeHTML(partner.freshUntil.slice(0, 10))}<br>${escapeHTML(partner.claim)}</td><td>${escapeHTML(partner.operationalStatus.replaceAll('_', ' '))}<br>Capacity and activation not reported</td></tr>`,
+                  )
+                : [
+                    `<tr><td>${escapeHTML(group.capability.replaceAll('-', ' '))}</td><td>No sourced association</td><td>${escapeHTML(group.gap ?? 'Local validation required')}</td><td>Unavailable is not assigned</td></tr>`,
+                  ],
+            )
+            .join('')}</tbody>
+        </table>
+      </div>`
+    : '<p class="source-warning"><strong>Partner matching unavailable:</strong> no organization was assumed assigned or available.</p>'
   const cmist = input.model.cmist
     .map(
       (need) => `
@@ -424,6 +471,7 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
       <section>
         <h2>3 · Match response partners</h2>
         ${decision}
+        ${partnerMatches}
         <table><thead><tr><th>Action</th><th>Owner</th><th>Timing</th></tr></thead><tbody>${actions}</tbody></table>
       </section>
 

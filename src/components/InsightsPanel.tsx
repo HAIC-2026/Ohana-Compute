@@ -56,6 +56,7 @@ import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
+import { PartnerMatchPanel } from './PartnerMatchPanel'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
 import { StatewidePlanningDepthPanel } from './StatewidePlanningDepthPanel'
 import {
@@ -77,6 +78,11 @@ import {
   useResourceDemand,
 } from '../lib/resource-demand'
 import type { ResourceDemandStandard } from '../lib/resource-demand'
+import {
+  derivePartnerCapabilities,
+  usePartnerMatches,
+} from '../lib/partner-matching'
+import { countyIdForIsland } from '../lib/county-shelter-plans'
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -237,6 +243,19 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     ],
   )
   const resourceDemandState = useResourceDemand(resourceDemandRequest)
+  const partnerCapabilities = useMemo(
+    () =>
+      derivePartnerCapabilities(
+        afnPlanningAnalysis.hotspots.map((hotspot) => hotspot.domain),
+      ),
+    [afnPlanningAnalysis.hotspots],
+  )
+  const partnerJurisdiction =
+    catalogArea?.shelter_plan_jurisdiction_id ?? countyIdForIsland(area.island)
+  const partnerMatchState = usePartnerMatches(
+    partnerJurisdiction,
+    partnerCapabilities,
+  )
   const nextRouteCheck =
     routeChecks.find((route) => route.status === 'needs-confirmation') ??
     routeChecks.at(0)
@@ -435,6 +454,28 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           : undefined,
       },
       match: {
+        partnerMatches: partnerMatchState.response
+          ? {
+              status: partnerMatchState.response.status,
+              groups: partnerMatchState.response.matches.map((match) => ({
+                capability: match.capability,
+                status: match.status,
+                gap: match.gap,
+                partners: match.partners.map((partner) => ({
+                  name: partner.name,
+                  role: partner.role,
+                  coverage: partner.coverage,
+                  validationState: partner.validation_state,
+                  operationalStatus: partner.operational_status,
+                  sourceTitle: partner.evidence.title,
+                  sourceURL: partner.evidence.source_url,
+                  claim: partner.evidence.claim,
+                  sourceFreshness: partner.evidence.freshness,
+                  freshUntil: partner.evidence.fresh_until,
+                })),
+              })),
+            }
+          : undefined,
         decision:
           selectedNeighborhood && neighborhoodDecision
             ? {
@@ -597,6 +638,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         onServiceDaysChange={setResourceDemandDays}
         onShelterStandardChange={setResourceDemandStandard}
       />
+
+      <PartnerMatchPanel state={partnerMatchState} />
 
       <CountyShelterPlanPanel
         island={area.island}

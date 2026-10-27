@@ -18,6 +18,7 @@ in a portal.
 - `GET /api/v1/shelter-plans`
 - `GET /api/v1/planning-areas`
 - `POST /api/v1/planning/resource-demand`
+- `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -37,6 +38,9 @@ in a portal.
 - Curated deterministic practice workflows for one representative area in each
   of the four jurisdictions, with distinct AFN fixture keys, resources, routes,
   briefings, County-plan links, and explicit unsupported-island scope
+- Curated provenance-aware partner associations for controlled mass-care
+  capabilities, with geographic scope, freshness, validation state, and
+  explicit unknown operational status
 - Aggregate community-planning profiles from Census ACS, CDC/ATSDR SVI, HHS
   emPOWER, and FEMA National Risk Index
 - Five-minute in-memory cache with ETag revalidation
@@ -102,6 +106,21 @@ durations, quantities, and record counts, and returns `Cache-Control: no-store`.
 Malformed requests return `400`, unsupported content types return `415`,
 oversized bodies return `413`, and calculator failures return `502` without
 internal error details.
+
+`GET /api/v1/planning/partner-matches` accepts one controlled jurisdiction
+(`honolulu`, `maui`, `hawaii`, or `kauai`) and one to ten unique capability
+enums. It returns deterministic sourced associations from the State ESF-6
+annex, County guidance, and reviewed organization pages. Each result preserves
+the bounded claim, publisher, URL, geographic scope, validation state, review
+window, and freshness. Local County roles sort before statewide roles, but
+ordering is not a recommendation or priority score.
+
+The matcher never reports current availability, activation, capacity,
+contracts, credentials, response time, acceptance, contacts, or operational
+assignment. Those fields remain explicitly `not_validated` or `not_reported`.
+Stale sources are removed from matches, unsupported capabilities remain
+unmatched, unknown query fields are rejected, and matcher failures return `502`
+without a success-shaped fallback.
 
 HDOT closure results are planned roadwork, not emergency road status or proof
 that a route is passable. The PTWC endpoint exposes the latest product and its

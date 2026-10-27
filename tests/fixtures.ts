@@ -809,6 +809,204 @@ export function resourceDemandFixture(request: {
   }
 }
 
+export function partnerMatchFixture(
+  jurisdiction: string,
+  capabilities: string[],
+) {
+  const partners = {
+    'mass-care-coordination': [
+      {
+        id: 'hiema',
+        name: 'Hawaiʻi Emergency Management Agency',
+        organization_type: 'state_agency',
+        capability: 'mass-care-coordination',
+        role: 'State ESF-6 coordination and resource-request coordination.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+    sheltering: [
+      ...(jurisdiction === 'honolulu'
+        ? [
+            {
+              id: 'honolulu-dem',
+              name: 'Honolulu Department of Emergency Management',
+              organization_type: 'county_agency',
+              capability: 'sheltering',
+              role: 'County emergency-shelter planning and coordination.',
+              coverage: ['honolulu'],
+              validation_state: 'official_county_role',
+              source_id: 'honolulu-dem-shelter-guidance',
+              source_title: 'Emergency shelters',
+              source_publisher: 'Honolulu Department of Emergency Management',
+            },
+          ]
+        : []),
+      {
+        id: 'red-cross-pacific-islands',
+        name: 'American Red Cross Pacific Islands Region',
+        organization_type: 'nonprofit',
+        capability: 'sheltering',
+        role: 'State-plan temporary-shelter support association.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+    'feeding-production': [
+      {
+        id: 'salvation-army-hawaii',
+        name: 'The Salvation Army Hawaiian & Pacific Islands',
+        organization_type: 'nonprofit',
+        capability: 'feeding-production',
+        role: 'State-plan feeding support association.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+    'feeding-distribution': [
+      {
+        id: 'salvation-army-hawaii',
+        name: 'The Salvation Army Hawaiian & Pacific Islands',
+        organization_type: 'nonprofit',
+        capability: 'feeding-distribution',
+        role: 'State-plan feeding and distribution support association.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+    'emergency-supplies-distribution': [
+      {
+        id: 'salvation-army-hawaii',
+        name: 'The Salvation Army Hawaiian & Pacific Islands',
+        organization_type: 'nonprofit',
+        capability: 'emergency-supplies-distribution',
+        role: 'Self-described disaster supply and distribution support.',
+        coverage: ['statewide'],
+        validation_state: 'organization_self_described',
+        source_id: 'salvation-army-disaster-relief',
+        source_title: 'Disaster relief',
+        source_publisher: 'The Salvation Army Hawaiian & Pacific Islands',
+      },
+    ],
+    'information-referral': [
+      {
+        id: 'aloha-united-way-211',
+        name: 'Aloha United Way 211',
+        organization_type: 'nonprofit',
+        capability: 'information-referral',
+        role: 'Self-described statewide disaster information and referral service.',
+        coverage: ['statewide'],
+        validation_state: 'organization_self_described',
+        source_id: 'auw-211-about',
+        source_title: 'About 211',
+        source_publisher: 'Aloha United Way',
+      },
+    ],
+    'human-services': [
+      {
+        id: 'hawaii-dhs',
+        name: 'Hawaiʻi Department of Human Services',
+        organization_type: 'state_agency',
+        capability: 'human-services',
+        role: 'State human-services and ESF-6 co-primary coordination.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+    'access-functional-needs-support': [
+      {
+        id: 'hawaii-dhs',
+        name: 'Hawaiʻi Department of Human Services',
+        organization_type: 'state_agency',
+        capability: 'access-functional-needs-support',
+        role: 'Human-services coordination relevant to AFN planning.',
+        coverage: ['statewide'],
+        validation_state: 'official_plan_role',
+        source_id: 'hawaii-sesf6-2025',
+        source_title: 'State Emergency Support Function #6 Annex',
+        source_publisher: 'Hawaiʻi Emergency Management Agency',
+      },
+    ],
+  } as Record<string, Array<Record<string, unknown>>>
+  const matches = capabilities.map((capability) => {
+    const records = partners[capability] ?? []
+    return {
+      capability,
+      status: records.length > 0 ? 'matched' : 'unmatched',
+      partners: records.map((partner) => ({
+        ...partner,
+        operational_status: 'not_validated',
+        capacity_status: 'not_reported',
+        activation_status: 'not_reported',
+        match_basis: 'documented_role_and_geographic_scope',
+        evidence: {
+          source_id: partner.source_id,
+          title: partner.source_title,
+          publisher: partner.source_publisher,
+          source_url: `https://example.test/${partner.source_id}`,
+          claim: `Documented planning association for ${capability}.`,
+          accessed_at: '2026-10-26T00:00:00Z',
+          fresh_until: '2027-04-24T00:00:00Z',
+          freshness: 'fresh',
+        },
+        required_validation: [
+          'Confirm current activation and incident assignment.',
+        ],
+        source_id: undefined,
+        source_title: undefined,
+        source_publisher: undefined,
+      })),
+      ...(records.length === 0
+        ? {
+            gap: 'No current sourced association covers this capability and planning jurisdiction.',
+          }
+        : {}),
+    }
+  })
+  const matchedCapabilities = matches.filter(
+    (match) => match.status === 'matched',
+  ).length
+  return {
+    schema_version: 'partner-match-response.v1',
+    generated_at: '2026-10-26T00:00:00Z',
+    status:
+      matchedCapabilities === matches.length
+        ? 'complete'
+        : matchedCapabilities > 0
+          ? 'partial'
+          : 'unavailable',
+    jurisdiction_id: jurisdiction,
+    summary: {
+      requested_capabilities: matches.length,
+      matched_capabilities: matchedCapabilities,
+      unmatched_capabilities: matches.length - matchedCapabilities,
+      partner_associations: matches.reduce(
+        (total, match) => total + match.partners.length,
+        0,
+      ),
+    },
+    matches,
+    disclaimers: [
+      'Matches are sourced planning associations, not operational recommendations.',
+    ],
+  }
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.route('**/api/v1/community/profile?*', async (route) => {
@@ -838,6 +1036,19 @@ export const test = base.extend({
         contentType: 'application/json',
         body: JSON.stringify(
           resourceDemandFixture(route.request().postDataJSON()),
+        ),
+      })
+    })
+    await page.route('**/api/v1/planning/partner-matches?*', async (route) => {
+      const url = new URL(route.request().url())
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          partnerMatchFixture(
+            url.searchParams.get('jurisdiction') ?? 'honolulu',
+            url.searchParams.getAll('capability'),
+          ),
         ),
       })
     })

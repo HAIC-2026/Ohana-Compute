@@ -17,6 +17,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
@@ -60,6 +61,12 @@ type resourceDemandCalculatorStub struct {
 	response    resourcedemand.Response
 	err         error
 	lastRequest resourcedemand.Request
+}
+
+type partnerMatcherStub struct {
+	response  partnermatching.Response
+	err       error
+	lastQuery partnermatching.Query
 }
 
 type officialReaderStub struct {
@@ -193,6 +200,14 @@ func (stub *resourceDemandCalculatorStub) Calculate(
 	request resourcedemand.Request,
 ) (resourcedemand.Response, error) {
 	stub.lastRequest = request
+	return stub.response, stub.err
+}
+
+func (stub *partnerMatcherStub) Match(
+	_ context.Context,
+	query partnermatching.Query,
+) (partnermatching.Response, error) {
+	stub.lastQuery = query
 	return stub.response, stub.err
 }
 
@@ -789,6 +804,114 @@ func TestResourceDemandEndpointFailsClosed(t *testing.T) {
 	}
 }
 
+func TestPartnerMatchEndpointReturnsSourcedNonOperationalMatches(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=sheltering&capability=pet-service-animal-support",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("missing no-store header: %#v", response.Header())
+	}
+	var body partnermatching.Response
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Status != "partial" || body.JurisdictionID != "honolulu" {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+	if len(body.Matches) != 2 || len(body.Matches[0].Partners) == 0 {
+		t.Fatalf("missing sourced partner matches: %#v", body.Matches)
+	}
+	for _, partner := range body.Matches[0].Partners {
+		if partner.OperationalStatus != "not_validated" ||
+			partner.CapacityStatus != "not_reported" ||
+			partner.ActivationStatus != "not_reported" {
+			t.Fatalf("partner implies operational readiness: %#v", partner)
+		}
+	}
+	if body.Matches[1].Status != "unmatched" {
+		t.Fatalf("unsupported capability did not remain unmatched: %#v", body.Matches[1])
+	}
+}
+
+func TestPartnerMatchEndpointRejectsUnboundedQueries(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	for _, path := range []string{
+		"/api/v1/planning/partner-matches?jurisdiction=oahu&capability=sheltering",
+		"/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=free-text",
+		"/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=sheltering&capability=sheltering",
+		"/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=sheltering&address=private",
+	} {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(
+			response,
+			httptest.NewRequest(http.MethodGet, path, nil),
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 400", path, response.Code)
+		}
+	}
+}
+
+func TestPartnerMatchEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	matcher := &partnerMatcherStub{err: errors.New("catalog unavailable")}
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		PartnerMatching: matcher,
+	})
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/planning/partner-matches?jurisdiction=maui&capability=feeding-production",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "catalog unavailable") {
+		t.Fatalf("response leaked internal error: %s", response.Body.String())
+	}
+	if matcher.lastQuery.JurisdictionID != "maui" ||
+		len(matcher.lastQuery.Capabilities) != 1 {
+		t.Fatalf("matcher did not receive bounded query: %#v", matcher.lastQuery)
+	}
+}
+
 func TestRiskEndpointValidatesAndPassesCoordinates(t *testing.T) {
 	t.Parallel()
 
@@ -1254,6 +1377,10 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 			body:        resourceDemandRequestBody(),
 			contentType: "application/json",
 		},
+		{
+			method: http.MethodGet,
+			path:   "/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=sheltering",
+		},
 		{method: http.MethodGet, path: "/api/v1/community/acs" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/svi" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/empower" + coordinateQuery},
@@ -1296,6 +1423,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		"/api/v1/shelter-plans",
 		"/api/v1/planning-areas",
 		"/api/v1/planning/resource-demand",
+		"/api/v1/planning/partner-matches",
 		"/api/v1/community/acs",
 		"/api/v1/community/svi",
 		"/api/v1/community/empower",

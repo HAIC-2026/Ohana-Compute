@@ -109,6 +109,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/shelter-plans`
 - `GET /api/v1/planning-areas`
 - `POST /api/v1/planning/resource-demand`
+- `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -155,6 +156,16 @@ emPOWER values are never converted into numeric demand, and missing evidence is
 never treated as zero. Requests are strict JSON, limited to 64 KiB, use bounded
 enums and quantities, and return `Cache-Control: no-store`.
 
+`GET /api/v1/planning/partner-matches` maps bounded mass-care capability
+enums to curated Hawaiʻi State, County, nonprofit, and coordination roles.
+Every association includes its claim, publisher, source URL, geographic scope,
+validation state, review window, and freshness. Results always report
+operational status as unvalidated and capacity/activation as not reported.
+Stale sources are disabled, unsupported capabilities remain explicit gaps, and
+the browser sends no organization names, free text, addresses, coordinates, or
+resource values. Matches are planning evidence, not recommendations,
+assignments, endorsements, contracts, or commitments.
+
 Hawaiʻi has five political counties but four County emergency-management
 jurisdictions under
 [HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
@@ -166,12 +177,13 @@ special case instead of inventing an independent Kalawao shelter agency.
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
 context, official aggregate AFN values, resource and route checks, assigned
-actions, quantitative resource-demand ranges and unavailable lines, public
-guidance, required local validation checks, and direct Hawaiʻi DHS
-planning-reference URLs. It has embedded print styles and no external runtime
-dependencies, so it can be printed or opened after connectivity is lost. It
-intentionally excludes resident-entered addresses, coordinates, names,
-identifiers, and person-level medical data.
+actions, quantitative resource-demand ranges and unavailable lines, sourced
+partner associations and operational-validation gaps, public guidance,
+required local validation checks, and direct Hawaiʻi DHS planning-reference
+URLs. It has embedded print styles and no external runtime dependencies, so it
+can be printed or opened after connectivity is lost. It intentionally excludes
+resident-entered addresses, coordinates, names, identifiers, and person-level
+medical data.
 
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -300,11 +312,14 @@ instead of substituting a reassuring answer.
 - `src/lib/resource-demand.ts` sends only bounded aggregate inputs and
   unit-labeled practice supply to the deterministic Go resource-demand model;
   it preserves unavailable, partial, privacy-masked, and retry states.
+- `src/lib/partner-matching.ts` derives controlled capability needs and
+  requests provenance-aware matches by four emergency-management jurisdiction
+  IDs; it never sends organization names, user text, or operational values.
 - `src/store/planning-store.ts` holds the client scenario state.
 - `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
   event adapters, official hazard and shelter adapters, community-planning
-  sources, deterministic resource-demand calculator, and HDOT planned-closure
-  context.
+  sources, deterministic resource-demand calculator, curated partner matcher,
+  and HDOT planned-closure context.
 
 The frontend already treats inference as an asynchronous service and passes a
 structured area, hazard, severity, exposure, and primary planning signal. The

@@ -465,3 +465,100 @@ test('resource demand stays bounded and reproducible', async ({
   )
   expect(metrics).not.toContain(privateValue)
 })
+
+test('partner matches remain sourced and non-operational', async ({
+  page,
+  request,
+}) => {
+  const directResponse = await request.get(
+    `${backendURL}/api/v1/planning/partner-matches?jurisdiction=honolulu&capability=sheltering&capability=pet-service-animal-support`,
+  )
+  expect(directResponse.ok()).toBe(true)
+  const direct = await directResponse.json()
+  expect(direct).toMatchObject({
+    schema_version: 'partner-match-response.v1',
+    status: 'partial',
+    jurisdiction_id: 'honolulu',
+    summary: {
+      requested_capabilities: 2,
+      matched_capabilities: 1,
+      unmatched_capabilities: 1,
+    },
+  })
+  expect(direct.matches[0].partners[0]).toMatchObject({
+    id: 'honolulu-dem',
+    validation_state: 'official_county_role',
+    operational_status: 'not_validated',
+    capacity_status: 'not_reported',
+    activation_status: 'not_reported',
+  })
+  expect(direct.matches[1]).toMatchObject({
+    capability: 'pet-service-animal-support',
+    status: 'unmatched',
+    partners: [],
+  })
+
+  const browserRequests: string[] = []
+  page.on('request', (browserRequest) => {
+    if (browserRequest.url().includes('/api/v1/planning/partner-matches')) {
+      browserRequests.push(browserRequest.url())
+    }
+  })
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const panel = planningSheet.getByTestId('partner-matches')
+  await expect(
+    panel.getByRole('heading', { name: 'Response partner matches' }),
+  ).toBeVisible()
+  await expect(panel).toContainText('No sourced association')
+  await panel.getByRole('tab', { name: 'Sheltering' }).click()
+  await expect(panel).toContainText(
+    'Honolulu Department of Emergency Management',
+  )
+  await expect(panel).toContainText('Operational status not validated')
+  await expect(panel).toContainText('Activation and capacity are not reported')
+  await expect(panel).toContainText('Source review current through')
+
+  await page.getByLabel('Choose island').selectOption('Maui')
+  await expect.poll(() => browserRequests.at(-1)).toContain('jurisdiction=maui')
+  await panel.getByRole('tab', { name: 'Sheltering' }).click()
+  await expect(panel).not.toContainText(
+    'Honolulu Department of Emergency Management',
+  )
+  await expect(panel).toContainText('American Red Cross Pacific Islands Region')
+  const serializedRequests = browserRequests.join('\n')
+  expect(serializedRequests).not.toContain('address')
+  expect(serializedRequests).not.toContain('coordinate')
+  expect(serializedRequests).not.toContain(
+    'Honolulu Department of Emergency Management',
+  )
+
+  await planningSheet
+    .getByRole('button', { name: 'Create response checklist' })
+    .click()
+  const downloadPromise = page.waitForEvent('download')
+  await planningSheet
+    .getByRole('button', { name: 'Download field packet' })
+    .click()
+  const download = await downloadPromise
+  const downloadedPath = await download.path()
+  const packet = await readFile(downloadedPath, 'utf8')
+  expect(packet).toContain('Sourced partner associations')
+  expect(packet).toContain('Operational status')
+  expect(packet).toContain('Capacity and activation not reported')
+  expect(packet).toContain('Source fresh through')
+  expect(packet).toContain('No sourced association')
+
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  expect(metricsResponse.ok()).toBe(true)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toMatch(
+    /hawaii_resilience_http_requests_total\{method="GET",route="\/api\/v1\/planning\/partner-matches",status="200"\} [1-9]\d*/,
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_browser_events_total{action="partner_capability_select",category="planning"',
+  )
+})
