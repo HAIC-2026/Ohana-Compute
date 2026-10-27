@@ -12,7 +12,8 @@ authentication. Checklist state is not written to the server.
 - authentication mode: `disabled` or `oidc`
 - session state: `anonymous` or `authenticated`
 - configuration state: `disabled`, `configured`, or `unavailable`
-- collaborative-write state: `unavailable`, `denied`, or `available`
+- collaboration read, write, and approval states: `unavailable`, `denied`, or
+  `available`
 - controlled roles and capabilities
 
 The response is always `Cache-Control: no-store`. It never includes bearer
@@ -22,7 +23,7 @@ to explain that the current checklist and export remain local.
 
 `POST /api/v1/identity/authorization-check` is a no-content authorization
 probe, not a collaborative plan write. It exercises the same reusable
-`collaboration:write` guard future server-side mutations must wrap. Disabled or
+capability guard server-side collaboration routes wrap. Disabled or
 unavailable identity returns `503`, missing or invalid credentials return
 `401`, and authenticated principals without the controlled capability return
 `403`. The guarded handler runs only for a verified `plan_editor` principal.
@@ -36,16 +37,22 @@ interface. A future provider verifier must cryptographically validate the
 signature and key set, exact HTTPS issuer, configured audience, temporal
 claims, and the controlled `roles` claim before returning a principal.
 
-Only `viewer` and `plan_editor` are recognized. Unknown roles fail
-authentication rather than being ignored. `plan_editor` maps to the single
-foundation capability `collaboration:write`; this is not a full workflow or
-approval RBAC matrix.
+Only `viewer`, `plan_editor`, and `plan_approver` are recognized. Unknown roles
+fail authentication rather than being ignored. `viewer` maps to
+`collaboration:read`; `plan_editor` maps to read and write;
+`plan_approver` maps to read and approve. Approval does not imply write access,
+and write does not imply approval access.
 
 Provider-backed verification is currently **blocked external**. The production
 binary intentionally supplies no OIDC verifier, so complete OIDC metadata
 reports `unavailable` and protected writes remain denied. Enabling real sign-in
 requires an approved identity tenant/application plus a reviewed verifier
 implementation; metadata alone does not enable authentication.
+
+Durable collaboration is independently disabled unless
+`COLLABORATION_PERSISTENCE=sqlite` and a valid absolute SQLite path are
+configured. Identity alone never enables storage. See
+[`collaborative-plans.md`](./collaborative-plans.md).
 
 ## Operator configuration
 

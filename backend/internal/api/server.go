@@ -15,6 +15,7 @@ import (
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/catalog"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/collaboration"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
@@ -101,6 +102,7 @@ type Config struct {
 	EventTriggers     EventTriggerReader
 	OperationalStatus OperationalStatusReader
 	Identity          identity.Authenticator
+	Collaboration     collaboration.Store
 	AllowedOrigins    []string
 	Logger            *slog.Logger
 	Registry          *prometheus.Registry
@@ -178,6 +180,13 @@ func NewServer(config Config) *Server {
 	mux.Handle(
 		"GET /api/v1/identity/session",
 		identity.SessionHandler(config.Identity),
+	)
+	registerCollaborationRoutes(
+		mux,
+		config.Collaboration,
+		config.Identity,
+		logger,
+		metrics,
 	)
 	mux.Handle(
 		"POST /api/v1/identity/authorization-check",
@@ -348,7 +357,7 @@ func cors(allowedOrigins []string, next http.Handler) http.Handler {
 				"Access-Control-Allow-Headers",
 				"Authorization, Content-Type",
 			)
-			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		}
 		if request.Method == http.MethodOptions {
 			writer.WriteHeader(http.StatusNoContent)
@@ -365,7 +374,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 		logger.Info(
 			"http request",
 			"method", request.Method,
-			"path", request.URL.Path,
+			"route", boundedRoute(request.Pattern),
 			"duration", time.Since(started),
 		)
 	})

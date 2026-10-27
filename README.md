@@ -56,6 +56,9 @@ households.
   errors
 - A disabled-by-default identity boundary with a privacy-safe session endpoint,
   fail-closed collaborative-write guard, and explicit local-only planner state
+- Disabled-by-default durable shared plans with immutable versions, bounded
+  decision notes, controlled role assignments, authorized approvals,
+  comparison, optimistic concurrency, and append-only audit history
 - Desktop and mobile Playwright coverage
 
 ## Stack
@@ -108,6 +111,10 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `POST /api/v1/telemetry/browser`
 - `GET /api/v1/identity/session`
 - `POST /api/v1/identity/authorization-check`
+- `POST /api/v1/collaboration/plans`
+- `GET /api/v1/collaboration/plans/{planID}`
+- `PUT /api/v1/collaboration/plans/{planID}`
+- Collaboration comment, assignment, approval, and version-comparison routes
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -130,16 +137,21 @@ coordinates, input values, visible text, user identifiers, or URLs/query
 strings. See [`docs/observability.md`](./docs/observability.md) for the metric
 contract, bounded labels, Prometheus scraping, and the Grafana dashboard.
 
-Authentication is disabled by default, and all current planner workflows remain
-anonymous and local-only. The response checklist and field packet are not
-stored by the server. The identity session endpoint returns only bounded mode,
+Authentication and collaboration persistence are disabled by default, so the
+planner remains anonymous and local-only until both are configured. The
+response checklist and field packet continue to work without server storage.
+Configured collaboration stores immutable plan versions, bounded operational
+notes, controlled response-role assignments, version-specific approval
+decisions, and append-only audit events in SQLite with optimistic concurrency.
+The identity session endpoint returns only bounded mode,
 configuration, role, capability, and collaboration availability state; it
 never returns user identifiers, tokens, claims, issuer metadata, or
-verification errors. Future collaborative mutations must use the reusable
-`collaboration:write` guard. Provider-backed OIDC verification remains blocked
+verification errors. Collaborative mutations use reusable read, write, and
+approval capability guards. Provider-backed OIDC verification remains blocked
 on approved tenant/application configuration and a cryptographic verifier; OIDC
 metadata alone fails closed. See
-[`docs/identity-foundation.md`](./docs/identity-foundation.md).
+[`docs/identity-foundation.md`](./docs/identity-foundation.md) and
+[`docs/collaborative-plans.md`](./docs/collaborative-plans.md).
 
 The backend coalesces identical concurrent official-source cache misses so a
 burst of planner requests produces one upstream refresh per source and
@@ -271,6 +283,10 @@ determinism, ACS uncertainty propagation, and fail-closed supply matching.
 It also proves that anonymous planning remains usable and local while the
 disabled identity boundary denies the protected-write authorization probe
 without leaking a credential into the session response or metrics.
+The named `collaborative plans preserve versions and reject stale writes` test
+uses the real Go API and durable SQLite driver to create and update a plan,
+compare versions, add a note and controlled assignment, record an approval,
+inspect audit history, and prove that a stale revision returns `409`.
 
 `npm run test:journey` runs the numbered resident story and writes raw timing
 metrics plus a summary to `test-results/performance/`. Important browser state

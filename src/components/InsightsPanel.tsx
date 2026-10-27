@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -92,6 +92,12 @@ import {
 } from '../lib/event-triggers'
 import { useOperationalStatus } from '../lib/operational-status'
 import { useIdentitySession } from '../lib/identity-session'
+
+const CollaborativePlanPanel = lazy(() =>
+  import('./CollaborativePlanPanel').then((module) => ({
+    default: module.CollaborativePlanPanel,
+  })),
+)
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -955,6 +961,56 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             </div>
           </motion.div>
         )}
+        {brief && (
+          <Suspense
+            fallback={
+              <div className="collaboration-surface is-loading" role="status">
+                <LoaderCircle className="spin" size={18} />
+                <div>
+                  <strong>Opening shared-plan tools</strong>
+                  <p>Your local response checklist is ready.</p>
+                </div>
+              </div>
+            }
+          >
+            <CollaborativePlanPanel
+              identityState={identitySessionState}
+              jurisdiction={partnerJurisdiction}
+              areaRef={area.id}
+              eventRef={activeEvent?.id ?? ''}
+              hazard={hazard}
+              suggestedTitle={`${displayPlace} ${selectedHazard.label.toLowerCase()} response plan`}
+              suggestedSummary={brief.explanation}
+              snapshot={{
+                checklist: brief.priorities.map((priority) => ({
+                  title: priority.title,
+                  owner: priority.owner,
+                  timing: priority.timing,
+                })),
+                source_refs: brief.citations.slice(0, 30),
+                outputs: [
+                  {
+                    stage: 'map',
+                    reference: area.id,
+                    summary: `${displayPlace} aggregate planning area for ${selectedHazard.label.toLowerCase()}.`,
+                  },
+                  {
+                    stage: 'model',
+                    reference: 'resource-demand.v1',
+                    summary:
+                      'Deterministic aggregate demand ranges and confirmed practice supply gaps.',
+                  },
+                  {
+                    stage: 'match',
+                    reference: partnerJurisdiction,
+                    summary:
+                      'Controlled capability needs matched to sourced planning partners.',
+                  },
+                ],
+              }}
+            />
+          </Suspense>
+        )}
       </section>
 
       <details className="evidence-details">
@@ -1107,10 +1163,10 @@ function IdentityBoundary({
       title = 'Anonymous local workspace · sign-in required for server writes'
       status = 'Anonymous'
     } else if (session.collaboration_write === 'available') {
-      title = 'Local workspace · identity verified'
+      title = 'Local workspace · shared planning available'
       detail =
-        'Checklist and export remain on this device. Identity is ready for future guarded server collaboration; shared plan storage is not included.'
-      status = 'Identity ready'
+        'Checklist and export remain available locally. Shared plans use guarded durable storage with immutable versions and controlled roles.'
+      status = 'Collaboration ready'
     } else {
       title = 'Local workspace · server write permission unavailable'
       status = 'Read only'

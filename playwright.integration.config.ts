@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: 'planner-integration.spec.ts',
+  testMatch: ['planner-integration.spec.ts', 'collaborative-plans.spec.ts'],
   fullyParallel: false,
   reporter: 'line',
   use: {
@@ -20,14 +20,15 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd backend && PORT=18080 go run ./cmd/e2e-server',
+      command:
+        'cd backend && PORT=18080 E2E_ENABLE_COLLABORATION=1 go run ./cmd/e2e-server',
       url: 'http://127.0.0.1:18080/healthz',
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
       command:
-        'VITE_BACKEND_API_URL=http://127.0.0.1:18080 npm run dev -- --host 127.0.0.1 --port 13000',
+        'VITE_BACKEND_API_URL=http://127.0.0.1:18080 VITE_ENABLE_TEST_IDENTITY=true npm run dev -- --host 127.0.0.1 --port 13000',
       url: 'http://127.0.0.1:13000',
       reuseExistingServer: false,
       timeout: 120_000,

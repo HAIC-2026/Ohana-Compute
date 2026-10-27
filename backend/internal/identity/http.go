@@ -33,29 +33,35 @@ const (
 )
 
 type Session struct {
-	SchemaVersion       string                  `json:"schema_version"`
-	AuthMode            Mode                    `json:"auth_mode"`
-	State               SessionState            `json:"state"`
-	ConfigurationStatus ConfigurationStatus     `json:"configuration_status"`
-	CollaborationWrite  CollaborationWriteState `json:"collaboration_write"`
-	Roles               []Role                  `json:"roles"`
-	Capabilities        []Capability            `json:"capabilities"`
+	SchemaVersion        string                  `json:"schema_version"`
+	AuthMode             Mode                    `json:"auth_mode"`
+	State                SessionState            `json:"state"`
+	ConfigurationStatus  ConfigurationStatus     `json:"configuration_status"`
+	CollaborationWrite   CollaborationWriteState `json:"collaboration_write"`
+	CollaborationRead    CollaborationWriteState `json:"collaboration_read"`
+	CollaborationApprove CollaborationWriteState `json:"collaboration_approve"`
+	Roles                []Role                  `json:"roles"`
+	Capabilities         []Capability            `json:"capabilities"`
 }
 
 func (service *Service) Session(request *http.Request) Session {
 	status := service.Status()
 	session := Session{
-		SchemaVersion:       "identity-session.v1",
-		AuthMode:            status.Mode,
-		State:               SessionAnonymous,
-		ConfigurationStatus: status.Configuration,
-		CollaborationWrite:  CollaborationDenied,
-		Roles:               []Role{},
-		Capabilities:        []Capability{},
+		SchemaVersion:        "identity-session.v1",
+		AuthMode:             status.Mode,
+		State:                SessionAnonymous,
+		ConfigurationStatus:  status.Configuration,
+		CollaborationWrite:   CollaborationDenied,
+		CollaborationRead:    CollaborationDenied,
+		CollaborationApprove: CollaborationDenied,
+		Roles:                []Role{},
+		Capabilities:         []Capability{},
 	}
 	if status.Configuration == ConfigurationDisabled ||
 		status.Configuration == ConfigurationUnavailable {
 		session.CollaborationWrite = CollaborationUnavailable
+		session.CollaborationRead = CollaborationUnavailable
+		session.CollaborationApprove = CollaborationUnavailable
 		return session
 	}
 	principal, err := service.Authenticate(request)
@@ -67,6 +73,12 @@ func (service *Service) Session(request *http.Request) Session {
 	session.Capabilities = principal.Capabilities()
 	if principal.HasCapability(CapabilityCollaborationWrite) {
 		session.CollaborationWrite = CollaborationAvailable
+	}
+	if principal.HasCapability(CapabilityCollaborationRead) {
+		session.CollaborationRead = CollaborationAvailable
+	}
+	if principal.HasCapability(CapabilityCollaborationApprove) {
+		session.CollaborationApprove = CollaborationAvailable
 	}
 	return session
 }

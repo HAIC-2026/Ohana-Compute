@@ -5,15 +5,18 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/collaboration"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
@@ -31,6 +34,24 @@ type fixtureSources struct{}
 type fixtureArcGIS struct{}
 
 type fixtureCensus struct{}
+
+type fixtureVerifier struct{}
+
+func (fixtureVerifier) Verify(
+	_ context.Context,
+	token string,
+) (identity.VerifiedIdentity, error) {
+	if token != "collaboration-e2e-token" {
+		return identity.VerifiedIdentity{}, identity.ErrInvalidCredentials
+	}
+	return identity.VerifiedIdentity{
+		Subject: "deterministic-e2e-principal",
+		Roles: []string{
+			string(identity.RolePlanEditor),
+			string(identity.RolePlanApprover),
+		},
+	}, nil
+}
 
 func (fixtureSources) ActiveAlerts(context.Context) (nws.Snapshot, error) {
 	now := time.Now().UTC()
@@ -259,6 +280,40 @@ func main() {
 	operationalStatusFixtures := operationalstatus.NewService(operationalstatus.Config{
 		Shelters: fixtures,
 	})
+	identityService, err := identity.NewService(identity.Config{}, nil)
+	if err != nil {
+		slog.Error("create disabled e2e identity service", "error", err)
+		os.Exit(1)
+	}
+	var collaborationStore collaboration.Store
+	if os.Getenv("E2E_ENABLE_COLLABORATION") == "1" {
+		identityService, err = identity.NewService(identity.Config{
+			Mode: identity.ModeOIDC,
+			OIDC: identity.OIDCConfig{
+				IssuerURL:  "https://identity.example.test/e2e",
+				Audience:   "api://hawaii-resilience-e2e",
+				ClientID:   "hawaii-resilience-e2e",
+				RolesClaim: "roles",
+			},
+		}, fixtureVerifier{})
+		if err != nil {
+			slog.Error("create configured e2e identity service", "error", err)
+			os.Exit(1)
+		}
+		databasePath := os.Getenv("E2E_COLLABORATION_SQLITE_PATH")
+		if databasePath == "" {
+			databasePath = filepath.Join(
+				os.TempDir(),
+				"hawaii-resilience-collaboration-e2e-"+os.Getenv("PORT")+".db",
+			)
+		}
+		collaborationStore, err = collaboration.OpenSQLite(databasePath)
+		if err != nil {
+			slog.Error("create e2e collaboration store", "error", err)
+			os.Exit(1)
+		}
+		defer collaborationStore.Close()
+	}
 	server := api.NewServer(api.Config{
 		Alerts:            fixtures,
 		Cyclones:          fixtures,
@@ -272,6 +327,8 @@ func main() {
 		PartnerMatching:   partnerMatchingFixture,
 		EventTriggers:     eventTriggerFixtures,
 		OperationalStatus: operationalStatusFixtures,
+		Identity:          identityService,
+		Collaboration:     collaborationStore,
 		AllowedOrigins: []string{
 			"http://127.0.0.1:3000",
 			"http://127.0.0.1:13000",

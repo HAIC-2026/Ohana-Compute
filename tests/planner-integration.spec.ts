@@ -19,20 +19,23 @@ test('anonymous planning stays local while server writes require identity', asyn
   const session = await sessionResponse.json()
   expect(session).toEqual({
     schema_version: 'identity-session.v1',
-    auth_mode: 'disabled',
+    auth_mode: 'oidc',
     state: 'anonymous',
-    configuration_status: 'disabled',
-    collaboration_write: 'unavailable',
+    configuration_status: 'configured',
+    collaboration_write: 'denied',
+    collaboration_read: 'denied',
+    collaboration_approve: 'denied',
     roles: [],
     capabilities: [],
   })
+
   expect(JSON.stringify(session)).not.toContain(privateCredential)
 
   const authorizationResponse = await request.post(
     `${backendURL}/api/v1/identity/authorization-check`,
     { headers: { Authorization: `Bearer ${privateCredential}` } },
   )
-  expect(authorizationResponse.status()).toBe(503)
+  expect(authorizationResponse.status()).toBe(401)
   expect(authorizationResponse.headers()['cache-control']).toBe('no-store')
 
   await page.goto('/')
@@ -44,7 +47,7 @@ test('anonymous planning stays local while server writes require identity', asyn
   await expect(planningSheet).toBeVisible()
   const identityState = planningSheet.getByTestId('identity-session-state')
   await expect(identityState).toContainText(
-    'Anonymous local workspace · server collaboration off',
+    'Anonymous local workspace · sign-in required for server writes',
   )
   await expect(identityState).toContainText(
     'Your checklist and field packet stay on this device',
@@ -57,10 +60,10 @@ test('anonymous planning stays local while server writes require identity', asyn
   const metricsResponse = await request.get(`${backendURL}/metrics`)
   const metrics = await metricsResponse.text()
   expect(metrics).toContain(
-    'hawaii_resilience_identity_authorization_total{outcome="disabled"}',
+    'hawaii_resilience_identity_authorization_total{outcome="invalid"}',
   )
   expect(metrics).toContain(
-    'hawaii_resilience_http_requests_total{method="POST",route="/api/v1/identity/authorization-check",status="503"}',
+    'hawaii_resilience_http_requests_total{method="POST",route="/api/v1/identity/authorization-check",status="401"}',
   )
   expect(metrics).not.toContain(privateCredential)
   expect(metrics).not.toContain('integration-private-user')

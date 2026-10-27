@@ -17,7 +17,8 @@ Browser events use only these bounded labels:
 - `action`: `navigation`, `dom_content_loaded`, `load`, `hydration`,
   `map_ready`, `hazard_select`, `severity_change`, `area_select`,
   `layer_toggle`, `planning_brief_generate`, `planning_brief_update`,
-  `field_packet_download`, `event_trigger_select`,
+  `field_packet_download`, `collaboration_plan_save`,
+  `collaboration_version_save`, `event_trigger_select`,
   `event_trigger_provenance_open`, `event_trigger_retry`,
   `live_status_select`, `live_status_provenance_open`, `live_status_retry`,
   `map_interact`,
@@ -73,6 +74,7 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_operational_status_snapshots_total`
 - `hawaii_resilience_operational_status_domains_total`
 - `hawaii_resilience_identity_authorization_total`
+- `hawaii_resilience_collaboration_operations_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -113,6 +115,13 @@ The session and authorization-check HTTP routes are labeled only by their
 registered patterns. Tokens, subjects, email addresses, display names, roles,
 capabilities, issuer/audience values, raw claims, and authentication errors are
 never labels or browser telemetry fields.
+
+Collaborative plan metrics use only fixed `operation` values (`create`, `read`,
+`update`, `comment`, `assignment`, `approval`, `compare`) and fixed `outcome`
+values (`success`, `conflict`, `not_found`, `invalid`, `error`). Plan and
+version IDs, titles, summaries, note and rationale text, assignments, subject
+IDs, emails, and tokens are never labels. The Grafana dashboard includes a
+**Collaborative plan operations** panel based only on these bounded labels.
 
 AFN source metrics use only four source labels: `acs-5-year`,
 `cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
@@ -206,6 +215,12 @@ sum by (source, outcome) (
 ```promql
 sum by (outcome) (
   rate(hawaii_resilience_identity_authorization_total[5m])
+)
+```
+
+```promql
+sum by (operation, outcome) (
+  rate(hawaii_resilience_collaboration_operations_total[5m])
 )
 ```
 

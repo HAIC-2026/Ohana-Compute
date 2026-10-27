@@ -11,13 +11,18 @@ import (
 type Role string
 
 const (
-	RoleViewer     Role = "viewer"
-	RolePlanEditor Role = "plan_editor"
+	RoleViewer       Role = "viewer"
+	RolePlanEditor   Role = "plan_editor"
+	RolePlanApprover Role = "plan_approver"
 )
 
 type Capability string
 
-const CapabilityCollaborationWrite Capability = "collaboration:write"
+const (
+	CapabilityCollaborationRead    Capability = "collaboration:read"
+	CapabilityCollaborationWrite   Capability = "collaboration:write"
+	CapabilityCollaborationApprove Capability = "collaboration:approve"
+)
 
 var (
 	ErrDisabled           = errors.New("identity is disabled")
@@ -154,15 +159,28 @@ func principalFromVerified(verified VerifiedIdentity) (Principal, error) {
 	}
 
 	roles := make([]Role, 0, len(verified.Roles))
-	capabilities := make([]Capability, 0, 1)
+	capabilities := make([]Capability, 0, 3)
 	seenRoles := make(map[Role]struct{}, len(verified.Roles))
 	for _, claimed := range verified.Roles {
 		role := Role(strings.TrimSpace(claimed))
 		switch role {
 		case RoleViewer:
+			if !slices.Contains(capabilities, CapabilityCollaborationRead) {
+				capabilities = append(capabilities, CapabilityCollaborationRead)
+			}
 		case RolePlanEditor:
+			if !slices.Contains(capabilities, CapabilityCollaborationRead) {
+				capabilities = append(capabilities, CapabilityCollaborationRead)
+			}
 			if !slices.Contains(capabilities, CapabilityCollaborationWrite) {
 				capabilities = append(capabilities, CapabilityCollaborationWrite)
+			}
+		case RolePlanApprover:
+			if !slices.Contains(capabilities, CapabilityCollaborationRead) {
+				capabilities = append(capabilities, CapabilityCollaborationRead)
+			}
+			if !slices.Contains(capabilities, CapabilityCollaborationApprove) {
+				capabilities = append(capabilities, CapabilityCollaborationApprove)
 			}
 		default:
 			return Principal{}, ErrInvalidIdentity

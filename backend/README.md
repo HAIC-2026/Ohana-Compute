@@ -9,6 +9,13 @@ in a portal.
 - `GET /healthz`
 - `GET /api/v1/identity/session`
 - `POST /api/v1/identity/authorization-check`
+- `POST /api/v1/collaboration/plans`
+- `GET /api/v1/collaboration/plans/{planID}`
+- `PUT /api/v1/collaboration/plans/{planID}`
+- `POST /api/v1/collaboration/plans/{planID}/comments`
+- `POST /api/v1/collaboration/plans/{planID}/assignments`
+- `POST /api/v1/collaboration/plans/{planID}/approvals`
+- `GET /api/v1/collaboration/plans/{planID}/compare?from={version}&to={version}`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -59,6 +66,9 @@ in a portal.
 - CORS restricted to configured frontend origins
 - Disabled-by-default typed identity, principal, verifier, session, and
   collaborative-write authorization contracts
+- Disabled-by-default SQLite collaboration persistence with atomic migrations,
+  WAL, foreign keys, busy timeout, immutable versions, optimistic concurrency,
+  and append-only audit records
 
 Every official-data response includes the source ID, authority, upstream URL,
 retrieval time, cache freshness deadline, and `fresh` or `stale` status.
@@ -184,6 +194,14 @@ return `401`; insufficient controlled capability returns `403`; only an
 injected verified `plan_editor` principal can reach the guarded handler.
 Unknown roles fail closed.
 
+The collaboration API is documented in
+[`../docs/collaborative-plans.md`](../docs/collaborative-plans.md). Every read
+requires `collaboration:read`; plan, version, note, and assignment mutations
+require `collaboration:write`; approval records require
+`collaboration:approve`. Stale revisions return `409`. Responses are
+`no-store`, request JSON is strict and size-bounded, and telemetry never
+contains plan IDs, titles, note text, rationale text, subjects, or tokens.
+
 ## Run
 
 ```bash
@@ -205,6 +223,9 @@ Environment variables:
 - `OIDC_ISSUER_URL`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`, and
   `OIDC_ROLES_CLAIM` — required together only when `IDENTITY_MODE=oidc`;
   issuer must use HTTPS and the role claim must be `roles`
+- `COLLABORATION_PERSISTENCE` — `disabled` by default; `sqlite` is the only
+  durable driver
+- `COLLABORATION_SQLITE_PATH` — required absolute path when SQLite is enabled
 
 The current production server does not include a provider-backed OIDC verifier.
 Complete OIDC metadata therefore reports `unavailable` and keeps protected
