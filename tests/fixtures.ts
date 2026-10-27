@@ -201,6 +201,124 @@ export const eventTriggerSnapshot = {
   ],
 }
 
+export const operationalStatusSnapshot = {
+  schema_version: 'live-operational-status.v1',
+  generated_at: '2026-10-27T08:00:00Z',
+  status: 'partial',
+  disclaimer:
+    'Reported live status is source-specific. Unavailable never means normal, open, passable, restored, contained, or all clear.',
+  domains: [
+    unavailableOperationalDomain(
+      'evacuation_order',
+      'Authorized Hawaiʻi governor and county mayors',
+      'No verified public statewide machine-readable contract for attributable current legal evacuation orders',
+    ),
+    unavailableOperationalDomain(
+      'road_transport',
+      'Hawaiʻi Department of Transportation and County road authorities',
+      'No verified public statewide machine-readable emergency closure and passability contract',
+      'planned_reference',
+    ),
+    {
+      domain: 'shelter',
+      status: 'reported_live',
+      reference_kind: 'operational',
+      summary:
+        'FEMA National Shelter System records reported open by participating authorities.',
+      coverage: {
+        scope: 'statewide_reported_records',
+        areas: ['Hawaiʻi'],
+        notes: 'Coverage depends on participating reporting authorities.',
+      },
+      freshness: {
+        retrieved_at: '2026-10-27T08:00:00Z',
+        fresh_until: '2026-10-27T08:05:00Z',
+      },
+      provenance: {
+        source_id: 'fema-open-shelters',
+        authority: 'Federal Emergency Management Agency and reporting partners',
+        source_url:
+          'https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0',
+        access: 'ArcGIS REST / GeoJSON',
+        checked_at: '2026-10-27',
+        decision: 'ADOPT',
+        data_class: 'reported_live',
+      },
+      limitations: [
+        'FEMA records remain separate from County shelter-plan provenance and practice facilities.',
+      ],
+      shelters: [
+        {
+          id: 'fixture-live-shelter',
+          name: 'Fixture reported open shelter',
+          address: 'Official fixture address',
+          city: 'Honolulu',
+          reported_status: 'OPEN',
+          capacity: 85,
+          wheelchair_accessible: 'YES',
+          pet_accommodations_code: 'HOUSEHOLD_PETS',
+          reporting_organization: 'Fixture reporting authority',
+          distance_miles: 3.2,
+        },
+      ],
+    },
+    unavailableOperationalDomain(
+      'transit_paratransit',
+      'County transit and paratransit operators',
+      'No verified public statewide machine-readable disruption and paratransit operational-status contract',
+      'reference_only',
+    ),
+    unavailableOperationalDomain(
+      'utility_outage',
+      'Hawaiian Electric and Kauaʻi Island Utility Cooperative',
+      'No documented supported public machine-readable statewide outage contract',
+    ),
+    unavailableOperationalDomain(
+      'wildfire',
+      'Hawaiʻi fire authorities and land-management agencies',
+      'No verified Hawaiʻi-authoritative machine contract for complete incident, containment, protective-action, and evacuation status',
+      'reference_only',
+    ),
+  ],
+}
+
+function unavailableOperationalDomain(
+  domain: string,
+  authority: string,
+  missingArtifact: string,
+  referenceKind = 'none',
+) {
+  return {
+    domain,
+    status: 'unavailable',
+    reference_kind: referenceKind,
+    summary: `${domain.replaceAll('_', ' ')} operational status unavailable.`,
+    coverage: {
+      scope: 'unavailable',
+      areas: ['Hawaiʻi'],
+      notes: 'Unsupported coverage remains explicit.',
+    },
+    freshness: {},
+    provenance: {
+      source_id: `${domain.replaceAll('_', '-')}-boundary`,
+      authority,
+      source_url: 'https://example.test/checked-source',
+      access: 'Public source review; no supported runtime contract',
+      checked_at: '2026-10-27',
+      decision: 'SKIP',
+      data_class: 'unavailable',
+    },
+    limitations: [
+      'Unavailable never means normal, open, passable, restored, contained, or all clear.',
+    ],
+    unavailable_boundary: {
+      missing_artifact: missingArtifact,
+      owning_authority: authority,
+      verification: 'Checked official public channels.',
+    },
+  }
+}
+
 export const countyShelterPlans = {
   generated_at: '2026-10-27T00:00:00Z',
   status: 'partial',
@@ -1128,6 +1246,13 @@ export const test = base.extend({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(planningAreaCatalog),
+      })
+      await page.route('**/api/v1/planning/live-status?*', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(operationalStatusSnapshot),
+        })
       })
     })
     await page.route('**/api/v1/planning/resource-demand', async (route) => {

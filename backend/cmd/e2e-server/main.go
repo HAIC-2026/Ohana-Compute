@@ -16,6 +16,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
@@ -148,7 +149,24 @@ func (fixtureSources) OpenShelters(
 	float64,
 	float64,
 ) (official.OpenShelters, error) {
-	return official.OpenShelters{Shelters: []official.Shelter{}}, nil
+	now := time.Now().UTC()
+	capacity := 85
+	return official.OpenShelters{
+		Shelters: []official.Shelter{{
+			ID: "fixture-live-shelter", Name: "Fixture reported open shelter",
+			Address: "Official source fixture address", City: "Honolulu",
+			Status: "OPEN", Capacity: &capacity,
+			WheelchairAccessible:  "YES",
+			PetAccommodationsCode: "HOUSEHOLD_PETS",
+			Organization:          "Fixture reporting authority", DistanceMiles: 3.2,
+		}},
+		Sources: []arcgis.SourceStatus{{
+			ID:          "fema-open-shelters",
+			Authority:   "Federal Emergency Management Agency and reporting partners",
+			URL:         "https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0",
+			RetrievedAt: now, FreshUntil: now.Add(5 * time.Minute), Status: "fresh",
+		}},
+	}, nil
 }
 
 func (fixtureCensus) CommunityProfile(
@@ -238,20 +256,27 @@ func main() {
 	eventTriggerFixtures := eventtriggers.NewService(eventtriggers.Config{
 		NWS: fixtures, PTWC: fixtures, ComCat: fixtures, HANS: hans.NewClient(nil),
 	})
+	operationalStatusFixtures := operationalstatus.NewService(operationalstatus.Config{
+		Shelters: fixtures,
+	})
 	server := api.NewServer(api.Config{
-		Alerts:          fixtures,
-		Cyclones:        fixtures,
-		TsunamiProducts: fixtures,
-		Official:        fixtures,
-		Community:       communityFixtures,
-		Transportation:  fixtures,
-		ShelterPlans:    shelterPlanFixtures,
-		PlanningAreas:   planningAreaFixtures,
-		ResourceDemand:  resourceDemandFixture,
-		PartnerMatching: partnerMatchingFixture,
-		EventTriggers:   eventTriggerFixtures,
-		AllowedOrigins:  []string{"http://127.0.0.1:13000"},
-		Logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		Alerts:            fixtures,
+		Cyclones:          fixtures,
+		TsunamiProducts:   fixtures,
+		Official:          fixtures,
+		Community:         communityFixtures,
+		Transportation:    fixtures,
+		ShelterPlans:      shelterPlanFixtures,
+		PlanningAreas:     planningAreaFixtures,
+		ResourceDemand:    resourceDemandFixture,
+		PartnerMatching:   partnerMatchingFixture,
+		EventTriggers:     eventTriggerFixtures,
+		OperationalStatus: operationalStatusFixtures,
+		AllowedOrigins: []string{
+			"http://127.0.0.1:3000",
+			"http://127.0.0.1:13000",
+		},
+		Logger: slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + port,

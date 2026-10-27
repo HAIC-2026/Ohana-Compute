@@ -28,6 +28,10 @@ households.
 - Event-dependent resident guidance and official map layers
 - Official operational event-trigger snapshots from NWS, PTWC, and USGS
   ComCat, with HANS and County-order gaps shown as explicitly unavailable
+- A six-domain live operational-status boundary: FEMA-reported open shelters
+  are supported, while evacuation orders, emergency road passability,
+  transit/paratransit, utility outages, and Hawaiʻi wildfire operations remain
+  explicitly unavailable until authoritative machine contracts exist
 - Hawaiʻi Statewide GIS tsunami evacuation-zone checks
 - Statewide FEMA DFIRM flood classification and nearby flood boundaries
 - Hawaiʻi DLNR-DOFAW community wildfire planning-risk classification
@@ -113,6 +117,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/planning/event-triggers`
+- `GET /api/v1/planning/live-status?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -183,6 +188,21 @@ configured; web pages are not scraped. County evacuation-order data is
 the route returns `502`; partial source failure returns an explicit partial
 snapshot.
 
+`GET /api/v1/planning/live-status` returns the versioned
+`live-operational-status.v1` envelope for evacuation/order, road/transport,
+shelter, transit/paratransit, utility-outage, and wildfire status. FEMA
+National Shelter System is the only adopted live source. Its reporting
+authority, retrieval/freshness, and optional capacity, accessibility, pet,
+address, and organization fields remain source-specific and separate from
+County shelter-plan provenance and practice facilities. A missing FEMA record
+does not prove no County shelter is open. Freshness is the FEMA query/feed
+retrieval window; the checked contract does not establish a per-shelter update
+timestamp. The other five domains include a checked source/date, owning
+authority, exact missing machine artifact, limitations, and an explicit
+unavailable state; HDOT planned roadwork is reference-only and never becomes
+emergency closure or passability. See
+[`docs/research/live-operational-status-sources-20261027.md`](./docs/research/live-operational-status-sources-20261027.md).
+
 Hawaiʻi has five political counties but four County emergency-management
 jurisdictions under
 [HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
@@ -249,6 +269,11 @@ supporting evidence, generated planning action, and privacy boundary supplied to
 the mock AI generator. See
 [`docs/afn-planning-matrix.md`](./docs/afn-planning-matrix.md) for the matrix,
 thresholds, limitations, and extension process.
+
+The standard Playwright suite also starts the deterministic real Go fixture
+server rather than depending on public DNS or upstream availability. Adapter
+unit tests cover production URLs and failure behavior; browser tests remain
+repeatable while still crossing the browser-to-Go HTTP boundary.
 
 ## Data truth and limitations
 

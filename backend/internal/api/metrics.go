@@ -10,22 +10,26 @@ import (
 )
 
 type Metrics struct {
-	httpRequests        *prometheus.CounterVec
-	httpDuration        *prometheus.HistogramVec
-	httpInFlight        prometheus.Gauge
-	browserEvents       *prometheus.CounterVec
-	browserDuration     *prometheus.HistogramVec
-	telemetryBatches    *prometheus.CounterVec
-	telemetryRejected   *prometheus.CounterVec
-	afnSourceRequests   *prometheus.CounterVec
-	afnSourceDuration   *prometheus.HistogramVec
-	afnProfiles         *prometheus.CounterVec
-	afnSourceRetrieved  *prometheus.GaugeVec
-	afnSourceStale      *prometheus.GaugeVec
-	afnMaskedValues     *prometheus.CounterVec
-	eventSourceRequests *prometheus.CounterVec
-	eventSourceDuration *prometheus.HistogramVec
-	eventSnapshots      *prometheus.CounterVec
+	httpRequests              *prometheus.CounterVec
+	httpDuration              *prometheus.HistogramVec
+	httpInFlight              prometheus.Gauge
+	browserEvents             *prometheus.CounterVec
+	browserDuration           *prometheus.HistogramVec
+	telemetryBatches          *prometheus.CounterVec
+	telemetryRejected         *prometheus.CounterVec
+	afnSourceRequests         *prometheus.CounterVec
+	afnSourceDuration         *prometheus.HistogramVec
+	afnProfiles               *prometheus.CounterVec
+	afnSourceRetrieved        *prometheus.GaugeVec
+	afnSourceStale            *prometheus.GaugeVec
+	afnMaskedValues           *prometheus.CounterVec
+	eventSourceRequests       *prometheus.CounterVec
+	eventSourceDuration       *prometheus.HistogramVec
+	eventSnapshots            *prometheus.CounterVec
+	operationalSourceRequests *prometheus.CounterVec
+	operationalSourceDuration *prometheus.HistogramVec
+	operationalSnapshots      *prometheus.CounterVec
+	operationalDomains        *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -167,6 +171,41 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"state"},
 		),
+		operationalSourceRequests: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "operational_status_source_requests_total",
+				Help:      "Live operational-status source requests by bounded source and outcome.",
+			},
+			[]string{"source", "outcome"},
+		),
+		operationalSourceDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "operational_status_source_request_duration_seconds",
+				Help:      "Live operational-status source latency by bounded source and outcome.",
+				Buckets: []float64{
+					0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+				},
+			},
+			[]string{"source", "outcome"},
+		),
+		operationalSnapshots: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "operational_status_snapshots_total",
+				Help:      "Live operational-status snapshots by bounded state.",
+			},
+			[]string{"state"},
+		),
+		operationalDomains: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "operational_status_domains_total",
+				Help:      "Operational domain results by bounded domain and status.",
+			},
+			[]string{"domain", "status"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -185,6 +224,10 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.eventSourceRequests,
 		metrics.eventSourceDuration,
 		metrics.eventSnapshots,
+		metrics.operationalSourceRequests,
+		metrics.operationalSourceDuration,
+		metrics.operationalSnapshots,
+		metrics.operationalDomains,
 	)
 	return metrics
 }

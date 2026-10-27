@@ -18,7 +18,9 @@ Browser events use only these bounded labels:
   `map_ready`, `hazard_select`, `severity_change`, `area_select`,
   `layer_toggle`, `planning_brief_generate`, `planning_brief_update`,
   `field_packet_download`, `event_trigger_select`,
-  `event_trigger_provenance_open`, `event_trigger_retry`, `map_interact`,
+  `event_trigger_provenance_open`, `event_trigger_retry`,
+  `live_status_select`, `live_status_provenance_open`, `live_status_retry`,
+  `map_interact`,
   `activate`, `change`, `submit`, or `keyboard`
 - `category`: a fixed element category such as `button`, `select`, `map`,
   `planning`, or `page`
@@ -66,6 +68,10 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_event_trigger_source_requests_total`
 - `hawaii_resilience_event_trigger_source_request_duration_seconds`
 - `hawaii_resilience_event_trigger_snapshots_total`
+- `hawaii_resilience_operational_status_source_requests_total`
+- `hawaii_resilience_operational_status_source_request_duration_seconds`
+- `hawaii_resilience_operational_status_snapshots_total`
+- `hawaii_resilience_operational_status_domains_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -90,6 +96,15 @@ Event-trigger metrics use only `nws`, `ptwc`, `usgs_comcat`, and `usgs_hans`
 source labels and `success`, `stale`, or `error` outcomes. Snapshot state is
 `complete`, `partial`, or `unavailable`. Product IDs, event text, URLs,
 coordinates, and jurisdiction names are never labels.
+
+Live operational-status metrics use the single supported source label
+`fema_open_shelters`; source outcomes are `success`, `stale`, or `error`.
+Snapshot states are `partial` or `unavailable`. Domain labels are limited to
+`evacuation_order`, `road_transport`, `shelter`, `transit_paratransit`,
+`utility_outage`, and `wildfire`; domain status is `reported_live`, `stale`, or
+`unavailable`. Facility names, source product IDs, addresses, coordinates,
+organizations, URLs, upstream errors, and missing-artifact text are never
+labels.
 
 AFN source metrics use only four source labels: `acs-5-year`,
 `cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
@@ -165,6 +180,18 @@ sum by (source, outcome) (
 ```promql
 sum by (state) (
   rate(hawaii_resilience_event_trigger_snapshots_total[5m])
+)
+```
+
+```promql
+sum by (domain, status) (
+  rate(hawaii_resilience_operational_status_domains_total[5m])
+)
+```
+
+```promql
+sum by (source, outcome) (
+  rate(hawaii_resilience_operational_status_source_requests_total[5m])
 )
 ```
 

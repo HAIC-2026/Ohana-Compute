@@ -23,6 +23,22 @@ export type FieldBriefingInput = {
     officialURL: string
     legalOrderStatus: string
   }
+  operationalStatus?: {
+    status: string
+    disclaimer: string
+    domains: Array<{
+      domain: string
+      status: string
+      summary: string
+      authority: string
+      retrievedAt?: string
+      freshUntil?: string
+      sourceURL: string
+      coverage: string
+      limitation: string
+      shelterCount?: number
+    }>
+  }
   planningContext?: {
     jurisdiction: string
     afnFixture: string
@@ -353,6 +369,39 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
         <h2>Official operational trigger context unavailable</h2>
         <p class="source-warning"><strong>County evacuation-order data unavailable.</strong> Unavailable does not mean no order.</p>
       </section>`
+  const operationalStatusRows = input.operationalStatus?.domains
+    .map(
+      (domain) => `
+        <tr>
+          <td>${escapeHTML(domain.domain.replaceAll('_', ' '))}</td>
+          <td>${escapeHTML(domain.status.replaceAll('_', ' '))}</td>
+          <td>${escapeHTML(domain.summary)}${domain.shelterCount !== undefined ? ` · ${domain.shelterCount} reported record(s)` : ''}</td>
+          <td>${escapeHTML(domain.authority)}</td>
+          <td>${escapeHTML(domain.retrievedAt ?? 'Not reported')}</td>
+        </tr>`,
+    )
+    .join('')
+  const operationalStatus = input.operationalStatus
+    ? `
+      <section>
+        <div class="section-title">
+          <div>
+            <h2>Live operational status boundaries</h2>
+            <p>${escapeHTML(input.operationalStatus.disclaimer)}</p>
+          </div>
+          <span class="status partial">${escapeHTML(input.operationalStatus.status)}</span>
+        </div>
+        <table>
+          <thead><tr><th>Domain</th><th>Status</th><th>Operational fact</th><th>Authority</th><th>Retrieved</th></tr></thead>
+          <tbody>${operationalStatusRows}</tbody>
+        </table>
+        <p class="source-warning"><strong>Separation:</strong> FEMA-reported shelters are not County plan records or practice facilities. Planned roadwork is not emergency passability.</p>
+      </section>`
+    : `
+      <section>
+        <h2>Live operational status boundaries unavailable</h2>
+        <p class="source-warning"><strong>Do not infer normal conditions.</strong> Verify orders, roads, shelters, transit, utilities, and wildfire status directly with responsible authorities.</p>
+      </section>`
   const decision = input.match.decision
     ? `
       <div class="decision">
@@ -456,6 +505,7 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
       <p class="notice">Practice planning artifact. Confirm forecasts, shelter status, routes, assignments, and local conditions before operational use.</p>
       ${eventSummary}
       ${eventTrigger}
+      ${operationalStatus}
       ${planningContext}
 
       <section>

@@ -1,17 +1,21 @@
 package catalog
 
 type Source struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Authority     string   `json:"authority"`
-	Phase         string   `json:"phase"`
-	DataClass     string   `json:"data_class"`
-	Access        string   `json:"access"`
-	URL           string   `json:"url"`
-	UpdateCadence string   `json:"update_cadence"`
-	Integration   string   `json:"integration"`
-	Enables       []string `json:"enables"`
-	Limitations   []string `json:"limitations"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Authority       string   `json:"authority"`
+	Phase           string   `json:"phase"`
+	DataClass       string   `json:"data_class"`
+	Access          string   `json:"access"`
+	URL             string   `json:"url"`
+	UpdateCadence   string   `json:"update_cadence"`
+	Integration     string   `json:"integration"`
+	Enables         []string `json:"enables"`
+	Limitations     []string `json:"limitations"`
+	CheckedAt       string   `json:"checked_at,omitempty"`
+	Decision        string   `json:"decision,omitempty"`
+	MissingArtifact string   `json:"missing_artifact,omitempty"`
+	OwningAuthority string   `json:"owning_authority,omitempty"`
 }
 
 var sources = []Source{
@@ -111,15 +115,19 @@ var sources = []Source{
 		},
 	},
 	{
-		ID:            "county-evacuation-orders",
-		Name:          "County and State evacuation orders",
-		Authority:     "Authorized Hawaiʻi governor and county mayors",
-		Phase:         "P0",
-		DataClass:     "live",
-		Access:        "No verified machine-readable statewide source",
-		URL:           "https://dod.hawaii.gov/hiema/get-ready/",
-		UpdateCadence: "Incident-dependent",
-		Integration:   "unavailable-manual-path-not-implemented",
+		ID:              "county-evacuation-orders",
+		Name:            "County and State evacuation orders",
+		Authority:       "Authorized Hawaiʻi governor and county mayors",
+		Phase:           "P0",
+		DataClass:       "live",
+		Access:          "No verified machine-readable statewide source",
+		URL:             "https://dod.hawaii.gov/hiema/get-ready/",
+		UpdateCadence:   "Incident-dependent",
+		Integration:     "unavailable-manual-path-not-implemented",
+		CheckedAt:       "2026-10-27",
+		Decision:        "FURTHER-RESEARCH",
+		MissingArtifact: "Verified public statewide machine-readable contract for attributable current legal evacuation orders",
+		OwningAuthority: "Authorized Hawaiʻi governor and county mayors",
 		Enables: []string{
 			"Future explicit attributable authorized order records",
 		},
@@ -173,7 +181,9 @@ var sources = []Source{
 		Access:        "ArcGIS REST / GeoJSON",
 		URL:           "https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0",
 		UpdateCadence: "Incident-dependent",
-		Integration:   "integrated-backend; frontend migration pending",
+		Integration:   "integrated-live-operational-status",
+		CheckedAt:     "2026-10-27",
+		Decision:      "ADOPT",
 		Enables: []string{
 			"Officially reported open-shelter status, capacity, accessibility, pets, address, and operator context",
 		},
@@ -183,21 +193,25 @@ var sources = []Source{
 		},
 	},
 	{
-		ID:            "hdot-planned-lane-closures",
-		Name:          "HDOT planned lane closures",
-		Authority:     "Hawaiʻi Department of Transportation",
-		Phase:         "P0",
-		DataClass:     "operational-planning",
-		Access:        "ArcGIS FeatureServer",
-		URL:           "https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0",
-		UpdateCadence: "Published weekly and updated as planned work changes",
-		Integration:   "integrated-backend",
+		ID:              "hdot-planned-lane-closures",
+		Name:            "HDOT planned lane closures",
+		Authority:       "Hawaiʻi Department of Transportation",
+		Phase:           "P0",
+		DataClass:       "operational-planning",
+		Access:          "ArcGIS FeatureServer",
+		URL:             "https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0",
+		UpdateCadence:   "Published weekly and updated as planned work changes",
+		Integration:     "integrated-backend",
+		CheckedAt:       "2026-10-27",
+		Decision:        "ADAPT",
+		MissingArtifact: "Verified public statewide machine-readable emergency closure and passability contract",
+		OwningAuthority: "HDOT Highways and County road authorities",
 		Enables: []string{
 			"Scheduled route restrictions and construction detours",
 		},
 		Limitations: []string{
 			"Planned closures are not emergency road status",
-			"Real-time Oʻahu traffic is directed to GoAkamai",
+			"GoAkamai removed its prior real-time flow, incident, and travel-time features; no supported replacement API is documented",
 		},
 	},
 	{
@@ -255,15 +269,19 @@ var sources = []Source{
 		},
 	},
 	{
-		ID:            "wfigs-fire-perimeters",
-		Name:          "WFIGS current wildfire incidents and perimeters",
-		Authority:     "National Interagency Fire Center",
-		Phase:         "P1",
-		DataClass:     "live",
-		Access:        "ArcGIS FeatureServer",
-		URL:           "https://www.arcgis.com/sharing/rest/content/items/d1c32af3212341869b3c810f1a215824?f=pjson",
-		UpdateCadence: "Service refreshes every five minutes; perimeter edits can lag",
-		Integration:   "planned",
+		ID:              "wfigs-fire-perimeters",
+		Name:            "WFIGS current wildfire incidents and perimeters",
+		Authority:       "National Interagency Fire Center",
+		Phase:           "P1",
+		DataClass:       "live",
+		Access:          "ArcGIS FeatureServer",
+		URL:             "https://www.arcgis.com/sharing/rest/content/items/d1c32af3212341869b3c810f1a215824?f=pjson",
+		UpdateCadence:   "Service refreshes every five minutes; perimeter edits can lag",
+		Integration:     "blocked-external-reference-only",
+		CheckedAt:       "2026-10-27",
+		Decision:        "FURTHER-RESEARCH",
+		MissingArtifact: "Hawaiʻi-authoritative contract for complete incident, containment, protective-action, and evacuation status",
+		OwningAuthority: "County fire departments, Hawaiʻi DLNR-DOFAW, and authorized emergency-management authorities",
 		Enables: []string{
 			"Current wildfire incident locations and available perimeter context",
 		},
@@ -273,21 +291,48 @@ var sources = []Source{
 		},
 	},
 	{
-		ID:            "thebus-gtfs-avl",
-		Name:          "TheBus schedules and vehicle arrivals",
-		Authority:     "City and County of Honolulu Department of Transportation Services",
-		Phase:         "P1",
-		DataClass:     "live-and-scheduled",
-		Access:        "GTFS plus AppID-gated AVL API",
-		URL:           "https://hea.thebus.org/api_info.asp",
-		UpdateCadence: "Schedule publications plus real-time vehicle updates",
-		Integration:   "planned-backend; static GTFS is currently used by the frontend example",
+		ID:              "thebus-gtfs-avl",
+		Name:            "TheBus schedules and vehicle arrivals",
+		Authority:       "City and County of Honolulu Department of Transportation Services",
+		Phase:           "P1",
+		DataClass:       "live-and-scheduled",
+		Access:          "GTFS plus AppID-gated AVL API",
+		URL:             "https://hea.thebus.org/api_info.asp",
+		UpdateCadence:   "Schedule publications plus real-time vehicle updates",
+		Integration:     "blocked-external-for-operational-status; static GTFS remains planning reference",
+		CheckedAt:       "2026-10-27",
+		Decision:        "ADAPT",
+		MissingArtifact: "Statewide public disruption and paratransit operational-status contract",
+		OwningAuthority: "County transit and paratransit operators",
 		Enables: []string{
 			"Oʻahu no-car routing, stops, trips, arrivals, and vehicle context",
 		},
 		Limitations: []string{
 			"Requires an AppID for live data",
 			"Outer-island transit feeds need separate verification",
+		},
+	},
+	{
+		ID:              "county-transit-paratransit-status",
+		Name:            "County transit and paratransit operational status",
+		Authority:       "Hawaiʻi County, Honolulu, Kauaʻi, and Maui transit operators",
+		Phase:           "P0",
+		DataClass:       "live",
+		Access:          "No verified statewide supported public contract",
+		URL:             "https://hidot.hawaii.gov/mobility/transit/",
+		UpdateCadence:   "Provider- and incident-dependent",
+		Integration:     "blocked-external",
+		CheckedAt:       "2026-10-27",
+		Decision:        "FURTHER-RESEARCH",
+		MissingArtifact: "Documented public machine-readable service disruption and paratransit availability contract across all counties",
+		OwningAuthority: "County transit and paratransit operators",
+		Enables: []string{
+			"Future explicit fixed-route disruption and paratransit availability status",
+		},
+		Limitations: []string{
+			"Schedules and vehicle arrivals do not establish emergency service availability",
+			"Paratransit operations require provider-specific authority and coverage",
+			"Unsupported islands and providers remain unavailable rather than inheriting Oʻahu status",
 		},
 	},
 	{
@@ -362,15 +407,19 @@ var sources = []Source{
 		},
 	},
 	{
-		ID:            "utility-outages",
-		Name:          "Electric utility outage status",
-		Authority:     "Hawaiian Electric and Kauaʻi Island Utility Cooperative",
-		Phase:         "P2",
-		DataClass:     "live",
-		Access:        "Data-sharing agreement",
-		URL:           "https://www.hawaiianelectric.com/safety-and-outages/power-outages/oahu-outage-map",
-		UpdateCadence: "Near-real-time maps with documented delay and estimation",
-		Integration:   "agreement-required",
+		ID:              "utility-outages",
+		Name:            "Electric utility outage status",
+		Authority:       "Hawaiian Electric and Kauaʻi Island Utility Cooperative",
+		Phase:           "P2",
+		DataClass:       "live",
+		Access:          "Data-sharing agreement",
+		URL:             "https://www.hawaiianelectric.com/safety-and-outages/power-outages/oahu-outage-map",
+		UpdateCadence:   "Near-real-time maps with documented delay and estimation",
+		Integration:     "blocked-external-agreement-required",
+		CheckedAt:       "2026-10-27",
+		Decision:        "FURTHER-RESEARCH",
+		MissingArtifact: "Documented supported public machine-readable outage and restoration contract with provider/island coverage",
+		OwningAuthority: "Hawaiian Electric and Kauaʻi Island Utility Cooperative",
 		Enables: []string{
 			"Power-dependent resident support and restoration planning",
 		},

@@ -56,6 +56,7 @@ import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { EventTriggerPanel } from './EventTriggerPanel'
+import { LiveOperationalStatusPanel } from './LiveOperationalStatusPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import { PartnerMatchPanel } from './PartnerMatchPanel'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
@@ -88,6 +89,7 @@ import {
   primaryOperationalTrigger,
   useEventTriggers,
 } from '../lib/event-triggers'
+import { useOperationalStatus } from '../lib/operational-status'
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -176,6 +178,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     selectedPlanningZone?.coordinates ??
     locationFocus?.coordinates ??
     area.coordinates
+  const operationalStatusState = useOperationalStatus(planningCoordinates)
   const communityProfileState = useCommunityProfile(planningCoordinates)
   const selectedHazard =
     hazards.find((item) => item.id === hazard) ?? hazards[0]
@@ -382,6 +385,24 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             legalOrderStatus: primaryEventTrigger.legal_order_status,
           }
         : undefined,
+      operationalStatus: operationalStatusState.snapshot
+        ? {
+            status: operationalStatusState.snapshot.status,
+            disclaimer: operationalStatusState.snapshot.disclaimer,
+            domains: operationalStatusState.snapshot.domains.map((domain) => ({
+              domain: domain.domain,
+              status: domain.status,
+              summary: domain.summary,
+              authority: domain.provenance.authority,
+              retrievedAt: domain.freshness.retrieved_at,
+              freshUntil: domain.freshness.fresh_until,
+              sourceURL: domain.provenance.source_url,
+              coverage: domain.coverage.notes,
+              limitation: domain.limitations[0] ?? '',
+              shelterCount: domain.shelters?.length,
+            })),
+          }
+        : undefined,
       planningContext: catalogArea
         ? {
             jurisdiction:
@@ -545,6 +566,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         </p>
 
         <EventTriggerPanel />
+        <LiveOperationalStatusPanel coordinates={planningCoordinates} />
         <CommunityAfnSummary coordinates={planningCoordinates} detailed />
         <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
         <StatewidePlanningDepthPanel areaId={area.id} />

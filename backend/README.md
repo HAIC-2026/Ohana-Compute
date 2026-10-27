@@ -20,6 +20,7 @@ in a portal.
 - `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/planning/event-triggers`
+- `GET /api/v1/planning/live-status?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -31,6 +32,9 @@ in a portal.
 - Normalized Pacific Tsunami Warning Center CAP status and instructions
 - Versioned operational event-trigger snapshots joining NWS, PTWC, and USGS
   ComCat with explicit HANS and County-order unavailable records
+- Versioned six-domain live operational-status snapshots with FEMA-reported
+  shelters and explicit blocked-external order, road, transit/paratransit,
+  utility-outage, and wildfire boundaries
 - Coordinate-scoped HDOT planned lane closures for the next seven days
 - Normalized Hawaiʻi State GIS tsunami, FEMA DFIRM, coastal-planning, and
   DLNR wildfire-risk responses
@@ -73,6 +77,20 @@ Only a future attributable authorized governor or mayor manual record could
 represent a legal order. If all supported operational sources fail, the
 endpoint returns `502`; otherwise failures are preserved in a partial
 snapshot.
+
+`GET /api/v1/planning/live-status` is the source-contract boundary for current
+operational status. It requires coordinates only to sort FEMA-reported shelter
+records by distance; coordinates are never returned as metrics labels. The
+response always includes all six required domains. FEMA NSS records preserve
+reporting authority, retrieval and freshness, reported status, and optional
+capacity/accessibility/pet fields. They never merge with County plan records or
+practice facilities. Freshness is feed-level because the checked public
+contract does not establish a per-shelter update timestamp. Order, emergency
+road/passability, transit/paratransit, utility outage, and Hawaiʻi wildfire
+operations remain unavailable with the checked source/date, exact missing
+artifact, owning authority, and verification note. If the supported FEMA
+request fails, shelter also becomes explicitly unavailable and the snapshot
+state is `unavailable`; no empty or normal-looking fallback is synthesized.
 
 `GET /api/v1/shelter-plans` is a provenance catalog rather than an operational
 shelter feed. Its curated records may identify published or reference-only

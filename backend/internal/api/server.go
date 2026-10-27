@@ -20,6 +20,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
@@ -81,22 +82,27 @@ type EventTriggerReader interface {
 	Snapshot(context.Context) (eventtriggers.Snapshot, error)
 }
 
+type OperationalStatusReader interface {
+	Snapshot(context.Context, float64, float64) (operationalstatus.Snapshot, error)
+}
+
 type Config struct {
-	Alerts          AlertReader
-	Cyclones        CycloneReader
-	TsunamiProducts TsunamiProductReader
-	Official        OfficialReader
-	Community       CommunityReader
-	Transportation  TransportationReader
-	ShelterPlans    ShelterPlanReader
-	PlanningAreas   PlanningAreaReader
-	ResourceDemand  ResourceDemandCalculator
-	PartnerMatching PartnerMatcher
-	EventTriggers   EventTriggerReader
-	AllowedOrigins  []string
-	Logger          *slog.Logger
-	Registry        *prometheus.Registry
-	TelemetryRate   int
+	Alerts            AlertReader
+	Cyclones          CycloneReader
+	TsunamiProducts   TsunamiProductReader
+	Official          OfficialReader
+	Community         CommunityReader
+	Transportation    TransportationReader
+	ShelterPlans      ShelterPlanReader
+	PlanningAreas     PlanningAreaReader
+	ResourceDemand    ResourceDemandCalculator
+	PartnerMatching   PartnerMatcher
+	EventTriggers     EventTriggerReader
+	OperationalStatus OperationalStatusReader
+	AllowedOrigins    []string
+	Logger            *slog.Logger
+	Registry          *prometheus.Registry
+	TelemetryRate     int
 }
 
 type Server struct {
@@ -140,6 +146,9 @@ func NewServer(config Config) *Server {
 	}
 	if config.EventTriggers == nil {
 		config.EventTriggers = unavailableEventTriggerReader{}
+	}
+	if config.OperationalStatus == nil {
+		config.OperationalStatus = unavailableOperationalStatusReader{}
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -229,6 +238,10 @@ func NewServer(config Config) *Server {
 		"GET /api/v1/planning/event-triggers",
 		eventTriggerHandler(logger, metrics, config.EventTriggers),
 	)
+	mux.HandleFunc(
+		"GET /api/v1/planning/live-status",
+		operationalStatusHandler(logger, metrics, config.OperationalStatus),
+	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,
 		"acs-5-year",
@@ -277,6 +290,16 @@ func (unavailableEventTriggerReader) Snapshot(
 	context.Context,
 ) (eventtriggers.Snapshot, error) {
 	return eventtriggers.Snapshot{}, eventtriggers.ErrNoOperationalSources
+}
+
+type unavailableOperationalStatusReader struct{}
+
+func (unavailableOperationalStatusReader) Snapshot(
+	context.Context,
+	float64,
+	float64,
+) (operationalstatus.Snapshot, error) {
+	return operationalstatus.Snapshot{}, operationalstatus.ErrInvalidSnapshot
 }
 
 func (server *Server) Handler() http.Handler {

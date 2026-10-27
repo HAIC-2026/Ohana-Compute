@@ -4,6 +4,116 @@ import { expect, test } from '@playwright/test'
 
 const backendURL = 'http://127.0.0.1:18080'
 
+test('live status never substitutes unsupported operational domains', async ({
+  page,
+  request,
+}) => {
+  const response = await request.get(
+    `${backendURL}/api/v1/planning/live-status?lat=21.29&lon=-157.68`,
+  )
+  expect(response.ok()).toBe(true)
+  const snapshot = await response.json()
+  expect(snapshot.schema_version).toBe('live-operational-status.v1')
+  expect(snapshot.status).toBe('partial')
+  expect(snapshot.domains).toHaveLength(6)
+
+  const shelter = snapshot.domains.find(
+    (domain: { domain: string }) => domain.domain === 'shelter',
+  )
+  expect(shelter).toMatchObject({
+    status: 'reported_live',
+    provenance: {
+      source_id: 'fema-open-shelters',
+      decision: 'ADOPT',
+      data_class: 'reported_live',
+    },
+  })
+  expect(shelter.shelters[0]).toMatchObject({
+    name: 'Fixture reported open shelter',
+    reported_status: 'OPEN',
+    capacity: 85,
+    wheelchair_accessible: 'YES',
+    pet_accommodations_code: 'HOUSEHOLD_PETS',
+  })
+
+  for (const domainName of [
+    'evacuation_order',
+    'road_transport',
+    'transit_paratransit',
+    'utility_outage',
+    'wildfire',
+  ]) {
+    const domain = snapshot.domains.find(
+      (candidate: { domain: string }) => candidate.domain === domainName,
+    )
+    expect(domain.status).toBe('unavailable')
+    expect(domain.unavailable_boundary.missing_artifact).toBeTruthy()
+    expect(domain.unavailable_boundary.owning_authority).toBeTruthy()
+    expect(domain.summary.toLowerCase()).not.toContain('all clear')
+  }
+  const road = snapshot.domains.find(
+    (domain: { domain: string }) => domain.domain === 'road_transport',
+  )
+  expect(road.reference_kind).toBe('planned_reference')
+  expect(JSON.stringify(road)).toContain(
+    'planned roadwork, not emergency passability',
+  )
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Open response workspace', exact: true })
+    .click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  await expect(planningSheet).toBeVisible()
+  const panel = planningSheet.getByTestId('live-operational-status')
+  await expect(panel).toContainText('Reported live operations')
+  await expect(panel).toContainText('Fixture reported open shelter')
+  await expect(panel).toContainText(
+    'separate from County plans and practice facilities',
+  )
+
+  for (const tab of ['Orders', 'Roads', 'Transit', 'Utilities', 'Wildfire']) {
+    await panel.getByRole('tab', { name: new RegExp(tab) }).click()
+    await expect(panel).toContainText('Blocked external contract')
+    await expect(panel).toContainText('Unavailable')
+  }
+  await panel.getByRole('tab', { name: /Roads/ }).click()
+  await expect(panel).toContainText('Planned/reference only')
+  await expect(panel).toContainText(
+    'planned roadwork, not emergency passability',
+  )
+
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  await expect
+    .poll(
+      async () => {
+        const metricsResponse = await request.get(`${backendURL}/metrics`)
+        return metricsResponse.text()
+      },
+      { timeout: 10_000 },
+    )
+    .toContain(
+      'hawaii_resilience_operational_status_domains_total{domain="shelter",status="reported_live"}',
+    )
+
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toContain(
+    'hawaii_resilience_operational_status_source_requests_total{outcome="success",source="fema_open_shelters"}',
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_http_requests_total{method="GET",route="/api/v1/planning/live-status",status="200"}',
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_browser_events_total{action="live_status_select",category="planning"',
+  )
+  expect(metrics).not.toContain('Fixture reported open shelter')
+  expect(metrics).not.toContain('fixture-live-shelter')
+  expect(metrics).not.toContain('21.29')
+  expect(metrics).not.toContain('-157.68')
+})
+
 test('official advisory context never becomes an evacuation order and missing County-order data stays unavailable', async ({
   page,
   request,
@@ -204,6 +314,14 @@ test('planner completes the Map Model Match journey through the Go API', async (
   expect(packet).toContain('Planning context — not an evacuation order')
   expect(packet).toContain('County evacuation-order data unavailable')
   expect(packet).toContain('Unavailable does not mean no order.')
+  expect(packet).toContain('Live operational status boundaries')
+  expect(packet).toContain('reported live')
+  expect(packet).toContain('utility outage')
+  expect(packet).toContain('unavailable')
+  expect(packet).toContain(
+    'FEMA-reported shelters are not County plan records or practice facilities',
+  )
+  expect(packet).toContain('Planned roadwork is not emergency passability')
   expect(packet).toContain('1 · Map affected communities')
   expect(packet).toContain('2 · Model needs and gaps')
   expect(packet).toContain('Data-derived AFN planning hotspots')
