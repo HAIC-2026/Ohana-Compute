@@ -12,6 +12,7 @@ import type {
   OperationalDomain,
   OperationalDomainStatus,
 } from '../lib/operational-status'
+import { useRovingTabs } from '../lib/use-roving-tabs'
 
 const domainLabels: Record<OperationalDomain, string> = {
   evacuation_order: 'Orders',
@@ -67,6 +68,15 @@ export const LiveOperationalStatusPanel = memo(
       if (defaultDomain) setSelectedDomain(defaultDomain.domain)
     }, [defaultDomain])
 
+    const selected =
+      domains.find((domain) => domain.domain === selectedDomain) ??
+      defaultDomain
+    const domainTabs = useRovingTabs({
+      values: domains.map((domain) => domain.domain),
+      selectedValue: selected?.domain ?? null,
+      onSelect: setSelectedDomain,
+    })
+
     if (status === 'loading') {
       return (
         <section
@@ -115,10 +125,6 @@ export const LiveOperationalStatusPanel = memo(
       )
     }
 
-    const selected =
-      domains.find((domain) => domain.domain === selectedDomain) ??
-      defaultDomain
-
     if (!selected) return null
 
     return (
@@ -151,8 +157,7 @@ export const LiveOperationalStatusPanel = memo(
             <button
               key={domain.domain}
               type="button"
-              role="tab"
-              aria-selected={selected.domain === domain.domain}
+              {...domainTabs.getTabProps(domain.domain)}
               className={selected.domain === domain.domain ? 'is-active' : ''}
               data-status={domain.status}
               data-telemetry-action="live_status_select"
@@ -165,7 +170,10 @@ export const LiveOperationalStatusPanel = memo(
           ))}
         </div>
 
-        <div className="live-status-detail">
+        <div
+          className="live-status-detail"
+          {...domainTabs.getPanelProps(selected.domain)}
+        >
           <div className="live-status-title">
             <div>
               <span className={`is-${selected.status}`}>

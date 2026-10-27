@@ -18,6 +18,7 @@ import {
   usesCatalogWorkflow,
   usePlanningAreaCatalog,
 } from '../lib/planning-areas'
+import { useRovingTabs } from '../lib/use-roving-tabs'
 import { usePlanningStore } from '../store/planning-store'
 
 const fallbackDecisions: Record<
@@ -129,11 +130,17 @@ export function NeighborhoodBriefingPanel({
     ? [catalogBriefing]
     : getNeighborhoodBriefings(areaId)
 
-  if (briefings.length === 0) return null
-
   const selected =
     briefings.find((briefing) => briefing.id === selectedNeighborhoodId) ??
-    briefings[0]
+    briefings.at(0)
+  const neighborhoodTabs = useRovingTabs({
+    values: briefings.map((briefing) => briefing.id),
+    selectedValue: selected?.id ?? null,
+    onSelect: selectNeighborhood,
+  })
+
+  if (!selected) return null
+
   const decision = selected.decisions[hazard] ?? fallbackDecisions[hazard]
   const trafficHazards = hazardTrafficHazards[hazard] ?? selected.trafficHazards
   const afnActions =
@@ -158,8 +165,7 @@ export function NeighborhoodBriefingPanel({
           <button
             key={briefing.id}
             type="button"
-            role="tab"
-            aria-selected={briefing.id === selected.id}
+            {...neighborhoodTabs.getTabProps(briefing.id)}
             className={briefing.id === selected.id ? 'is-active' : ''}
             onClick={() => selectNeighborhood(briefing.id)}
           >
@@ -171,6 +177,7 @@ export function NeighborhoodBriefingPanel({
       <div
         className="neighborhood-panel"
         data-testid={`neighborhood-${selected.id}`}
+        {...neighborhoodTabs.getPanelProps(selected.id)}
       >
         <div className="neighborhood-summary">
           <MapPinned size={17} />

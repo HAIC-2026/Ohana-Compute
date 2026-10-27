@@ -147,12 +147,72 @@ test('collaborative plans preserve versions and reject stale writes', async ({
   )
   expect(advanceResponse.ok()).toBe(true)
 
+  const preservedTitle = 'Unsaved coordinator draft'
+  const preservedSummary =
+    'Unsaved editor changes must survive conflict recovery.'
+  const preservedNote = 'Keep this bounded note through conflict recovery.'
+  await collaboration.getByLabel('Plan title').fill(preservedTitle)
+  await collaboration.getByLabel('Planning summary').fill(preservedSummary)
+  await collaboration.getByLabel('Bounded operational note').fill(preservedNote)
+  await collaboration.getByRole('button', { name: 'Add planning note' }).click()
+  await expect(collaboration.getByRole('alert')).toContainText(
+    'Your draft is preserved',
+  )
+  await expect(
+    collaboration.getByLabel('Bounded operational note'),
+  ).toHaveValue(preservedNote)
+  await collaboration
+    .getByRole('button', { name: 'Refresh and review' })
+    .click()
+  await expect(collaboration.getByLabel('Plan title')).toHaveValue(
+    preservedTitle,
+  )
+  await expect(collaboration.getByLabel('Planning summary')).toHaveValue(
+    preservedSummary,
+  )
+  await expect(
+    collaboration.getByLabel('Bounded operational note'),
+  ).toHaveValue(preservedNote)
+  await collaboration.getByRole('button', { name: 'Add planning note' }).click()
+  await expect(
+    collaboration.getByLabel('Bounded operational note'),
+  ).toHaveValue('')
+
+  const refreshedResponse = await request.get(
+    `${backendURL}/api/v1/collaboration/plans/${planId}`,
+    { headers: { Authorization: 'Bearer ' + token } },
+  )
+  const refreshed = await refreshedResponse.json()
+  const secondAdvanceResponse = await request.post(
+    `${backendURL}/api/v1/collaboration/plans/${planId}/comments`,
+    {
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        expected_revision: refreshed.revision,
+        body: 'Second independent validation completed.',
+      },
+    },
+  )
+  expect(secondAdvanceResponse.ok()).toBe(true)
+
   await collaboration.getByRole('button', { name: 'Save new version' }).click()
   await expect(collaboration).toContainText('A newer change is already stored')
+  await expect(collaboration.getByLabel('Plan title')).toHaveValue(
+    preservedTitle,
+  )
+  await expect(collaboration.getByLabel('Planning summary')).toHaveValue(
+    preservedSummary,
+  )
   await collaboration
     .getByRole('button', { name: 'Refresh and review' })
     .click()
   await expect(collaboration).toContainText('Loaded the latest shared plan')
+  await expect(collaboration.getByLabel('Plan title')).toHaveValue(
+    preservedTitle,
+  )
 
   const staleResponse = await request.put(
     `${backendURL}/api/v1/collaboration/plans/${planId}`,

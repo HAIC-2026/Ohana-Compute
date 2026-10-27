@@ -15,6 +15,7 @@ import {
 } from '../lib/county-shelter-plans'
 import type { CountyShelterPlan } from '../lib/county-shelter-plans'
 import type { LocalResourceSite } from '../lib/mock-data'
+import { useRovingTabs } from '../lib/use-roving-tabs'
 
 const coverageLabels: Record<CountyShelterPlan['coverage'], string> = {
   published: 'Published plan reference',
@@ -37,6 +38,16 @@ export function CountyShelterPlanPanel({
   useEffect(() => {
     setSelectedCountyId(countyIdForIsland(island))
   }, [island])
+
+  const jurisdictions = snapshot?.jurisdictions ?? []
+  const selectedCounty =
+    jurisdictions.find((county) => county.id === selectedCountyId) ??
+    jurisdictions[0]
+  const countyTabs = useRovingTabs({
+    values: jurisdictions.map((county) => county.id),
+    selectedValue: selectedCountyId,
+    onSelect: setSelectedCountyId,
+  })
 
   if (status === 'loading') {
     return (
@@ -81,9 +92,6 @@ export function CountyShelterPlanPanel({
     )
   }
 
-  const selectedCounty =
-    snapshot.jurisdictions.find((county) => county.id === selectedCountyId) ??
-    snapshot.jurisdictions[0]
   const practiceShelters = practiceResources.filter(
     (resource) => resource.kind === 'shelter',
   )
@@ -121,8 +129,7 @@ export function CountyShelterPlanPanel({
           <button
             key={county.id}
             type="button"
-            role="tab"
-            aria-selected={county.id === selectedCounty.id}
+            {...countyTabs.getTabProps(county.id)}
             data-telemetry-action="shelter_county_select"
             data-telemetry-category="planning"
             className={county.id === selectedCounty.id ? 'is-active' : ''}
@@ -139,7 +146,10 @@ export function CountyShelterPlanPanel({
         ))}
       </div>
 
-      <div className="county-shelter-detail">
+      <div
+        className="county-shelter-detail"
+        {...countyTabs.getPanelProps(selectedCounty.id)}
+      >
         <div className="county-shelter-status">
           <span className={`is-${selectedCounty.coverage}`}>
             {coverageLabels[selectedCounty.coverage]}

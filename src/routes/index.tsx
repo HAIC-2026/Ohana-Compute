@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   BatteryCharging,
@@ -105,6 +105,9 @@ function Home() {
   const [hydrated, setHydrated] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [mobileSetupOpen, setMobileSetupOpen] = useState(false)
+  const planningSheetRef = useRef<HTMLElement>(null)
+  const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const shouldReduceMotion = useReducedMotion()
   const {
     hazard,
     severity,
@@ -243,6 +246,86 @@ function Home() {
         : 'light',
     )
   }, [])
+
+  useEffect(() => {
+    if (!mobilePanel) return
+
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    const backgroundElements = Array.from(
+      document.querySelectorAll<HTMLElement>('.atlas-header, .atlas-stage'),
+    )
+    const previousBodyOverflow = document.body.style.overflow
+    for (const element of backgroundElements) {
+      element.setAttribute('inert', '')
+      element.setAttribute('aria-hidden', 'true')
+    }
+    document.body.style.overflow = 'hidden'
+
+    const focusSheet = requestAnimationFrame(() => {
+      planningSheetRef.current
+        ?.querySelector<HTMLElement>('button, [href], input, select, textarea')
+        ?.focus()
+    })
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMobilePanel(null)
+        return
+      }
+      if (event.key !== 'Tab' || !planningSheetRef.current) return
+
+      const focusable = Array.from(
+        planningSheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => {
+        if (
+          element.closest('[hidden], [inert], [aria-hidden="true"]') ||
+          element.getClientRects().length === 0
+        ) {
+          return false
+        }
+        const closedDetails = element.closest('details:not([open])')
+        if (
+          closedDetails &&
+          element !== closedDetails.querySelector(':scope > summary')
+        ) {
+          return false
+        }
+        const style = window.getComputedStyle(element)
+        return style.visibility !== 'hidden' && style.display !== 'none'
+      })
+      if (focusable.length === 0) {
+        event.preventDefault()
+        planningSheetRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable.at(-1)
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last?.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      cancelAnimationFrame(focusSheet)
+      document.removeEventListener('keydown', handleKeyDown)
+      for (const element of backgroundElements) {
+        element.removeAttribute('inert')
+        element.removeAttribute('aria-hidden')
+      }
+      document.body.style.overflow = previousBodyOverflow
+      requestAnimationFrame(() => restoreFocusRef.current?.focus())
+    }
+  }, [mobilePanel, setMobilePanel])
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
@@ -426,7 +509,7 @@ function Home() {
             <div>
               <h2>{activeEvent?.name ?? selectedHazard.label}</h2>
               <p>
-                {displayPlace} · {activeEvent?.status ?? 'Practice scenario'} ·{' '}
+                {displayPlace} · {activeEvent?.status ?? 'Practice scenario'} ·
                 severity {severity}/5
               </p>
             </div>
@@ -721,28 +804,39 @@ function Home() {
               className={`sheet-backdrop is-${mobilePanel}`}
               type="button"
               aria-label="Close panel"
+              aria-hidden="true"
+              tabIndex={-1}
               onClick={() => setMobilePanel(null)}
-              initial={{ opacity: 0 }}
+              initial={shouldReduceMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             />
             <motion.aside
+              ref={planningSheetRef}
               className={`planning-sheet is-${mobilePanel}`}
-              initial={{ y: '100%' }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="planning-sheet-title"
+              aria-describedby="planning-sheet-description"
+              tabIndex={-1}
+              initial={shouldReduceMotion ? false : { y: '100%' }}
               animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { y: '100%' }}
+              transition={{
+                duration: shouldReduceMotion ? 0 : 0.24,
+                ease: [0.16, 1, 0.3, 1],
+              }}
             >
               <div className="planning-sheet-header">
                 <div>
-                  <h2>
+                  <h2 id="planning-sheet-title">
                     {mobilePanel === 'scenario'
                       ? 'Change map details'
                       : mobilePanel === 'resident'
                         ? 'Public guidance preview'
                         : `Mass care plan for ${displayPlace}`}
                   </h2>
-                  <span>
+                  <span id="planning-sheet-description">
                     {mobilePanel === 'scenario'
                       ? 'Optional settings'
                       : mobilePanel === 'resident'

@@ -83,6 +83,9 @@ export function CollaborativePlanPanel(props: Props) {
   const [toVersion, setToVersion] = useState(2)
   const [pending, setPending] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [messageKind, setMessageKind] = useState<
+    'success' | 'error' | 'conflict'
+  >('success')
   const [conflict, setConflict] = useState(false)
 
   const session =
@@ -112,6 +115,18 @@ export function CollaborativePlanPanel(props: Props) {
     () => [...(plan?.audit ?? [])].reverse(),
     [plan?.audit],
   )
+  const pendingMessage =
+    pending === 'reopen' || pending === 'refresh'
+      ? 'Loading the latest shared plan while preserving your draft…'
+      : pending === 'compare'
+        ? 'Comparing the selected immutable versions…'
+        : pending === 'note'
+          ? 'Adding the bounded planning note…'
+          : pending === 'assignment'
+            ? 'Saving the controlled role assignment…'
+            : pending === 'approval'
+              ? 'Recording the approval decision…'
+              : 'Saving the shared-plan change…'
 
   useEffect(() => {
     if (!isConfigured || !canRead || plan) return
@@ -130,6 +145,7 @@ export function CollaborativePlanPanel(props: Props) {
         setStatus(storedPlan.status)
         setFromVersion(Math.max(1, storedPlan.current_version - 1))
         setToVersion(storedPlan.current_version)
+        setMessageKind('success')
         setMessage('Reopened the active shared plan.')
       })
       .catch((error) => {
@@ -138,6 +154,7 @@ export function CollaborativePlanPanel(props: Props) {
           removeStoredPlanID(activePlanStorageKey)
           return
         }
+        setMessageKind('error')
         setMessage(
           error instanceof Error
             ? error.message
@@ -156,6 +173,7 @@ export function CollaborativePlanPanel(props: Props) {
     operation: string,
     action: () => Promise<CollaborativePlan>,
     success: string,
+    syncEditor = false,
   ) => {
     setPending(operation)
     setMessage(null)
@@ -164,31 +182,40 @@ export function CollaborativePlanPanel(props: Props) {
       const next = await action()
       setPlan(next)
       storePlanID(activePlanStorageKey, next.id)
-      setTitle(next.title)
-      setSummary(next.summary)
-      setStatus(next.status)
+      if (syncEditor) {
+        setTitle(next.title)
+        setSummary(next.summary)
+        setStatus(next.status)
+      }
       setFromVersion(Math.max(1, next.current_version - 1))
       setToVersion(next.current_version)
+      setMessageKind('success')
       setMessage(success)
+      return next
     } catch (error) {
       if (collaborationErrorStatus(error) === 409) {
         setConflict(true)
+        setMessageKind('conflict')
         setMessage(
-          'A newer change is already stored. Refresh before reviewing or saving again.',
+          'A newer change is already stored. Your draft is preserved; refresh the shared plan before reviewing or saving again.',
         )
       } else if (collaborationErrorStatus(error) === 403) {
+        setMessageKind('error')
         setMessage('Your configured role does not allow this action.')
       } else if (collaborationErrorStatus(error) === 503) {
+        setMessageKind('error')
         setMessage(
           'Shared storage is unavailable. Your local checklist and field packet still work.',
         )
       } else {
+        setMessageKind('error')
         setMessage(
           error instanceof Error
             ? error.message
             : 'The collaboration request could not be completed.',
         )
       }
+      return null
     } finally {
       setPending(null)
     }
@@ -199,7 +226,7 @@ export function CollaborativePlanPanel(props: Props) {
     await run(
       'refresh',
       () => loadCollaborativePlan(plan.id),
-      'Loaded the latest shared plan.',
+      'Loaded the latest shared plan. Your editor draft was preserved.',
     )
   }
 
@@ -239,6 +266,7 @@ export function CollaborativePlanPanel(props: Props) {
       className="collaboration-surface"
       data-testid="collaborative-plan-panel"
       aria-label="Shared plan workspace"
+      aria-busy={pending !== null}
     >
       <div className="collaboration-heading">
         <div>
@@ -265,9 +293,14 @@ export function CollaborativePlanPanel(props: Props) {
       {message && (
         <div
           className={`collaboration-message${conflict ? ' is-conflict' : ''}`}
-          role="status"
+          data-kind={messageKind}
+          role={messageKind === 'success' ? 'status' : 'alert'}
         >
-          {conflict ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
+          {messageKind === 'success' ? (
+            <CheckCircle2 size={17} />
+          ) : (
+            <AlertTriangle size={17} />
+          )}
           <span>{message}</span>
           {conflict && (
             <button type="button" onClick={refresh} disabled={pending !== null}>
@@ -275,6 +308,12 @@ export function CollaborativePlanPanel(props: Props) {
             </button>
           )}
         </div>
+      )}
+      {pending && (
+        <p className="collaboration-pending" role="status" aria-live="polite">
+          <LoaderCircle className="spin" size={14} />
+          {pendingMessage}
+        </p>
       )}
 
       <div className="collaboration-fields">
@@ -343,6 +382,7 @@ export function CollaborativePlanPanel(props: Props) {
                     snapshot: props.snapshot,
                   }),
                 'Saved a new immutable plan version.',
+                true,
               )
             : run(
                 'create',
@@ -358,6 +398,7 @@ export function CollaborativePlanPanel(props: Props) {
                     snapshot: props.snapshot,
                   }),
                 'Shared plan created.',
+                true,
               )
         }
       >
@@ -381,6 +422,7 @@ export function CollaborativePlanPanel(props: Props) {
           <GroundedPlanningAssist
             plan={plan}
             canWrite={canWrite}
+            onRefreshPlan={refresh}
             onPlanApplied={(next) => {
               setPlan(next)
               setTitle(next.title)
@@ -414,8 +456,8 @@ export function CollaborativePlanPanel(props: Props) {
               <button
                 type="button"
                 disabled={!canWrite || pending !== null || !note.trim()}
-                onClick={() =>
-                  run(
+                onClick={async () => {
+                  const next = await run(
                     'note',
                     () =>
                       addCollaborativePlanComment(plan.id, {
@@ -423,8 +465,9 @@ export function CollaborativePlanPanel(props: Props) {
                         body: note,
                       }),
                     'Planning note added.',
-                  ).then(() => setNote(''))
-                }
+                  )
+                  if (next) setNote('')
+                }}
               >
                 Add planning note
               </button>
@@ -675,6 +718,7 @@ export function CollaborativePlanPanel(props: Props) {
                           ),
                         )
                       } catch (error) {
+                        setMessageKind('error')
                         setMessage(
                           error instanceof Error
                             ? error.message

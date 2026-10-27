@@ -383,7 +383,7 @@ test.describe.serial('2026 challenge resident journey', () => {
     await page.getByRole('button', { name: 'Map', exact: true }).click()
     await page.getByRole('radio', { name: 'Tsunami' }).click()
     await page
-      .getByRole('complementary')
+      .getByRole('dialog')
       .getByRole('button', { name: 'Close panel' })
       .click()
     await page

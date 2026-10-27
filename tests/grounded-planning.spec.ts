@@ -110,6 +110,21 @@ test('grounded planning drafts require citations and human approval', async ({
   expect(advanceResponse.ok()).toBe(true)
   await assist.getByRole('button', { name: 'Apply selected content' }).click()
   await expect(assist).toContainText('The plan revision changed')
+  await expect(assist).toContainText('Earlier draft — review only')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeDisabled()
+  await assist.getByRole('button', { name: 'Refresh shared plan' }).click()
+  await expect(collaboration).toContainText('Loaded the latest shared plan')
+  await expect(assist).toContainText('Earlier draft — review only')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeDisabled()
+  await assist.getByRole('button', { name: 'Generate grounded draft' }).click()
+  await expect(assist).toContainText('AI synthesis')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeEnabled()
 
   const metricsResponse = await request.get(`${backendURL}/metrics`)
   const metrics = await metricsResponse.text()

@@ -100,7 +100,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -110,9 +111,18 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+a:focus-visible,
+[role='tab']:focus-visible {
   outline: 3px solid var(--cp-link);
   outline-offset: 2px;
+}
+
+button,
+[role='tab'] {
+  touch-action: manipulation;
 }
 
 .sr-only {
@@ -131,6 +141,12 @@ select:focus-visible {
   height: 100dvh;
   overflow: hidden;
   background: var(--cp-bg);
+}
+
+.atlas-header[aria-hidden='true'],
+.atlas-stage[aria-hidden='true'] {
+  pointer-events: none;
+  user-select: none;
 }
 
 .atlas-header {
@@ -229,8 +245,8 @@ select:focus-visible {
 .header-actions > button,
 .planning-sheet-header button {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   place-items: center;
   border-radius: 0.625rem;
@@ -1253,6 +1269,7 @@ select:focus-visible {
 .live-status-domains button {
   display: grid;
   min-width: 0;
+  min-height: 44px;
   padding: 7px 8px;
   gap: 2px;
   border: 1px solid var(--cp-border);
@@ -1713,7 +1730,7 @@ select:focus-visible {
 
 .use-location {
   display: flex;
-  min-height: 40px;
+  min-height: 44px;
   margin-top: 7px;
   padding: 0 10px;
   align-items: center;
@@ -1727,11 +1744,32 @@ select:focus-visible {
   font-weight: 750;
 }
 
+.use-location:disabled {
+  color: var(--cp-text-muted);
+  cursor: wait;
+}
+
+.resident-privacy-hint {
+  max-width: 62ch;
+  margin: 8px 0 0;
+  color: var(--cp-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .location-feedback {
   margin: 7px 0 0;
   color: var(--cp-text-muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.location-feedback.is-error {
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--cp-danger) 48%, var(--cp-border));
+  border-radius: 0.625rem;
+  color: color-mix(in srgb, var(--cp-danger) 78%, var(--cp-text));
+  background: color-mix(in srgb, var(--cp-danger) 8%, var(--cp-surface));
 }
 
 .official-status-grid {
@@ -2342,7 +2380,7 @@ select:focus-visible {
 }
 
 .neighborhood-tabs button {
-  min-height: 31px;
+  min-height: 44px;
   padding: 0 9px;
   flex: 0 0 auto;
   border: 1px solid var(--cp-border);
@@ -4228,7 +4266,7 @@ select:focus-visible {
 }
 
 .county-shelter-tabs button {
-  min-height: 34px;
+  min-height: 44px;
   border: 1px solid var(--cp-border);
   border-radius: 0.5rem;
   background: var(--cp-surface-soft);
@@ -5005,7 +5043,7 @@ select:focus-visible {
 
 .partner-capability-tabs button {
   display: inline-flex;
-  min-height: 30px;
+  min-height: 44px;
   padding: 0 8px;
   flex: 0 0 auto;
   align-items: center;
@@ -5899,6 +5937,15 @@ select:focus-visible {
   background: color-mix(in srgb, var(--cp-warning) 10%, var(--cp-surface));
 }
 
+.collaboration-message[data-kind='error'] {
+  border-color: color-mix(in srgb, var(--cp-danger) 55%, var(--cp-border));
+  background: color-mix(in srgb, var(--cp-danger) 8%, var(--cp-surface));
+}
+
+.collaboration-message[data-kind='error'] > svg {
+  color: var(--cp-danger);
+}
+
 .collaboration-message.is-conflict > svg {
   color: var(--cp-warning);
 }
@@ -5911,7 +5958,7 @@ select:focus-visible {
 .collaboration-message button,
 .collaboration-detail-body > button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 44px;
   padding: 0 10px;
   align-items: center;
   justify-content: center;
@@ -5923,6 +5970,20 @@ select:focus-visible {
   cursor: pointer;
   font-size: 9px;
   font-weight: 750;
+}
+
+.collaboration-pending {
+  display: flex;
+  min-height: 44px;
+  margin: 10px 14px 0;
+  padding: 9px 10px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--cp-border);
+  border-radius: 9px;
+  color: var(--cp-text-muted);
+  background: var(--cp-surface-soft);
+  font-size: 10px;
 }
 
 .collaboration-fields {
@@ -6052,6 +6113,24 @@ select:focus-visible {
   background: var(--cp-surface);
   font-size: 10px;
   line-height: 1.45;
+}
+
+.planning-assist-state button {
+  display: inline-flex;
+  min-height: 40px;
+  margin-left: auto;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 8px;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .planning-assist-state > svg {
@@ -6563,12 +6642,13 @@ select:focus-visible {
   border: 0;
   background: var(--cp-overlay);
   cursor: pointer;
+  overscroll-behavior: contain;
 }
 
 .sheet-backdrop.is-insights,
 .sheet-backdrop.is-scenario,
 .sheet-backdrop.is-resident {
-  background: transparent;
+  background: var(--cp-overlay);
 }
 
 .planning-sheet {
@@ -6585,6 +6665,7 @@ select:focus-visible {
   border-radius: 16px;
   background: var(--cp-bg-elevated);
   box-shadow: var(--cp-shadow);
+  overscroll-behavior: contain;
 }
 
 .planning-sheet.is-insights {
@@ -6627,6 +6708,7 @@ select:focus-visible {
 .planning-sheet-body {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 900px) {

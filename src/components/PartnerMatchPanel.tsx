@@ -14,6 +14,7 @@ import type {
   PartnerCapability,
   PartnerMatchState,
 } from '../lib/partner-matching'
+import { useRovingTabs } from '../lib/use-roving-tabs'
 
 const capabilityLabels: Record<PartnerCapability, string> = {
   'mass-care-coordination': 'Mass-care coordination',
@@ -67,6 +68,16 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
     }
   }, [response, selectedCapability])
 
+  const matches = response?.matches ?? []
+  const selected =
+    matches.find((match) => match.capability === selectedCapability) ??
+    matches[0]
+  const capabilityTabs = useRovingTabs({
+    values: matches.map((match) => match.capability),
+    selectedValue: selectedCapability,
+    onSelect: setSelectedCapability,
+  })
+
   if (state.status === 'loading') {
     return (
       <section
@@ -110,10 +121,6 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
     )
   }
 
-  const selected =
-    response.matches.find((match) => match.capability === selectedCapability) ??
-    response.matches[0]
-
   return (
     <section
       className="partner-match-panel"
@@ -149,8 +156,7 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
           <button
             key={match.capability}
             type="button"
-            role="tab"
-            aria-selected={match.capability === selected.capability}
+            {...capabilityTabs.getTabProps(match.capability)}
             className={[
               match.capability === selected.capability ? 'is-active' : '',
               `is-${match.status}`,
@@ -171,7 +177,10 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
         ))}
       </div>
 
-      <div className="partner-match-detail" role="tabpanel">
+      <div
+        className="partner-match-detail"
+        {...capabilityTabs.getPanelProps(selected.capability)}
+      >
         <div className="partner-match-title">
           <div>
             <span>Selected capability</span>

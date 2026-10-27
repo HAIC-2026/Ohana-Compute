@@ -730,7 +730,7 @@ test('mobile controls preserve the selected response zone', async ({
   await expect(page.getByRole('radio', { name: 'Tsunami' })).toBeVisible()
 
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
 
@@ -1016,7 +1016,7 @@ test('mobile resident route exposes no-car and language controls', async ({
   await page.getByRole('button', { name: 'Map', exact: true }).click()
   await page.getByRole('radio', { name: 'Tsunami' }).click()
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
   await page

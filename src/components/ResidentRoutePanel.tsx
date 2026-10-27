@@ -8,6 +8,7 @@ import {
   CarFront,
   Languages,
   LocateFixed,
+  LoaderCircle,
   MapPin,
   Navigation,
   PackageOpen,
@@ -38,6 +39,7 @@ import type {
   OfficialOpenShelter,
   OfficialWildfireRisk,
 } from '../lib/official-emergency-data'
+import { useRovingTabs } from '../lib/use-roving-tabs'
 import { usePlanningStore } from '../store/planning-store'
 
 const resourceLabels: Record<ResidentResourceKind, string> = {
@@ -117,6 +119,8 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     activeEvents.find((item) => item.id === selectedEventId)?.hazard ?? hazard
   const [address, setAddress] = useState(plan.startLabel)
   const [locationMessage, setLocationMessage] = useState('')
+  const [locationError, setLocationError] = useState('')
+  const [locating, setLocating] = useState(false)
   const [officialZone, setOfficialZone] =
     useState<OfficialEvacuationZone | null>(null)
   const [zoneLookupFailed, setZoneLookupFailed] = useState(false)
@@ -205,16 +209,31 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     currentHazard === 'hurricane'
       ? 'Hurricane rain, drainage failure, and storm surge can flood beyond mapped FEMA boundaries.'
       : 'Heavy rain and drainage flooding can occur outside mapped FEMA boundaries.'
+  const destinationTabs = useRovingTabs({
+    values: plan.resources.map((resource) => resource.id),
+    selectedValue: selectedResource.id,
+    onSelect: selectResidentResource,
+  })
 
   const useAddress = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const matchedPlan = findResidentRoutePlan(address)
+    const trimmedAddress = address.trim()
+    setLocationError('')
+    setLocationMessage('')
+    if (!trimmedAddress) {
+      setLocationError(
+        'Enter an address, intersection, landmark, or ZIP code to find a practice route.',
+      )
+      return
+    }
+    const matchedPlan = findResidentRoutePlan(trimmedAddress)
     if (!matchedPlan) {
-      setLocationMessage(
+      setLocationError(
         'No practice route found. Try Mānoa, Kakaʻako, Ala Moana, Kaimukī, Kāhala, Hawaiʻi Kai, 96816, or 96825.',
       )
       return
     }
+    setAddress(trimmedAddress)
     selectResidentPlan(matchedPlan.id)
     setLocationMessage(
       `Showing the nearest practice routes for ${matchedPlan.name}.`,
@@ -222,6 +241,15 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
   }
 
   const useCurrentLocation = () => {
+    setLocationError('')
+    setLocationMessage('')
+    if (!('geolocation' in navigator)) {
+      setLocationError(
+        'Current location is not supported in this browser. Enter an address or landmark instead.',
+      )
+      return
+    }
+    setLocating(true)
     setLocationMessage('Finding your nearest practice route…')
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -233,11 +261,20 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
         setLocationMessage(
           `Showing the nearest available practice routes for ${matchedPlan.name}.`,
         )
+        setLocating(false)
       },
-      () => {
-        setLocationMessage(
-          'Location permission was not available. Enter an address or landmark instead.',
-        )
+      (error) => {
+        const errorMessage =
+          error.code === error.PERMISSION_DENIED
+            ? 'Location permission was denied. Enter an address or landmark instead.'
+            : error.code === error.TIMEOUT
+              ? 'Location lookup timed out. Try again or enter an address or landmark.'
+              : error.code === error.POSITION_UNAVAILABLE
+                ? 'Your location is currently unavailable. Enter an address or landmark instead.'
+                : 'Current location could not be used. Enter an address or landmark instead.'
+        setLocationMessage('')
+        setLocationError(errorMessage)
+        setLocating(false)
       },
       { enableHighAccuracy: false, timeout: 5000 },
     )
@@ -299,24 +336,56 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
         </div>
         <form onSubmit={useAddress}>
           <MapPin size={18} />
+          <label className="sr-only" htmlFor="resident-location">
+            Home address or landmark
+          </label>
           <input
-            aria-label="Home address or landmark"
+            id="resident-location"
+            name="resident-location"
+            autoComplete="street-address"
+            aria-describedby="resident-location-privacy resident-location-feedback"
+            aria-invalid={Boolean(locationError)}
             value={address}
-            onChange={(event) => setAddress(event.target.value)}
+            onChange={(event) => {
+              setAddress(event.target.value)
+              setLocationError('')
+            }}
           />
           <button type="submit">Find routes</button>
         </form>
         <button
           type="button"
           className="use-location"
+          disabled={locating}
           onClick={useCurrentLocation}
         >
-          <LocateFixed size={16} />
-          Use my current location
+          {locating ? (
+            <LoaderCircle className="spin" size={16} />
+          ) : (
+            <LocateFixed size={16} />
+          )}
+          {locating ? 'Finding current location…' : 'Use my current location'}
         </button>
+        <p id="resident-location-privacy" className="resident-privacy-hint">
+          Your entry and current location stay in this browser session and are
+          not saved with the response plan.
+        </p>
         {locationMessage && (
-          <p className="location-feedback" role="status">
+          <p
+            id="resident-location-feedback"
+            className="location-feedback"
+            role="status"
+          >
             {locationMessage}
+          </p>
+        )}
+        {locationError && (
+          <p
+            id="resident-location-feedback"
+            className="location-feedback is-error"
+            role="alert"
+          >
+            {locationError}
           </p>
         )}
       </section>
@@ -669,8 +738,7 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
               <button
                 key={resource.id}
                 type="button"
-                role="tab"
-                aria-selected={resource.id === selectedResource.id}
+                {...destinationTabs.getTabProps(resource.id)}
                 className={
                   resource.id === selectedResource.id ? 'is-active' : ''
                 }
@@ -683,7 +751,10 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
           })}
         </div>
 
-        <div className="selected-destination">
+        <div
+          className="selected-destination"
+          {...destinationTabs.getPanelProps(selectedResource.id)}
+        >
           <div className="destination-title">
             <div>
               <small>{resourceLabels[selectedResource.kind]}</small>
