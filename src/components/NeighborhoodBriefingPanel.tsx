@@ -19,6 +19,7 @@ import {
   usePlanningAreaCatalog,
 } from '../lib/planning-areas'
 import { usePlanningStore } from '../store/planning-store'
+import { useRovingTabs } from './RovingTabs'
 
 const fallbackDecisions: Record<
   HazardId,
@@ -128,12 +129,18 @@ export function NeighborhoodBriefingPanel({
   const briefings = catalogBriefing
     ? [catalogBriefing]
     : getNeighborhoodBriefings(areaId)
-
-  if (briefings.length === 0) return null
-
   const selected =
     briefings.find((briefing) => briefing.id === selectedNeighborhoodId) ??
-    briefings[0]
+    briefings.at(0)
+  const neighborhoodTabs = useRovingTabs({
+    label: 'Neighborhood',
+    values: briefings.map((briefing) => briefing.id),
+    selectedValue: selected?.id ?? selectedNeighborhoodId ?? '',
+    onSelect: selectNeighborhood,
+  })
+
+  if (!selected) return null
+
   const decision = selected.decisions[hazard] ?? fallbackDecisions[hazard]
   const trafficHazards = hazardTrafficHazards[hazard] ?? selected.trafficHazards
   const afnActions =
@@ -153,13 +160,12 @@ export function NeighborhoodBriefingPanel({
         <span>Practice locations</span>
       </div>
 
-      <div className="neighborhood-tabs" role="tablist">
+      <div className="neighborhood-tabs" {...neighborhoodTabs.tabListProps}>
         {briefings.map((briefing) => (
           <button
             key={briefing.id}
             type="button"
-            role="tab"
-            aria-selected={briefing.id === selected.id}
+            {...neighborhoodTabs.getTabProps(briefing.id)}
             className={briefing.id === selected.id ? 'is-active' : ''}
             onClick={() => selectNeighborhood(briefing.id)}
           >
@@ -171,6 +177,7 @@ export function NeighborhoodBriefingPanel({
       <div
         className="neighborhood-panel"
         data-testid={`neighborhood-${selected.id}`}
+        {...neighborhoodTabs.panelProps}
       >
         <div className="neighborhood-summary">
           <MapPinned size={17} />

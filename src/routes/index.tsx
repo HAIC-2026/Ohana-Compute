@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   BatteryCharging,
@@ -105,6 +105,11 @@ function Home() {
   const [hydrated, setHydrated] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [mobileSetupOpen, setMobileSetupOpen] = useState(false)
+  const headerRef = useRef<HTMLElement>(null)
+  const stageRef = useRef<HTMLElement>(null)
+  const sheetRef = useRef<HTMLElement>(null)
+  const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const reduceMotion = useReducedMotion()
   const {
     hazard,
     severity,
@@ -244,6 +249,66 @@ function Home() {
     )
   }, [])
 
+  useEffect(() => {
+    if (!mobilePanel) return
+
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    const header = headerRef.current
+    const stage = stageRef.current
+    const previousBodyOverflow = document.body.style.overflow
+    if (header) header.inert = true
+    if (stage) stage.inert = true
+    document.body.style.overflow = 'hidden'
+
+    const focusSheet = requestAnimationFrame(() => {
+      sheetRef.current
+        ?.querySelector<HTMLElement>('[data-sheet-close]')
+        ?.focus()
+    })
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMobilePanel(null)
+        return
+      }
+      if (event.key !== 'Tab' || !sheetRef.current) return
+
+      const focusable = [
+        ...sheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], details > summary, [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((element) => !element.hasAttribute('hidden'))
+      if (focusable.length === 0) {
+        event.preventDefault()
+        sheetRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable.at(-1)
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last?.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      cancelAnimationFrame(focusSheet)
+      document.removeEventListener('keydown', onKeyDown)
+      if (header) header.inert = false
+      if (stage) stage.inert = false
+      document.body.style.overflow = previousBodyOverflow
+      restoreFocusRef.current?.focus()
+      restoreFocusRef.current = null
+    }
+  }, [mobilePanel, setMobilePanel])
+
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     document.documentElement.setAttribute('data-theme', nextTheme)
@@ -255,7 +320,7 @@ function Home() {
       className={`app ${mobilePanel === 'resident' ? 'has-resident-route' : ''}`}
       data-hydrated={hydrated}
     >
-      <header className="atlas-header">
+      <header className="atlas-header" ref={headerRef}>
         <div className="brand">
           <span className="brand-symbol" aria-hidden="true">
             <i />
@@ -280,7 +345,7 @@ function Home() {
         </div>
       </header>
 
-      <section className="atlas-stage">
+      <section className="atlas-stage" ref={stageRef}>
         <div className="map-stage">
           <Suspense
             fallback={<div className="map-loading">Loading the map…</div>}
@@ -720,22 +785,31 @@ function Home() {
             <motion.button
               className={`sheet-backdrop is-${mobilePanel}`}
               type="button"
+              tabIndex={-1}
+              aria-hidden="true"
               aria-label="Close panel"
               onClick={() => setMobilePanel(null)}
-              initial={{ opacity: 0 }}
+              initial={reduceMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2 }}
             />
             <motion.aside
+              ref={sheetRef}
               className={`planning-sheet is-${mobilePanel}`}
-              initial={{ y: '100%' }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="planning-sheet-title"
+              tabIndex={-1}
+              initial={reduceMotion ? false : { y: '100%' }}
               animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+              transition={{
+                duration: reduceMotion ? 0 : 0.24,
+                ease: [0.16, 1, 0.3, 1],
+              }}
             >
               <div className="planning-sheet-header">
                 <div>
-                  <h2>
+                  <h2 id="planning-sheet-title">
                     {mobilePanel === 'scenario'
                       ? 'Change map details'
                       : mobilePanel === 'resident'
@@ -752,6 +826,7 @@ function Home() {
                 </div>
                 <button
                   type="button"
+                  data-sheet-close
                   aria-label="Close panel"
                   onClick={() => setMobilePanel(null)}
                 >

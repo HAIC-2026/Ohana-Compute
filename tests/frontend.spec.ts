@@ -730,7 +730,7 @@ test('mobile controls preserve the selected response zone', async ({
   await expect(page.getByRole('radio', { name: 'Tsunami' })).toBeVisible()
 
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
 
@@ -837,7 +837,10 @@ test('resident route adapts for address, no car, language, and resource need', a
     page.getByRole('heading', { name: 'Public guidance preview' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Use my current location' }).click()
+  const locationButton = page.getByRole('button', {
+    name: 'Use my current location',
+  })
+  await locationButton.click()
   await expect(
     page.getByText(
       'Showing the nearest available practice routes for Kakaʻako–Ala Moana.',
@@ -939,6 +942,124 @@ test('resident route adapts for address, no car, language, and resource need', a
   ).toBeVisible()
 })
 
+test('planner sheets, tabs, and resident lookup are keyboard-safe', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+
+  const neighborhoodTab = page
+    .getByRole('tab', { name: 'Mānoa–Makiki' })
+    .first()
+  await neighborhoodTab.focus()
+  await neighborhoodTab.press('ArrowRight')
+  const nextNeighborhood = page
+    .getByRole('tab', { name: 'Kakaʻako–Ala Moana' })
+    .first()
+  await expect(nextNeighborhood).toBeFocused()
+  await expect(nextNeighborhood).toHaveAttribute('aria-selected', 'true')
+
+  const opener = page.getByRole('button', {
+    name: 'Open public guidance preview',
+  })
+  await opener.focus()
+  await opener.click()
+  const dialog = page.getByRole('dialog', {
+    name: 'Public guidance preview',
+  })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  await expect(
+    dialog.getByRole('button', { name: 'Close panel' }),
+  ).toBeFocused()
+  expect(
+    await page.locator('.atlas-header').evaluate((element) => element.inert),
+  ).toBe(true)
+  expect(
+    await page.locator('body').evaluate((element) => element.style.overflow),
+  ).toBe('hidden')
+  await page.keyboard.press('Shift+Tab')
+  expect(
+    await dialog.evaluate((element) =>
+      element.contains(document.activeElement),
+    ),
+  ).toBe(true)
+
+  const location = dialog.getByLabel('Home address or landmark')
+  await location.fill('   ')
+  await dialog.getByRole('button', { name: 'Find routes' }).click()
+  await expect(
+    dialog.getByRole('alert').filter({
+      hasText:
+        'Enter an address, intersection, landmark, or ZIP code before finding routes.',
+    }),
+  ).toBeVisible()
+  await expect(location).toHaveAttribute('aria-invalid', 'true')
+
+  const shelterTab = dialog.getByRole('tab', { name: 'Safe shelter' })
+  await shelterTab.focus()
+  await shelterTab.press('End')
+  const pickupTab = dialog.getByRole('tab', { name: 'No-car pickup' })
+  await expect(pickupTab).toBeFocused()
+  await expect(pickupTab).toHaveAttribute('aria-selected', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(opener).toBeFocused()
+  expect(
+    await page.locator('.atlas-header').evaluate((element) => element.inert),
+  ).toBe(false)
+})
+
+test('resident geolocation exposes pending and bounded errors', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (
+          _success: PositionCallback,
+          error: PositionErrorCallback,
+        ) => {
+          window.setTimeout(
+            () =>
+              error({
+                code: 3,
+                message: 'timeout',
+                PERMISSION_DENIED: 1,
+                POSITION_UNAVAILABLE: 2,
+                TIMEOUT: 3,
+              }),
+            1_000,
+          )
+        },
+      },
+    })
+  })
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
+  const dialog = page.getByRole('dialog', {
+    name: 'Public guidance preview',
+  })
+  const locationButton = dialog.getByRole('button', {
+    name: 'Use my current location',
+  })
+  await locationButton.click()
+  await expect(
+    dialog.getByRole('button', { name: 'Finding current location…' }),
+  ).toBeDisabled()
+  await expect(dialog.getByRole('alert')).toContainText(
+    'Current location took too long to respond',
+  )
+  await expect(dialog.getByText(/longitude|latitude/i)).toHaveCount(0)
+})
+
 test('official source failures never become a reassuring status', async ({
   page,
 }, testInfo) => {
@@ -1016,7 +1137,7 @@ test('mobile resident route exposes no-car and language controls', async ({
   await page.getByRole('button', { name: 'Map', exact: true }).click()
   await page.getByRole('radio', { name: 'Tsunami' }).click()
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
   await page

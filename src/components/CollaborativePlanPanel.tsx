@@ -42,6 +42,8 @@ type Props = {
   snapshot: CollaborativePlanSnapshot
 }
 
+type MessageKind = 'success' | 'error' | 'conflict'
+
 const assignmentRoleLabels = {
   county_mass_care: 'County mass care',
   state_esf6: 'State ESF-6',
@@ -83,7 +85,7 @@ export function CollaborativePlanPanel(props: Props) {
   const [toVersion, setToVersion] = useState(2)
   const [pending, setPending] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [conflict, setConflict] = useState(false)
+  const [messageKind, setMessageKind] = useState<MessageKind>('success')
 
   const session =
     props.identityState.status === 'ready' ? props.identityState.session : null
@@ -130,6 +132,7 @@ export function CollaborativePlanPanel(props: Props) {
         setStatus(storedPlan.status)
         setFromVersion(Math.max(1, storedPlan.current_version - 1))
         setToVersion(storedPlan.current_version)
+        setMessageKind('success')
         setMessage('Reopened the active shared plan.')
       })
       .catch((error) => {
@@ -138,6 +141,7 @@ export function CollaborativePlanPanel(props: Props) {
           removeStoredPlanID(activePlanStorageKey)
           return
         }
+        setMessageKind('error')
         setMessage(
           error instanceof Error
             ? error.message
@@ -156,39 +160,47 @@ export function CollaborativePlanPanel(props: Props) {
     operation: string,
     action: () => Promise<CollaborativePlan>,
     success: string,
+    options: { syncEditor?: boolean } = {},
   ) => {
     setPending(operation)
     setMessage(null)
-    setConflict(false)
     try {
       const next = await action()
       setPlan(next)
       storePlanID(activePlanStorageKey, next.id)
-      setTitle(next.title)
-      setSummary(next.summary)
-      setStatus(next.status)
+      if (options.syncEditor) {
+        setTitle(next.title)
+        setSummary(next.summary)
+        setStatus(next.status)
+      }
       setFromVersion(Math.max(1, next.current_version - 1))
       setToVersion(next.current_version)
+      setMessageKind('success')
       setMessage(success)
+      return next
     } catch (error) {
       if (collaborationErrorStatus(error) === 409) {
-        setConflict(true)
+        setMessageKind('conflict')
         setMessage(
           'A newer change is already stored. Refresh before reviewing or saving again.',
         )
       } else if (collaborationErrorStatus(error) === 403) {
+        setMessageKind('error')
         setMessage('Your configured role does not allow this action.')
       } else if (collaborationErrorStatus(error) === 503) {
+        setMessageKind('error')
         setMessage(
           'Shared storage is unavailable. Your local checklist and field packet still work.',
         )
       } else {
+        setMessageKind('error')
         setMessage(
           error instanceof Error
             ? error.message
             : 'The collaboration request could not be completed.',
         )
       }
+      return null
     } finally {
       setPending(null)
     }
@@ -239,6 +251,7 @@ export function CollaborativePlanPanel(props: Props) {
       className="collaboration-surface"
       data-testid="collaborative-plan-panel"
       aria-label="Shared plan workspace"
+      aria-busy={pending !== null}
     >
       <div className="collaboration-heading">
         <div>
@@ -264,16 +277,28 @@ export function CollaborativePlanPanel(props: Props) {
 
       {message && (
         <div
-          className={`collaboration-message${conflict ? ' is-conflict' : ''}`}
-          role="status"
+          className={`collaboration-message is-${messageKind}`}
+          role={messageKind === 'success' ? 'status' : 'alert'}
         >
-          {conflict ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
+          {messageKind === 'success' ? (
+            <CheckCircle2 size={17} />
+          ) : (
+            <AlertTriangle size={17} />
+          )}
           <span>{message}</span>
-          {conflict && (
+          {messageKind === 'conflict' && (
             <button type="button" onClick={refresh} disabled={pending !== null}>
               <RefreshCw size={14} /> Refresh and review
             </button>
           )}
+        </div>
+      )}
+      {pending && (
+        <div className="collaboration-pending" role="status" aria-live="polite">
+          <LoaderCircle className="spin" size={15} />
+          {pending === 'refresh' || pending === 'reopen'
+            ? 'Loading the latest shared plan…'
+            : 'Saving the shared-plan operation…'}
         </div>
       )}
 
@@ -343,6 +368,7 @@ export function CollaborativePlanPanel(props: Props) {
                     snapshot: props.snapshot,
                   }),
                 'Saved a new immutable plan version.',
+                { syncEditor: true },
               )
             : run(
                 'create',
@@ -358,6 +384,7 @@ export function CollaborativePlanPanel(props: Props) {
                     snapshot: props.snapshot,
                   }),
                 'Shared plan created.',
+                { syncEditor: true },
               )
         }
       >
@@ -389,6 +416,14 @@ export function CollaborativePlanPanel(props: Props) {
               setFromVersion(Math.max(1, next.current_version - 1))
               setToVersion(next.current_version)
             }}
+            onRefreshPlan={async () => {
+              const next = await run(
+                'assist-refresh',
+                () => loadCollaborativePlan(plan.id),
+                'Loaded the latest shared plan. Your planning-assist draft is still available for review.',
+              )
+              return next
+            }}
           />
         </Suspense>
       )}
@@ -415,7 +450,7 @@ export function CollaborativePlanPanel(props: Props) {
                 type="button"
                 disabled={!canWrite || pending !== null || !note.trim()}
                 onClick={() =>
-                  run(
+                  void run(
                     'note',
                     () =>
                       addCollaborativePlanComment(plan.id, {
@@ -423,7 +458,9 @@ export function CollaborativePlanPanel(props: Props) {
                         body: note,
                       }),
                     'Planning note added.',
-                  ).then(() => setNote(''))
+                  ).then((next) => {
+                    if (next) setNote('')
+                  })
                 }
               >
                 Add planning note
@@ -577,8 +614,8 @@ export function CollaborativePlanPanel(props: Props) {
               <button
                 type="button"
                 disabled={!canApprove || pending !== null}
-                onClick={() =>
-                  run(
+                onClick={() => {
+                  void run(
                     'approval',
                     () =>
                       addCollaborativePlanApproval(plan.id, {
@@ -588,8 +625,10 @@ export function CollaborativePlanPanel(props: Props) {
                         rationale: approvalRationale,
                       }),
                     'Approval decision recorded for this version.',
-                  )
-                }
+                  ).then((next) => {
+                    if (next) setApprovalRationale('')
+                  })
+                }}
               >
                 Record decision
               </button>
@@ -675,6 +714,7 @@ export function CollaborativePlanPanel(props: Props) {
                           ),
                         )
                       } catch (error) {
+                        setMessageKind('error')
                         setMessage(
                           error instanceof Error
                             ? error.message
