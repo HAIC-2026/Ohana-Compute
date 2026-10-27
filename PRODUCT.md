@@ -57,6 +57,9 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - Public, aggregate datasets with different geographic resolution, update cadence, and uncertainty.
 - A public read-only first release backed by normalized Go API contracts, with
   deterministic source fixtures reserved for end-to-end integration testing.
+- A local-only anonymous planning workspace by default. The current checklist
+  and field-packet export remain on-device; server collaboration is unavailable
+  until an approved identity provider and verifier are configured.
 
 ## Capabilities and Constraints
 
@@ -154,6 +157,15 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   synthetic demonstrations and must be labeled as such. Official aggregate AFN
   values retain their source geography and privacy limitations.
 - A visible challenge-readiness section must distinguish implemented prototype behavior from county validation, live-data integration, and deployment work that remains pending.
+- A compact identity state in the Response Plan must explain local-only
+  behavior without presenting a fake sign-in control. The backend session
+  contract may expose only controlled mode, state, roles, capabilities, and
+  collaboration availability, never user identifiers, tokens, claims, issuer
+  metadata, or authentication errors.
+- Future collaborative writes must cross a reusable fail-closed authentication
+  and `collaboration:write` authorization guard. Disabled, unavailable,
+  missing, invalid, unknown-role, and insufficient-capability states must not
+  invoke the protected handler.
 
 ## Evidence on Hand
 
@@ -190,6 +202,8 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
     with `502` when no supported operational trigger source succeeds.
 17. Unsupported operational domains must render `unavailable`, never normal,
     no incident, no outage, passable, contained, restored, or all clear.
+18. Identity is disabled unless explicitly and completely configured. Provider
+    metadata without a cryptographic verifier never enables server writes.
 
 ## Accessibility & Inclusion
 

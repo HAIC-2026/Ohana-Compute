@@ -13,6 +13,14 @@ The Census API key is never stored in GitHub. Local development reads it from
 macOS Keychain. AKS reads the same value from Key Vault through workload
 identity.
 
+Application identity is separate from Azure workload identity. The backend
+chart defaults `identity.mode` to `disabled`, so the public planner remains
+anonymous and local-only. Future OIDC values are public issuer/audience/client
+metadata, not secrets; no user token, client secret, signing key, or Microsoft
+Graph token belongs in Key Vault or the chart for this foundation slice. The
+provider verifier and approved tenant/application setup remain blocked
+external. See [`docs/identity-foundation.md`](../docs/identity-foundation.md).
+
 ## Prerequisites
 
 - Azure CLI signed in to the intended subscription
@@ -99,4 +107,8 @@ macOS Keychain -> CENSUS_API_KEY process environment -> Go backend
 AKS development:
 Azure Key Vault -> AKS Workload Identity -> Secrets Store CSI Driver
 -> read-only mounted file -> CENSUS_API_KEY_FILE -> Go backend
+
+Planner application identity:
+disabled by default -> anonymous local-only planner
+future approved OIDC metadata + cryptographic verifier -> guarded server writes
 ```

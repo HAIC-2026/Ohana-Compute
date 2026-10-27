@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CircleHelp,
   Clock3,
+  CloudOff,
   Download,
   ExternalLink,
   FileText,
@@ -90,6 +91,7 @@ import {
   useEventTriggers,
 } from '../lib/event-triggers'
 import { useOperationalStatus } from '../lib/operational-status'
+import { useIdentitySession } from '../lib/identity-session'
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -143,6 +145,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const [resourceDemandStandard, setResourceDemandStandard] =
     useState<ResourceDemandStandard>('evacuation')
   const eventTriggerState = useEventTriggers()
+  const identitySessionState = useIdentitySession()
   const primaryEventTrigger = primaryOperationalTrigger(
     eventTriggerState.snapshot,
   )
@@ -850,6 +853,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       </section>
 
       <section className="luna-section">
+        <IdentityBoundary state={identitySessionState} />
         <div className="luna-heading">
           <span className="luna-mark">
             <ListChecks size={20} />
@@ -1075,5 +1079,58 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         </div>
       </details>
     </div>
+  )
+}
+
+function IdentityBoundary({
+  state,
+}: {
+  state: ReturnType<typeof useIdentitySession>
+}) {
+  let title = 'Local workspace'
+  let detail =
+    'Your checklist and field packet stay on this device. Server collaboration requires configured sign-in.'
+  let status = 'Checking identity'
+
+  if (state.status === 'error') {
+    title = 'Anonymous local workspace · identity status unavailable'
+    status = 'Local only'
+  } else if (state.status === 'ready') {
+    const session = state.session
+    if (
+      session.configuration_status === 'disabled' ||
+      session.configuration_status === 'unavailable'
+    ) {
+      title = 'Anonymous local workspace · server collaboration off'
+      status = 'Local only'
+    } else if (session.state === 'anonymous') {
+      title = 'Anonymous local workspace · sign-in required for server writes'
+      status = 'Anonymous'
+    } else if (session.collaboration_write === 'available') {
+      title = 'Local workspace · identity verified'
+      detail =
+        'Checklist and export remain on this device. Identity is ready for future guarded server collaboration; shared plan storage is not included.'
+      status = 'Identity ready'
+    } else {
+      title = 'Local workspace · server write permission unavailable'
+      status = 'Read only'
+    }
+  }
+
+  return (
+    <aside
+      className="identity-boundary"
+      data-testid="identity-session-state"
+      aria-live="polite"
+    >
+      <CloudOff size={18} aria-hidden="true" />
+      <div>
+        <div className="identity-boundary-heading">
+          <strong>{title}</strong>
+          <span>{status}</span>
+        </div>
+        <p>{detail}</p>
+      </div>
+    </aside>
   )
 }

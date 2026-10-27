@@ -72,6 +72,7 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_operational_status_source_request_duration_seconds`
 - `hawaii_resilience_operational_status_snapshots_total`
 - `hawaii_resilience_operational_status_domains_total`
+- `hawaii_resilience_identity_authorization_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -105,6 +106,13 @@ Snapshot states are `partial` or `unavailable`. Domain labels are limited to
 `unavailable`. Facility names, source product IDs, addresses, coordinates,
 organizations, URLs, upstream errors, and missing-artifact text are never
 labels.
+
+Identity authorization metrics use one bounded `outcome` label:
+`disabled`, `unavailable`, `missing`, `invalid`, `forbidden`, or `authorized`.
+The session and authorization-check HTTP routes are labeled only by their
+registered patterns. Tokens, subjects, email addresses, display names, roles,
+capabilities, issuer/audience values, raw claims, and authentication errors are
+never labels or browser telemetry fields.
 
 AFN source metrics use only four source labels: `acs-5-year`,
 `cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
@@ -192,6 +200,12 @@ sum by (domain, status) (
 ```promql
 sum by (source, outcome) (
   rate(hawaii_resilience_operational_status_source_requests_total[5m])
+)
+```
+
+```promql
+sum by (outcome) (
+  rate(hawaii_resilience_identity_authorization_total[5m])
 )
 ```
 

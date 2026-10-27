@@ -18,6 +18,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
@@ -99,6 +100,7 @@ type Config struct {
 	PartnerMatching   PartnerMatcher
 	EventTriggers     EventTriggerReader
 	OperationalStatus OperationalStatusReader
+	Identity          identity.Authenticator
 	AllowedOrigins    []string
 	Logger            *slog.Logger
 	Registry          *prometheus.Registry
@@ -150,6 +152,13 @@ func NewServer(config Config) *Server {
 	if config.OperationalStatus == nil {
 		config.OperationalStatus = unavailableOperationalStatusReader{}
 	}
+	if config.Identity == nil {
+		var err error
+		config.Identity, err = identity.NewService(identity.Config{}, nil)
+		if err != nil {
+			panic("api: create disabled identity service: " + err.Error())
+		}
+	}
 	logger := config.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -166,6 +175,21 @@ func NewServer(config Config) *Server {
 	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.Handle(
+		"GET /api/v1/identity/session",
+		identity.SessionHandler(config.Identity),
+	)
+	mux.Handle(
+		"POST /api/v1/identity/authorization-check",
+		identity.RequireCapability(
+			config.Identity,
+			identity.CapabilityCollaborationWrite,
+			metrics.observeIdentityAuthorization,
+		)(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.Header().Set("Cache-Control", "no-store")
+			writer.WriteHeader(http.StatusNoContent)
+		})),
+	)
 	mux.HandleFunc("GET /api/v1/sources", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]any{
 			"sources":      catalog.All(),
@@ -320,7 +344,10 @@ func cors(allowedOrigins []string, next http.Handler) http.Handler {
 		if _, ok := allowed[origin]; ok {
 			writer.Header().Set("Access-Control-Allow-Origin", origin)
 			writer.Header().Set("Vary", "Origin")
-			writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			writer.Header().Set(
+				"Access-Control-Allow-Headers",
+				"Authorization, Content-Type",
+			)
 			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		}
 		if request.Method == http.MethodOptions {

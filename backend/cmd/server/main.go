@@ -20,6 +20,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
@@ -44,6 +45,16 @@ func main() {
 	)
 	if err != nil {
 		logger.Error("failed to load Census API key", "error", err)
+		os.Exit(1)
+	}
+	identityConfig, err := identityConfigFromEnvironment()
+	if err != nil {
+		logger.Error("invalid identity configuration", "error", err)
+		os.Exit(1)
+	}
+	identityService, err := identity.NewService(identityConfig, nil)
+	if err != nil {
+		logger.Error("initialize identity boundary", "error", err)
 		os.Exit(1)
 	}
 
@@ -119,6 +130,7 @@ func main() {
 		PartnerMatching:   partnerMatcher,
 		EventTriggers:     eventTriggerService,
 		OperationalStatus: operationalStatusService,
+		Identity:          identityService,
 		AllowedOrigins:    allowedOrigins,
 		Logger:            logger,
 		Registry:          registry,
@@ -155,6 +167,22 @@ func main() {
 		logger.Error("backend stopped unexpectedly", "error", err)
 		os.Exit(1)
 	}
+}
+
+func identityConfigFromEnvironment() (identity.Config, error) {
+	config := identity.Config{
+		Mode: identity.Mode(strings.TrimSpace(os.Getenv("IDENTITY_MODE"))),
+		OIDC: identity.OIDCConfig{
+			IssuerURL:  strings.TrimSpace(os.Getenv("OIDC_ISSUER_URL")),
+			Audience:   strings.TrimSpace(os.Getenv("OIDC_AUDIENCE")),
+			ClientID:   strings.TrimSpace(os.Getenv("OIDC_CLIENT_ID")),
+			RolesClaim: strings.TrimSpace(os.Getenv("OIDC_ROLES_CLAIM")),
+		},
+	}
+	if err := config.Validate(); err != nil {
+		return identity.Config{}, err
+	}
+	return config, nil
 }
 
 func envOrDefault(name string, fallback string) string {

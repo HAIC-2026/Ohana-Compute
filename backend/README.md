@@ -7,6 +7,8 @@ in a portal.
 ## Current slice
 
 - `GET /healthz`
+- `GET /api/v1/identity/session`
+- `POST /api/v1/identity/authorization-check`
 - `GET /api/v1/sources`
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
@@ -55,6 +57,8 @@ in a portal.
 - Explicit `fresh` or `stale` source status and warnings
 - Fail-closed `502` response when no valid upstream snapshot exists
 - CORS restricted to configured frontend origins
+- Disabled-by-default typed identity, principal, verifier, session, and
+  collaborative-write authorization contracts
 
 Every official-data response includes the source ID, authority, upstream URL,
 retrieval time, cache freshness deadline, and `fresh` or `stale` status.
@@ -167,6 +171,19 @@ all-clear.
 The frontend still calls the same State/FEMA services directly. Migrating it to
 these parity endpoints is the next integration slice.
 
+`GET /api/v1/identity/session` is the privacy-safe identity state boundary. It
+returns only controlled mode, anonymous/authenticated state, configuration
+status, collaboration-write availability, roles, and capabilities with
+`Cache-Control: no-store`. It never returns subject IDs, names, email
+addresses, tokens, raw claims, issuer/audience values, or verifier errors.
+
+`POST /api/v1/identity/authorization-check` does not persist data. It proves the
+reusable guard required for future collaborative mutations. Disabled or
+provider-unavailable identity returns `503`; absent or invalid credentials
+return `401`; insufficient controlled capability returns `403`; only an
+injected verified `plan_editor` principal can reach the guarded handler.
+Unknown roles fail closed.
+
 ## Run
 
 ```bash
@@ -183,6 +200,19 @@ Environment variables:
 - `CENSUS_API_KEY` — free Census data API key required for the ACS section
 - `CENSUS_API_KEY_FILE` — optional path to the key; used by the AKS Key Vault
   CSI mount when `CENSUS_API_KEY` is unset
+- `IDENTITY_MODE` — `disabled` by default; the only other accepted value is
+  `oidc`
+- `OIDC_ISSUER_URL`, `OIDC_AUDIENCE`, `OIDC_CLIENT_ID`, and
+  `OIDC_ROLES_CLAIM` — required together only when `IDENTITY_MODE=oidc`;
+  issuer must use HTTPS and the role claim must be `roles`
+
+The current production server does not include a provider-backed OIDC verifier.
+Complete OIDC metadata therefore reports `unavailable` and keeps protected
+writes denied. Real sign-in requires approved external tenant/application
+configuration and a verifier that validates signature/JWKS, issuer, audience,
+and temporal claims. No client secret, static token, trust header, or
+decode-only JWT path is supported. See
+[`../docs/identity-foundation.md`](../docs/identity-foundation.md).
 
 ### Store the Census key securely on macOS
 
