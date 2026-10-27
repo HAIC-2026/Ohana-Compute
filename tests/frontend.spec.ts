@@ -3,6 +3,7 @@ import {
   countyShelterPlans,
   expect,
   planningAreaCatalog,
+  resourceDemandFixture,
   test,
 } from './fixtures'
 
@@ -518,6 +519,93 @@ test('statewide planning catalog failure does not substitute Oahu content', asyn
     planningSheet.getByText('Central Maui practice reception site').first(),
   ).toBeVisible()
   expect(catalogAttempts).toBe(2)
+})
+
+test('resource demand uses bounded aggregate inputs and explicit unavailable lines', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  const requests: Array<Record<string, unknown>> = []
+  await page.route('**/api/v1/planning/resource-demand', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    requests.push(body)
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        resourceDemandFixture(
+          body as Parameters<typeof resourceDemandFixture>[0],
+        ),
+      ),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const demandPanel = planningSheet.getByTestId('resource-demand')
+  await expect(
+    demandPanel.getByRole('heading', {
+      name: 'Quantitative resource demand',
+    }),
+  ).toBeVisible()
+  await expect(demandPanel).toContainText('mass-care-demand-v0.1')
+  await expect(demandPanel).toContainText('Planning service population')
+  await expect(demandPanel).toContainText('Unavailable is not zero')
+  await expect(demandPanel).toContainText('Medical equipment power continuity')
+
+  await demandPanel.getByLabel('Service duration').selectOption('7')
+  await expect(demandPanel).toContainText('7-day meals')
+  await expect
+    .poll(() => requests.at(-1)?.scenario)
+    .toMatchObject({ service_days: 7, shelter_standard: 'evacuation' })
+
+  const serialized = JSON.stringify(requests)
+  expect(serialized).not.toContain('Urban Honolulu practice powered shelter')
+  expect(serialized).not.toContain('coordinates')
+  expect(serialized).not.toContain('Census Tract')
+  expect(serialized).not.toContain('address')
+})
+
+test('resource demand endpoint failure stays unavailable until retry succeeds', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  let attempts = 0
+  let allowSuccess = false
+  await page.route('**/api/v1/planning/resource-demand', async (route) => {
+    attempts += 1
+    if (!allowSuccess) {
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'resource demand model unavailable' }),
+      })
+      return
+    }
+    const body = route.request().postDataJSON()
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(resourceDemandFixture(body)),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const demandPanel = page
+    .locator('.planning-sheet:visible')
+    .getByTestId('resource-demand')
+  await expect(demandPanel).toContainText('Resource-demand model unavailable')
+  await expect(demandPanel).toContainText('No numeric fallback was generated')
+  allowSuccess = true
+  await demandPanel.getByRole('button', { name: 'Retry' }).click()
+  await expect(demandPanel).toContainText('Planning service population')
+  expect(attempts).toBeGreaterThanOrEqual(2)
 })
 
 test('mobile controls preserve the selected response zone', async ({

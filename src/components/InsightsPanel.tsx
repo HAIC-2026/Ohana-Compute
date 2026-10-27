@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -56,6 +56,7 @@ import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
+import { ResourceDemandPanel } from './ResourceDemandPanel'
 import { StatewidePlanningDepthPanel } from './StatewidePlanningDepthPanel'
 import {
   areas,
@@ -71,6 +72,11 @@ import {
   sources,
 } from '../lib/mock-data'
 import { usePlanningStore } from '../store/planning-store'
+import {
+  createResourceDemandRequest,
+  useResourceDemand,
+} from '../lib/resource-demand'
+import type { ResourceDemandStandard } from '../lib/resource-demand'
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -120,6 +126,9 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   )
   const [brief, setBrief] = useState<PlanningBrief | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [resourceDemandDays, setResourceDemandDays] = useState(3)
+  const [resourceDemandStandard, setResourceDemandStandard] =
+    useState<ResourceDemandStandard>('evacuation')
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
   const planningAreaCatalog = usePlanningAreaCatalog()
   const catalogArea = findStatewidePlanningArea(
@@ -203,6 +212,31 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     (site) =>
       site.status === 'confirmed' || confirmedResourceIds.includes(site.id),
   ).length
+  const resourceDemandRequest = useMemo(
+    () =>
+      createResourceDemandRequest({
+        areaId: area.id,
+        population: communityProfileState.profile?.acs?.population,
+        populationSource: communityProfileState.profile?.acs?.source,
+        medicalPower:
+          communityProfileState.profile?.empower?.power_dependent_dme,
+        resources: resourceInventory,
+        confirmedResourceIds,
+        serviceDays: resourceDemandDays,
+        shelterStandard: resourceDemandStandard,
+      }),
+    [
+      area.id,
+      communityProfileState.profile?.acs?.population,
+      communityProfileState.profile?.acs?.source,
+      communityProfileState.profile?.empower?.power_dependent_dme,
+      confirmedResourceIds,
+      resourceDemandDays,
+      resourceDemandStandard,
+      resourceInventory,
+    ],
+  )
+  const resourceDemandState = useResourceDemand(resourceDemandRequest)
   const nextRouteCheck =
     routeChecks.find((route) => route.status === 'needs-confirmation') ??
     routeChecks.at(0)
@@ -378,6 +412,27 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           capabilities: resource.capabilities,
         })),
         routes: routeChecks,
+        resourceDemand: resourceDemandState.response
+          ? {
+              modelVersion: resourceDemandState.response.model_version,
+              assumptionVersion:
+                resourceDemandState.response.assumption_version,
+              calculationId: resourceDemandState.response.calculation_id,
+              status: resourceDemandState.response.status,
+              serviceDays: resourceDemandState.response.scenario.service_days,
+              shelterStandard:
+                resourceDemandState.response.scenario.shelter_standard,
+              lines: resourceDemandState.response.lines.map((line) => ({
+                label: line.label,
+                status: line.status,
+                unit: line.unit,
+                demand: line.demand,
+                supply: line.supply?.applied_quantity,
+                gap: line.gap,
+                unavailableReason: line.unavailable_reason,
+              })),
+            }
+          : undefined,
       },
       match: {
         decision:
@@ -534,6 +589,14 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
       </section>
+
+      <ResourceDemandPanel
+        state={resourceDemandState}
+        serviceDays={resourceDemandDays}
+        shelterStandard={resourceDemandStandard}
+        onServiceDaysChange={setResourceDemandDays}
+        onShelterStandardChange={setResourceDemandStandard}
+      />
 
       <CountyShelterPlanPanel
         island={area.island}

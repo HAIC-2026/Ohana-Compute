@@ -3854,6 +3854,373 @@ select:focus-visible {
   line-height: 1.4;
 }
 
+.resource-demand-panel {
+  display: flex;
+  padding: 16px;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--cp-border);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--cp-accent) 7%, transparent),
+      transparent 42%
+    ),
+    var(--cp-surface);
+}
+
+.resource-demand-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.resource-demand-heading > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.resource-demand-heading > div:first-child > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cp-accent);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.resource-demand-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.resource-demand-heading p {
+  max-width: 64ch;
+  margin: 0;
+  color: var(--cp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.resource-demand-version {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--cp-text-muted);
+  font-size: 9px;
+}
+
+.resource-demand-version strong {
+  color: var(--cp-text);
+  font-size: 10px;
+}
+
+.resource-demand-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.resource-demand-controls label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resource-demand-controls label > span {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.resource-demand-controls select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.5rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.resource-demand-state {
+  display: flex;
+  min-height: 58px;
+  padding: 11px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+}
+
+.resource-demand-state > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resource-demand-state strong {
+  font-size: 12px;
+}
+
+.resource-demand-state span {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+}
+
+.resource-demand-state.is-error {
+  border-color: color-mix(in srgb, var(--cp-danger) 35%, var(--cp-border));
+}
+
+.resource-demand-state.is-error > svg {
+  color: var(--cp-danger);
+}
+
+.resource-demand-state button {
+  display: inline-flex;
+  min-height: 34px;
+  padding: 0 9px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--cp-accent);
+  border-radius: 0.5rem;
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.resource-demand-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resource-demand-summary article {
+  display: flex;
+  min-width: 0;
+  min-height: 82px;
+  padding: 9px;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  background: var(--cp-panel-strong);
+}
+
+.resource-demand-summary span {
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.resource-demand-summary strong {
+  margin-top: auto;
+  font-size: 17px;
+  letter-spacing: -0.025em;
+}
+
+.resource-demand-summary small {
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.resource-demand-supply {
+  display: flex;
+  padding: 9px 10px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--cp-success) 8%, var(--cp-surface));
+}
+
+.resource-demand-supply > svg {
+  flex: 0 0 auto;
+  color: var(--cp-success);
+}
+
+.resource-demand-supply > span {
+  display: flex;
+  flex-direction: column;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.resource-demand-supply strong {
+  color: var(--cp-text);
+  font-size: 11px;
+}
+
+.resource-demand-lines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.resource-demand-lines article {
+  display: flex;
+  min-width: 0;
+  padding: 9px;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.5rem;
+  background: var(--cp-surface);
+}
+
+.resource-demand-lines article > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.resource-demand-lines span {
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.resource-demand-lines strong {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.resource-demand-lines small,
+.resource-demand-lines em {
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.resource-demand-lines em {
+  color: var(--cp-accent);
+  font-weight: 700;
+}
+
+.resource-demand-unavailable {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.72fr) 1.28fr;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--cp-warning) 32%, var(--cp-border));
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--cp-warning) 7%, var(--cp-surface));
+}
+
+.resource-demand-unavailable > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.resource-demand-unavailable > div > svg {
+  flex: 0 0 auto;
+  color: var(--cp-warning);
+}
+
+.resource-demand-unavailable > div > span {
+  display: flex;
+  flex-direction: column;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.resource-demand-unavailable > div strong {
+  color: var(--cp-text);
+  font-size: 11px;
+}
+
+.resource-demand-unavailable ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: 4px;
+}
+
+.resource-demand-unavailable li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--cp-border);
+  font-size: 9px;
+}
+
+.resource-demand-unavailable li strong {
+  font-size: 10px;
+}
+
+.resource-demand-unavailable li span {
+  color: var(--cp-text-muted);
+  text-align: right;
+}
+
+.resource-demand-evidence {
+  border-top: 1px solid var(--cp-border);
+}
+
+.resource-demand-evidence summary {
+  display: flex;
+  padding-top: 9px;
+  align-items: center;
+  gap: 6px;
+  color: var(--cp-accent);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.resource-demand-evidence > div {
+  padding: 8px 0 0;
+}
+
+.resource-demand-evidence p,
+.resource-demand-evidence li {
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.resource-demand-evidence ul {
+  display: grid;
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 5px;
+}
+
+.resource-demand-evidence li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.resource-demand-evidence a {
+  color: var(--cp-accent);
+  font-weight: 750;
+}
+
 .inventory-section {
   padding: 16px;
   border-top: 1px solid var(--cp-border);
@@ -5023,6 +5390,61 @@ select:focus-visible {
 
   .county-shelter-heading {
     flex-direction: column;
+  }
+
+  .resource-demand-heading {
+    flex-direction: column;
+  }
+
+  .resource-demand-heading h2 {
+    font-size: 18px;
+  }
+
+  .resource-demand-heading p,
+  .resource-demand-state span,
+  .resource-demand-supply > span,
+  .resource-demand-unavailable > div > span,
+  .resource-demand-evidence p,
+  .resource-demand-evidence li {
+    font-size: 12px;
+  }
+
+  .resource-demand-version {
+    align-items: flex-start;
+    font-size: 11px;
+  }
+
+  .resource-demand-controls,
+  .resource-demand-summary,
+  .resource-demand-lines,
+  .resource-demand-unavailable {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-demand-controls label > span,
+  .resource-demand-summary span,
+  .resource-demand-lines span,
+  .resource-demand-unavailable li,
+  .resource-demand-evidence summary {
+    font-size: 12px;
+  }
+
+  .resource-demand-controls select,
+  .resource-demand-summary strong,
+  .resource-demand-lines strong,
+  .resource-demand-supply strong,
+  .resource-demand-unavailable > div strong,
+  .resource-demand-unavailable li strong {
+    font-size: 14px;
+  }
+
+  .resource-demand-summary article {
+    min-height: 70px;
+  }
+
+  .resource-demand-lines small,
+  .resource-demand-lines em {
+    font-size: 12px;
   }
 
   .county-shelter-heading h2 {

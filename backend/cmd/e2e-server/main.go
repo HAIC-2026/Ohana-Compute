@@ -16,6 +16,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
@@ -168,6 +169,7 @@ func main() {
 	communityFixtures := community.NewClient(fixtureArcGIS{}, fixtureCensus{})
 	shelterPlanFixtures := shelterplans.NewCatalog()
 	planningAreaFixtures := planningareas.NewCatalog()
+	resourceDemandFixture := resourcedemand.NewCalculator()
 	server := api.NewServer(api.Config{
 		Alerts:          fixtures,
 		Cyclones:        fixtures,
@@ -177,6 +179,7 @@ func main() {
 		Transportation:  fixtures,
 		ShelterPlans:    shelterPlanFixtures,
 		PlanningAreas:   planningAreaFixtures,
+		ResourceDemand:  resourceDemandFixture,
 		AllowedOrigins:  []string{"http://127.0.0.1:13000"},
 		Logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	})

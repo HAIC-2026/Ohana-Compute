@@ -19,6 +19,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
@@ -53,6 +54,12 @@ type shelterPlanReaderStub struct {
 type planningAreaReaderStub struct {
 	snapshot planningareas.Snapshot
 	err      error
+}
+
+type resourceDemandCalculatorStub struct {
+	response    resourcedemand.Response
+	err         error
+	lastRequest resourcedemand.Request
 }
 
 type officialReaderStub struct {
@@ -179,6 +186,14 @@ func (stub alertReaderStub) ActiveAlerts(context.Context) (nws.Snapshot, error) 
 
 func (stub cycloneReaderStub) ActiveCyclones(context.Context) (cphc.Snapshot, error) {
 	return stub.snapshot, stub.err
+}
+
+func (stub *resourceDemandCalculatorStub) Calculate(
+	_ context.Context,
+	request resourcedemand.Request,
+) (resourcedemand.Response, error) {
+	stub.lastRequest = request
+	return stub.response, stub.err
 }
 
 func (stub tsunamiProductReaderStub) LatestProduct(context.Context) (ptwc.Snapshot, error) {
@@ -601,6 +616,176 @@ func TestPlanningAreasEndpointFailsClosed(t *testing.T) {
 	}
 	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
 		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
+	}
+}
+
+func TestResourceDemandEndpointReturnsDeterministicRanges(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/planning/resource-demand",
+		strings.NewReader(resourceDemandRequestBody()),
+	)
+	request.Header.Set("Content-Type", "application/json; charset=utf-8")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
+	}
+	var body resourcedemand.Response
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode resource demand response: %v", err)
+	}
+	if body.ModelVersion != resourcedemand.ModelVersion ||
+		body.AssumptionVersion != resourcedemand.AssumptionVersion {
+		t.Fatalf("unexpected model metadata: %+v", body)
+	}
+	if body.Population.Range == nil ||
+		*body.Population.Range != (resourcedemand.Range{
+			Low:      2_261,
+			Planning: 2_361,
+			High:     2_461,
+		}) {
+		t.Fatalf("unexpected population range: %#v", body.Population.Range)
+	}
+	var shelterLine resourcedemand.Line
+	for _, line := range body.Lines {
+		if line.ID == "shelter_spaces" {
+			shelterLine = line
+			break
+		}
+	}
+	if shelterLine.Supply == nil || shelterLine.Supply.AppliedQuantity != 300 {
+		t.Fatalf("unexpected shelter supply: %#v", shelterLine.Supply)
+	}
+	if shelterLine.Demand == nil || shelterLine.Gap == nil ||
+		shelterLine.Gap.Planning != shelterLine.Demand.Planning-300 {
+		t.Fatalf("practice supply did not reduce the gap: %#v", shelterLine)
+	}
+	if body.SupplyAssessments[0].Reason != "geography_mismatch" {
+		t.Fatalf("expected geography mismatch: %#v", body.SupplyAssessments)
+	}
+}
+
+func TestResourceDemandEndpointRejectsInvalidAndOversizedBodies(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+	})
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+		wantStatus  int
+	}{
+		{
+			name:        "unknown field",
+			contentType: "application/json",
+			body:        `{"schema_version":"resource-demand-request.v1","unexpected":true}`,
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "unsupported content type",
+			contentType: "text/plain",
+			body:        resourceDemandRequestBody(),
+			wantStatus:  http.StatusUnsupportedMediaType,
+		},
+		{
+			name:        "unsupported JSON subtype",
+			contentType: "application/json-patch+json",
+			body:        resourceDemandRequestBody(),
+			wantStatus:  http.StatusUnsupportedMediaType,
+		},
+		{
+			name:        "multiple JSON objects",
+			contentType: "application/json",
+			body:        resourceDemandRequestBody() + `{}`,
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
+			name:        "oversized",
+			contentType: "application/json",
+			body:        `{"padding":"` + strings.Repeat("x", 70<<10) + `"}`,
+			wantStatus:  http.StatusRequestEntityTooLarge,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/v1/planning/resource-demand",
+				strings.NewReader(test.body),
+			)
+			request.Header.Set("Content-Type", test.contentType)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf(
+					"status = %d, want %d: %s",
+					response.Code,
+					test.wantStatus,
+					response.Body.String(),
+				)
+			}
+			if response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("missing no-store header: %#v", response.Header())
+			}
+		})
+	}
+}
+
+func TestResourceDemandEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	calculator := &resourceDemandCalculatorStub{
+		err: errors.New("internal model failure"),
+	}
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		ResourceDemand:  calculator,
+	})
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/planning/resource-demand",
+		strings.NewReader(resourceDemandRequestBody()),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "internal model failure") {
+		t.Fatalf("response leaked internal error: %s", response.Body.String())
+	}
+	if calculator.lastRequest.Geography.ID != "oahu-town" {
+		t.Fatalf("calculator did not receive request: %#v", calculator.lastRequest)
 	}
 }
 
@@ -1063,6 +1248,12 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/shelters/open" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/shelter-plans"},
 		{method: http.MethodGet, path: "/api/v1/planning-areas"},
+		{
+			method:      http.MethodPost,
+			path:        "/api/v1/planning/resource-demand",
+			body:        resourceDemandRequestBody(),
+			contentType: "application/json",
+		},
 		{method: http.MethodGet, path: "/api/v1/community/acs" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/svi" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/empower" + coordinateQuery},
@@ -1104,6 +1295,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		"/api/v1/shelters/open",
 		"/api/v1/shelter-plans",
 		"/api/v1/planning-areas",
+		"/api/v1/planning/resource-demand",
 		"/api/v1/community/acs",
 		"/api/v1/community/svi",
 		"/api/v1/community/empower",
@@ -1116,6 +1308,41 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 			t.Fatalf("HTTP metrics missing route %q:\n%s", route, metricsBody)
 		}
 	}
+}
+
+func resourceDemandRequestBody() string {
+	return `{
+		"schema_version":"resource-demand-request.v1",
+		"geography":{"id":"oahu-town","kind":"planning_area"},
+		"population":{
+			"status":"available",
+			"estimate":2361,
+			"margin_of_error":100,
+			"source":{"id":"acs-5-year","freshness":"fresh"}
+		},
+		"medical_power":{
+			"status":"available",
+			"masked":true,
+			"source_id":"hhs-empower"
+		},
+		"scenario":{"service_days":3,"shelter_standard":"evacuation"},
+		"practice_supplies":[
+			{
+				"category":"shelter_spaces",
+				"unit":"people",
+				"quantity":300,
+				"geography_id":"oahu-town",
+				"validation_status":"practice_confirmed"
+			},
+			{
+				"category":"shelter_spaces",
+				"unit":"people",
+				"quantity":200,
+				"geography_id":"maui-central",
+				"validation_status":"practice_confirmed"
+			}
+		]
+	}`
 }
 
 func intPointer(value int) *int {

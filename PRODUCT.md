@@ -23,7 +23,10 @@ The minimum complete planner journey is:
 1. **Map:** open a named event and planning area, then inspect official
    aggregate AFN context with source geography and privacy limitations.
 2. **Model:** compare the affected-community estimate with shelter, backup
-   power, transportation, and route gaps that still require confirmation.
+   power, transportation, and route gaps that still require confirmation. Use
+   the deterministic resource-demand panel to inspect low/planning/high service
+   ranges, matched practice supply, ACS uncertainty, and unavailable
+   coefficients without presenting the result as a forecast.
 3. **Match:** identify the accountable response partner, first action, and
    decision window.
 4. Confirm a local resource and generate a human-reviewable response
@@ -89,6 +92,16 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   included with Maui only for emergency-management scope. This planning
   catalog has no official facility records and stays separate from FEMA live
   status and synthetic practice inventory.
+- The Response Plan includes a deterministic, versioned quantitative
+  resource-demand model. It propagates aggregate ACS population uncertainty,
+  returns low/planning/high ranges for service population, shelter space and
+  floor area, cots, meals, and potable water, and subtracts only confirmed
+  unit- and geography-matched practice supply. It reports sanitation,
+  role-specific staffing, transportation, medical-power, refrigeration,
+  oxygen, backup-power, and animal-support coefficients as unavailable or
+  locally required rather than inventing values. HHS emPOWER remains
+  Medicare-only aggregate context, and privacy-masked cells never become
+  numeric demand.
 - Route guidance changes for residents without cars, residents needing mobility help, and residents needing powered medical support.
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.
@@ -102,6 +115,8 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - Scenario controls and aggregate impact summaries for selected planning areas.
 - CMIST categories: Communication, Medical, Independence, Safety/Support, and Transportation.
 - AI-assisted explanation and planning summaries grounded only in structured map context.
+- AI does not generate or modify quantitative demand values; the Go calculator
+  is deterministic, versioned, and auditable.
 - No personally identifiable information, stored addresses, individual registry, live tracking, dispatch, or autonomous resource allocation.
 - Responsive web interface deployed later as a frontend container beside a Go API container.
 - The production target is a new AKS environment with public Istio ingress and a managed Luna 6 endpoint accessed only through the backend.

@@ -54,6 +54,31 @@ export type FieldBriefingInput = {
       name: string
       status: string
     }>
+    resourceDemand?: {
+      modelVersion: string
+      assumptionVersion: string
+      calculationId: string
+      status: string
+      serviceDays: number
+      shelterStandard: string
+      lines: Array<{
+        label: string
+        status: string
+        unit: string
+        demand?: {
+          low: number
+          planning: number
+          high: number
+        }
+        supply?: number
+        gap?: {
+          low: number
+          planning: number
+          high: number
+        }
+        unavailableReason?: string
+      }>
+    }
   }
   match: {
     decision?: {
@@ -176,6 +201,35 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
         </tr>`,
     )
     .join('')
+  const resourceDemand = input.model.resourceDemand
+    ? `
+      <div class="resource-demand">
+        <div class="section-title">
+          <div>
+            <h3>Quantitative resource demand</h3>
+            <p>Deterministic scenario ranges, not forecasts or allocations.</p>
+          </div>
+          <span class="status partial">${escapeHTML(input.model.resourceDemand.status)} · ${escapeHTML(input.model.resourceDemand.modelVersion)}</span>
+        </div>
+        <div class="baseline">
+          <div><span>Assumptions</span><strong>${escapeHTML(input.model.resourceDemand.assumptionVersion)}</strong></div>
+          <div><span>Calculation</span><strong>${escapeHTML(input.model.resourceDemand.calculationId)}</strong></div>
+          <div><span>Scenario</span><strong>${input.model.resourceDemand.serviceDays} days · ${escapeHTML(input.model.resourceDemand.shelterStandard.replaceAll('_', ' '))}</strong></div>
+        </div>
+        <table>
+          <thead><tr><th>Planning line</th><th>Low / planning / high</th><th>Matched supply</th><th>Planning gap or status</th></tr></thead>
+          <tbody>${input.model.resourceDemand.lines
+            .map((line) => {
+              if (!line.demand) {
+                return `<tr><td>${escapeHTML(line.label)}</td><td>Unavailable</td><td>—</td><td>Unavailable is not zero · ${escapeHTML((line.unavailableReason ?? 'local validation required').replaceAll('_', ' '))}</td></tr>`
+              }
+              const unit = escapeHTML(line.unit.replaceAll('_', ' '))
+              return `<tr><td>${escapeHTML(line.label)}</td><td>${line.demand.low.toLocaleString()} / ${line.demand.planning.toLocaleString()} / ${line.demand.high.toLocaleString()} ${unit}</td><td>${line.supply?.toLocaleString() ?? '0'} ${unit}</td><td>${line.gap ? `${line.gap.planning.toLocaleString()} ${unit}` : 'No unit-matched supply line'}</td></tr>`
+            })
+            .join('')}</tbody>
+        </table>
+      </div>`
+    : '<p class="source-warning"><strong>Quantitative resource demand unavailable:</strong> no numeric fallback was generated.</p>'
   const actions = input.match.actions
     .map(
       (action) => `
@@ -347,6 +401,7 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
           <thead><tr><th>AFN domain</th><th>Score</th><th>Aggregate evidence</th><th>Planning action</th></tr></thead>
           <tbody>${hotspots}</tbody>
         </table>
+        ${resourceDemand}
         <div class="split">
           <div>
             <h3>Priority needs</h3>
