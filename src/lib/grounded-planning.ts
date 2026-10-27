@@ -1,4 +1,8 @@
-import { backendGet, backendPost } from './backend-api'
+import {
+  backendGet,
+  backendPost,
+  groundedPlanningRequestTimeoutMs,
+} from './backend-api'
 import type { BackendApiError } from './backend-api'
 import type { CollaborativePlan } from './collaborative-plans'
 
@@ -59,6 +63,7 @@ export function generateGroundedPlanningDraft(
   return backendPost<typeof input, GroundedPlanningDraft>(
     `/api/v1/collaboration/plans/${encodeURIComponent(planId)}/planning-drafts`,
     input,
+    groundedPlanningRequestTimeoutMs,
   )
 }
 

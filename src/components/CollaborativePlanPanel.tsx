@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -93,12 +93,64 @@ export function CollaborativePlanPanel(props: Props) {
   const isConfigured =
     session?.configuration_status === 'configured' &&
     session.state === 'authenticated'
+  const activePlanStorageKey = useMemo(
+    () =>
+      [
+        'hawaii-resilience-active-plan-v1',
+        props.jurisdiction,
+        props.areaRef,
+        props.eventRef || 'no-event',
+        props.hazard,
+      ]
+        .map(encodeURIComponent)
+        .join(':'),
+    [props.areaRef, props.eventRef, props.hazard, props.jurisdiction],
+  )
 
   const newestVersion = plan?.versions.at(-1)
   const timeline = useMemo(
     () => [...(plan?.audit ?? [])].reverse(),
     [plan?.audit],
   )
+
+  useEffect(() => {
+    if (!isConfigured || !canRead || plan) return
+    const storedPlanID = readStoredPlanID(activePlanStorageKey)
+    if (!storedPlanID) return
+
+    let active = true
+    setPending('reopen')
+    setMessage(null)
+    void loadCollaborativePlan(storedPlanID)
+      .then((storedPlan) => {
+        if (!active) return
+        setPlan(storedPlan)
+        setTitle(storedPlan.title)
+        setSummary(storedPlan.summary)
+        setStatus(storedPlan.status)
+        setFromVersion(Math.max(1, storedPlan.current_version - 1))
+        setToVersion(storedPlan.current_version)
+        setMessage('Reopened the active shared plan.')
+      })
+      .catch((error) => {
+        if (!active) return
+        if (collaborationErrorStatus(error) === 404) {
+          removeStoredPlanID(activePlanStorageKey)
+          return
+        }
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'The active shared plan could not be reopened.',
+        )
+      })
+      .finally(() => {
+        if (active) setPending(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [activePlanStorageKey, canRead, isConfigured, plan])
 
   const run = async (
     operation: string,
@@ -111,6 +163,7 @@ export function CollaborativePlanPanel(props: Props) {
     try {
       const next = await action()
       setPlan(next)
+      storePlanID(activePlanStorageKey, next.id)
       setTitle(next.title)
       setSummary(next.summary)
       setStatus(next.status)
@@ -253,7 +306,11 @@ export function CollaborativePlanPanel(props: Props) {
             <option value="draft">Draft</option>
             <option value="in_review">In review</option>
             <option value="changes_needed">Changes needed</option>
-            <option value="approved">Approved</option>
+            {(canApprove || status === 'approved') && (
+              <option value="approved" disabled={!canApprove}>
+                Approved
+              </option>
+            )}
             <option value="archived">Archived</option>
           </select>
         </label>
@@ -267,7 +324,11 @@ export function CollaborativePlanPanel(props: Props) {
         }
         data-telemetry-category="planning"
         disabled={
-          !canWrite || pending !== null || !title.trim() || !summary.trim()
+          !canWrite ||
+          pending !== null ||
+          !title.trim() ||
+          !summary.trim() ||
+          (status === 'approved' && !canApprove)
         }
         onClick={() =>
           plan
@@ -696,4 +757,28 @@ function formatDate(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function readStoredPlanID(key: string) {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function storePlanID(key: string, planID: string) {
+  try {
+    window.localStorage.setItem(key, planID)
+  } catch {
+    // Shared-plan persistence remains available even if browser storage is blocked.
+  }
+}
+
+function removeStoredPlanID(key: string) {
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    // Nothing else is required when browser storage is blocked.
+  }
 }

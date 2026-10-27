@@ -139,7 +139,8 @@ func fixtureSnapshot(value string) Snapshot {
 		}},
 		SourceRefs: []string{"acs-5-year", "fema-open-shelters"},
 		Outputs: []OutputReference{{
-			Stage: "map", Reference: "oahu-town", Summary: value + " aggregate map output",
+			Stage: "map", Reference: "oahu-town", Status: "available",
+			Summary: value + " aggregate map output",
 		}},
 	}
 }

@@ -10,6 +10,7 @@ export type CollaborativePlanSnapshot = {
   outputs: Array<{
     stage: 'map' | 'model' | 'match'
     reference: string
+    status: 'available' | 'partial' | 'unavailable'
     summary: string
   }>
   demand_lines?: Array<{

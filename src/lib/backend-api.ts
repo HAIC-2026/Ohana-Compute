@@ -1,5 +1,6 @@
 const defaultBackendApiUrl = 'http://127.0.0.1:8080'
 const requestTimeoutMs = 12_000
+export const groundedPlanningRequestTimeoutMs = 35_000
 
 export type BackendSourceStatus = {
   id: string
@@ -80,8 +81,9 @@ export async function backendGet<T>(
 export async function backendPost<TRequest, TResponse>(
   path: string,
   body: TRequest,
+  timeoutMs = requestTimeoutMs,
 ): Promise<TResponse> {
-  return backendMutation<TRequest, TResponse>('POST', path, body)
+  return backendMutation<TRequest, TResponse>('POST', path, body, timeoutMs)
 }
 
 export async function backendPut<TRequest, TResponse>(
@@ -95,10 +97,11 @@ async function backendMutation<TRequest, TResponse>(
   method: 'POST' | 'PUT',
   path: string,
   body: TRequest,
+  timeoutMs = requestTimeoutMs,
 ): Promise<TResponse> {
   const url = new URL(path, `${getBackendApiUrl()}/`)
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(url, {
       method,

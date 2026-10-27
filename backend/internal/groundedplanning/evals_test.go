@@ -141,7 +141,8 @@ func TestServiceStaleRevisionAndPrivacyExclusions(t *testing.T) {
 			SourceRefs: []string{"ACS-2024"},
 			Outputs: []collaboration.OutputReference{{
 				Stage:     "model",
-				Reference: "private-output-reference",
+				Reference: "resource-demand.v1",
+				Status:    "available",
 				Summary:   "PRIVATE OUTPUT SUMMARY",
 			}},
 			DemandLines: []collaboration.DemandEvidence{{
@@ -196,7 +197,6 @@ func TestServiceStaleRevisionAndPrivacyExclusions(t *testing.T) {
 		"PRIVATE CHECKLIST",
 		"PRIVATE PERSON",
 		"PRIVATE TIMING",
-		"private-output-reference",
 		"PRIVATE OUTPUT SUMMARY",
 		"PRIVATE COMMENT CONTENT",
 	} {
@@ -205,7 +205,9 @@ func TestServiceStaleRevisionAndPrivacyExclusions(t *testing.T) {
 		}
 	}
 	if !strings.Contains(encoded, "acs-5-year") ||
-		!strings.Contains(encoded, "model-output") ||
+		!strings.Contains(encoded, "resource-demand.v1") ||
+		!strings.Contains(encoded, "aggregate-area") ||
+		!strings.Contains(encoded, "honolulu") ||
 		!strings.Contains(encoded, "shelter_spaces") ||
 		!strings.Contains(encoded, "sheltering") {
 		t.Fatalf("provider context omitted controlled evidence: %s", encoded)
@@ -295,6 +297,8 @@ func TestOpenAICompatibleProviderFailureEvals(t *testing.T) {
 					SchemaVersion: ContextSchemaVersion,
 					Operation:     OperationIdentifyGaps,
 					Style:         StyleConcise,
+					Jurisdiction:  "honolulu",
+					AreaRef:       "oahu-town",
 					Hazard:        "flood",
 					Evidence: []ContextEvidence{{
 						SourceID:    "acs-5-year",
@@ -328,12 +332,15 @@ func (provider *captureProvider) Generate(
 	request Context,
 ) (ProviderDraft, error) {
 	provider.encodedContext = request.Context.SchemaVersion + " " +
+		request.Context.Jurisdiction + " " +
+		request.Context.AreaRef + " " +
 		request.Context.Hazard
 	for _, evidence := range request.Context.Evidence {
 		provider.encodedContext += " " + evidence.SourceID
 	}
 	for _, output := range request.Context.Outputs {
-		provider.encodedContext += " " + output.Stage + " " + output.Reference
+		provider.encodedContext += " " + output.Stage + " " + output.Reference +
+			" " + output.Status
 	}
 	for _, line := range request.Context.Demand {
 		provider.encodedContext += " " + line.ID + " " + line.GapState

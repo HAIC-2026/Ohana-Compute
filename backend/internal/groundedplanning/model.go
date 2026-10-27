@@ -73,6 +73,8 @@ type ProviderContext struct {
 	SchemaVersion string              `json:"schema_version"`
 	Operation     Operation           `json:"operation"`
 	Style         Style               `json:"style"`
+	Jurisdiction  string              `json:"jurisdiction"`
+	AreaRef       string              `json:"area_ref"`
 	Hazard        string              `json:"hazard"`
 	Evidence      []ContextEvidence   `json:"evidence"`
 	Outputs       []StructuredOutput  `json:"structured_outputs"`
