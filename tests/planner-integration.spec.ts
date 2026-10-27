@@ -4,6 +4,72 @@ import { expect, test } from '@playwright/test'
 
 const backendURL = 'http://127.0.0.1:18080'
 
+test('anonymous planning stays local while server writes require identity', async ({
+  page,
+  request,
+}) => {
+  const privateCredential =
+    'integration-private-user@example.test.integration-private-token'
+  const sessionResponse = await request.get(
+    `${backendURL}/api/v1/identity/session`,
+    { headers: { Authorization: `Bearer ${privateCredential}` } },
+  )
+  expect(sessionResponse.ok()).toBe(true)
+  expect(sessionResponse.headers()['cache-control']).toBe('no-store')
+  const session = await sessionResponse.json()
+  expect(session).toEqual({
+    schema_version: 'identity-session.v1',
+    auth_mode: 'disabled',
+    state: 'anonymous',
+    configuration_status: 'disabled',
+    collaboration_write: 'unavailable',
+    roles: [],
+    capabilities: [],
+  })
+  expect(JSON.stringify(session)).not.toContain(privateCredential)
+
+  const authorizationResponse = await request.post(
+    `${backendURL}/api/v1/identity/authorization-check`,
+    { headers: { Authorization: `Bearer ${privateCredential}` } },
+  )
+  expect(authorizationResponse.status()).toBe(503)
+  expect(authorizationResponse.headers()['cache-control']).toBe('no-store')
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Open response workspace', exact: true })
+    .click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  await expect(planningSheet).toBeVisible()
+  const identityState = planningSheet.getByTestId('identity-session-state')
+  await expect(identityState).toContainText(
+    'Anonymous local workspace · server collaboration off',
+  )
+  await expect(identityState).toContainText(
+    'Your checklist and field packet stay on this device',
+  )
+  await planningSheet
+    .getByRole('button', { name: 'Create response checklist' })
+    .click()
+  await expect(planningSheet.locator('.priority-list')).toBeVisible()
+
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toContain(
+    'hawaii_resilience_identity_authorization_total{outcome="disabled"}',
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_http_requests_total{method="POST",route="/api/v1/identity/authorization-check",status="503"}',
+  )
+  expect(metrics).not.toContain(privateCredential)
+  expect(metrics).not.toContain('integration-private-user')
+  expect(metrics).not.toContain('role=')
+  expect(metrics).not.toContain('subject=')
+  expect(metrics).not.toContain('issuer=')
+  expect(metrics).not.toContain('audience=')
+})
+
 test('live status never substitutes unsupported operational domains', async ({
   page,
   request,

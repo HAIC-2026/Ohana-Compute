@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 )
 
 func TestSecretFromEnvironmentOrFileUsesEnvironment(t *testing.T) {
@@ -57,5 +59,34 @@ func TestPositiveIntOrDefault(t *testing.T) {
 	t.Setenv("TEST_RATE", "invalid")
 	if got := positiveIntOrDefault("TEST_RATE", 1200, logger); got != 1200 {
 		t.Fatalf("positiveIntOrDefault fallback = %d, want 1200", got)
+	}
+}
+
+func TestIdentityConfigFromEnvironment(t *testing.T) {
+	t.Setenv("IDENTITY_MODE", "oidc")
+	t.Setenv("OIDC_ISSUER_URL", "https://identity.example.test/tenant")
+	t.Setenv("OIDC_AUDIENCE", "api://planner")
+	t.Setenv("OIDC_CLIENT_ID", "planner-web")
+	t.Setenv("OIDC_ROLES_CLAIM", "roles")
+
+	config, err := identityConfigFromEnvironment()
+	if err != nil {
+		t.Fatalf("identityConfigFromEnvironment() error = %v", err)
+	}
+	if config.Mode != identity.ModeOIDC ||
+		config.OIDC.Audience != "api://planner" {
+		t.Fatalf("unexpected identity config: %#v", config)
+	}
+}
+
+func TestIdentityConfigFromEnvironmentRejectsPartialSettings(t *testing.T) {
+	t.Setenv("IDENTITY_MODE", "oidc")
+	t.Setenv("OIDC_ISSUER_URL", "https://identity.example.test/tenant")
+	t.Setenv("OIDC_AUDIENCE", "")
+	t.Setenv("OIDC_CLIENT_ID", "planner-web")
+	t.Setenv("OIDC_ROLES_CLAIM", "roles")
+
+	if _, err := identityConfigFromEnvironment(); err == nil {
+		t.Fatal("identityConfigFromEnvironment() returned nil error")
 	}
 }

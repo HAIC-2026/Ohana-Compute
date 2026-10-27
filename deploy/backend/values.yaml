@@ -23,6 +23,14 @@ grafanaDashboard:
 telemetry:
   rateLimitPerMinute: 1200
 
+identity:
+  mode: disabled
+  oidc:
+    issuerURL: ''
+    audience: ''
+    clientID: ''
+    rolesClaim: roles
+
 azure:
   tenantId: ''
   workloadIdentityClientId: ''

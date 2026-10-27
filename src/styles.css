@@ -5485,6 +5485,63 @@ select:focus-visible {
   justify-content: flex-start;
 }
 
+.identity-boundary {
+  display: grid;
+  padding: 11px 12px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+}
+
+.identity-boundary > svg {
+  margin-top: 1px;
+  color: var(--cp-text-muted);
+}
+
+.identity-boundary > div {
+  min-width: 0;
+}
+
+.identity-boundary-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.identity-boundary strong {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.identity-boundary span {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 999px;
+  color: var(--cp-text-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.identity-boundary p {
+  max-width: 70ch;
+  margin: 4px 0 0;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.identity-boundary + .luna-heading {
+  margin-top: 16px;
+}
+
 .luna-mark {
   display: grid;
   width: 36px;
@@ -6791,6 +6848,12 @@ select:focus-visible {
   .brief-actions {
     flex-direction: column;
     align-items: flex-end;
+  }
+
+  .identity-boundary-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .live-status-domains {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -30,6 +31,7 @@ type Metrics struct {
 	operationalSourceDuration *prometheus.HistogramVec
 	operationalSnapshots      *prometheus.CounterVec
 	operationalDomains        *prometheus.CounterVec
+	identityAuthorization     *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -206,6 +208,14 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"domain", "status"},
 		),
+		identityAuthorization: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "identity_authorization_total",
+				Help:      "Identity authorization checks by bounded outcome.",
+			},
+			[]string{"outcome"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -228,8 +238,13 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.operationalSourceDuration,
 		metrics.operationalSnapshots,
 		metrics.operationalDomains,
+		metrics.identityAuthorization,
 	)
 	return metrics
+}
+
+func (metrics *Metrics) observeIdentityAuthorization(outcome identity.AuthorizationOutcome) {
+	metrics.identityAuthorization.WithLabelValues(string(outcome)).Inc()
 }
 
 func instrumentHTTP(metrics *Metrics, next http.Handler) http.Handler {

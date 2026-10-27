@@ -1,3 +1,6 @@
+{{- if not (has .Values.identity.mode (list "disabled" "oidc")) }}
+{{- fail "identity.mode must be disabled or oidc" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +29,18 @@ spec:
               value: /mnt/secrets-store/{{ .Values.azure.censusSecretName }}
             - name: TELEMETRY_RATE_LIMIT_PER_MINUTE
               value: {{ .Values.telemetry.rateLimitPerMinute | quote }}
+            - name: IDENTITY_MODE
+              value: {{ .Values.identity.mode | quote }}
+{{- if eq .Values.identity.mode "oidc" }}
+            - name: OIDC_ISSUER_URL
+              value: {{ required "identity.oidc.issuerURL is required when identity.mode=oidc" .Values.identity.oidc.issuerURL | quote }}
+            - name: OIDC_AUDIENCE
+              value: {{ required "identity.oidc.audience is required when identity.mode=oidc" .Values.identity.oidc.audience | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ required "identity.oidc.clientID is required when identity.mode=oidc" .Values.identity.oidc.clientID | quote }}
+            - name: OIDC_ROLES_CLAIM
+              value: {{ required "identity.oidc.rolesClaim is required when identity.mode=oidc" .Values.identity.oidc.rolesClaim | quote }}
+{{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
