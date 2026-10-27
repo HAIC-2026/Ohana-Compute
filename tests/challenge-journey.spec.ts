@@ -177,7 +177,7 @@ test.describe.serial('2026 challenge resident journey', () => {
     }
     await expect(
       page.getByRole('heading', {
-        name: 'Plan mass care before the next disaster',
+        name: 'Mass care planner',
       }),
     ).toBeVisible()
     await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')

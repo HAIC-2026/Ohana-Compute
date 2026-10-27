@@ -77,11 +77,9 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
         <div className="event-trigger-heading">
           <RadioTower size={18} />
           <div>
-            <strong>Loading official trigger context</strong>
-            <span>Fixture/loading · awaiting real Go API response</span>
+            <strong>Loading official alerts…</strong>
           </div>
         </div>
-        <p>Planning context — not an evacuation order</p>
         <div className="event-trigger-county">
           <strong>County evacuation-order data unavailable</strong>
           <span>Unavailable does not mean no order.</span>
@@ -99,10 +97,7 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
         <AlertTriangle size={19} />
         <div>
           <strong>Official trigger sources unavailable</strong>
-          <p>
-            The loading fixture was removed. Verify official sources directly
-            before changing plans.
-          </p>
+          <p>Check official sources or retry.</p>
           <span>County evacuation-order data unavailable</span>
           <small>Unavailable does not mean no order.</small>
         </div>
@@ -136,12 +131,12 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
       <div className="event-trigger-heading">
         <ShieldAlert size={19} />
         <div>
-          <strong>Planning context — not an evacuation order</strong>
+          <strong>Official alerts</strong>
           <span>
-            Official machine-readable sources ·{' '}
             {snapshot.status === 'partial'
-              ? 'partial snapshot'
-              : 'complete snapshot'}
+              ? 'Partial coverage'
+              : 'Sources checked'}{' '}
+            · Not an evacuation order
           </span>
         </div>
       </div>
@@ -236,13 +231,13 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
         </>
       ) : (
         <div className="event-trigger-empty">
-          No current products were returned. Feed silence is not an all-clear.
+          No products returned · Not an all-clear
         </div>
       )}
 
       <div className="event-trigger-county">
-        <strong>{snapshot.county_order_notice}</strong>
-        <span>{snapshot.unavailable_meaning}</span>
+        <strong>County order data unavailable</strong>
+        <span>Check County alerts; an order may still be in effect.</span>
       </div>
     </section>
   )

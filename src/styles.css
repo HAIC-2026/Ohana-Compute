@@ -295,6 +295,29 @@ summary:focus-visible,
   font-size: 12px;
 }
 
+.map-availability {
+  position: absolute;
+  z-index: 18;
+  bottom: 56px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 8px;
+  background: var(--cp-panel-strong);
+  color: var(--cp-text);
+  font-size: 12px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 900px) {
+  .map-availability {
+    top: 126px;
+    bottom: auto;
+  }
+}
+
 .maplibregl-canvas {
   outline: none;
 }

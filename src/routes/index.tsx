@@ -228,7 +228,7 @@ function Home() {
     ? area.name
     : (selectedNeighborhood?.name ?? area.name)
   const mainNeed =
-    neighborhoodDecision?.action ??
+    neighborhoodDecision?.label ??
     activeEvent?.firstAction ??
     catalogArea?.response_focus[hazard] ??
     area.responseFocus?.[hazard] ??
@@ -382,17 +382,13 @@ function Home() {
             >
               <X size={18} />
             </button>
-            <h1>Plan mass care before the next disaster</h1>
-            <p>
-              Map affected communities, model hazard-specific needs and gaps,
-              then match agencies and community partners to coordinated actions.
-            </p>
+            <h1>Mass care planner</h1>
 
             <div className="place-flow">
               <div className="island-choice">
                 <MapPin size={19} aria-hidden="true" />
                 <span>
-                  <small>Current island</small>
+                  <small>Island</small>
                   <select
                     aria-label="Choose island"
                     value={selectedIsland}
@@ -412,7 +408,6 @@ function Home() {
                     ))}
                   </select>
                 </span>
-                <span className="island-status">One island at a time</span>
               </div>
 
               <label className="response-zone-choice">
@@ -435,7 +430,6 @@ function Home() {
 
               {area.communities && (
                 <div className="zone-communities">
-                  <small>Includes</small>
                   <p>{area.communities.join(' · ')}</p>
                 </div>
               )}
@@ -445,7 +439,7 @@ function Home() {
 
             <div className="emergency-choice">
               <div className="active-event-heading">
-                <strong>Named practice event for {selectedIsland}</strong>
+                <strong>Scenario</strong>
                 <span>Practice only</span>
               </div>
               <nav
@@ -512,9 +506,8 @@ function Home() {
           )}
 
           <div className="relief-message">
-            <span>Response priority before conditions arrive</span>
+            <span>Priority</span>
             <strong>{mainNeed}</strong>
-            <p>{area.summary}</p>
           </div>
 
           <NeighborhoodBriefingPanel areaId={area.id} hazard={hazard} compact />
@@ -546,12 +539,14 @@ function Home() {
               <CommunityAfnSummary coordinates={area.coordinates} />
               {activeEvent && (
                 <div className="public-guidance">
-                  <strong>What people need to know</strong>
-                  <ul>
-                    {activeEvent.publicGuidance.map((guidance) => (
-                      <li key={guidance}>{guidance}</li>
-                    ))}
-                  </ul>
+                  <details>
+                    <summary>Public guidance</summary>
+                    <ul>
+                      {activeEvent.publicGuidance.map((guidance) => (
+                        <li key={guidance}>{guidance}</li>
+                      ))}
+                    </ul>
+                  </details>
                 </div>
               )}
             </section>
@@ -689,10 +684,6 @@ function Home() {
               </span>
               <div>
                 <h3>Preview resident guidance</h3>
-                <p>
-                  Translate the current plan into accessible, multilingual
-                  practice directions.
-                </p>
               </div>
             </div>
             {residentResource && residentPlan?.areaId === area.id ? (
@@ -717,8 +708,7 @@ function Home() {
           </section>
 
           <p className="practice-note">
-            Planning estimates use practice data. Confirm conditions, resource
-            status, and assignments with local teams before operational use.{' '}
+            Practice data · Verify with County teams before use.{' '}
             <a
               href={hawaiiDhsReferences[0].url}
               target="_blank"

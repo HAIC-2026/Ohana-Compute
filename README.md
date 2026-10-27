@@ -65,7 +65,15 @@ households.
 
 - TanStack Start, React 19, and TypeScript
 - Go backend for normalized source adapters and provenance
-- MapLibre GL with Esri World Street Map tiles
+- MapLibre GL with Esri World Street Map tiles and bundled Census coastline
+  geometry. If the street provider fails, real island geography remains
+  interactive and a “Street map interrupted” notice identifies missing street
+  detail. A tile error keeps the notice visible for that map session; another
+  successful tile does not imply full recovery. This is geographic reference,
+  not a road or evacuation map.
+  Geometry provenance is in `public/hawaii-coastline-source.txt`.
+  The planning overview stays at island scale; route-level zoom starts when
+  resident guidance is opened, not on initial page load.
 - Zustand for scenario state
 - OSRM driving geometry and Valhalla pedestrian geometry
 - Official TheBus GTFS for the transit example

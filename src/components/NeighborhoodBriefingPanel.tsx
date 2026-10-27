@@ -154,8 +154,7 @@ export function NeighborhoodBriefingPanel({
     >
       <div className="neighborhood-heading">
         <div>
-          <small>Plan by neighborhood</small>
-          <h3>What applies closest to you?</h3>
+          <h3>Neighborhood</h3>
         </div>
         <span>Practice locations</span>
       </div>
@@ -179,10 +178,12 @@ export function NeighborhoodBriefingPanel({
         data-testid={`neighborhood-${selected.id}`}
         {...neighborhoodTabs.panelProps}
       >
-        <div className="neighborhood-summary">
-          <MapPinned size={17} />
-          <p>{hazardSummary}</p>
-        </div>
+        {!compact && (
+          <div className="neighborhood-summary">
+            <MapPinned size={17} />
+            <p>{hazardSummary}</p>
+          </div>
+        )}
 
         <div className="shelter-decision">
           <HousePlus size={18} />
@@ -190,8 +191,11 @@ export function NeighborhoodBriefingPanel({
             <small>Resident decision</small>
             <strong>{decision.label}</strong>
             <p>{decision.action}</p>
-            <span>Why: {decision.reason}</span>
-            <span>Decision point: {decision.trigger}</span>
+            <details open={!compact}>
+              <summary>Decision criteria</summary>
+              <span>{decision.reason}</span>
+              <span>{decision.trigger}</span>
+            </details>
           </div>
         </div>
 
