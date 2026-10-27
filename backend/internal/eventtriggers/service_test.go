@@ -48,6 +48,49 @@ func (stub hansStub) Snapshot(context.Context) (hans.Snapshot, error) {
 	return stub.snapshot, stub.err
 }
 
+type sourceGate struct {
+	started chan string
+	release chan struct{}
+}
+
+func (gate sourceGate) wait(ctx context.Context, source string) error {
+	select {
+	case gate.started <- source:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case <-gate.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+type gatedNWSReader struct{ gate sourceGate }
+
+func (reader gatedNWSReader) ActiveAlerts(ctx context.Context) (nws.Snapshot, error) {
+	return nws.Snapshot{Source: nws.SourceStatus{Status: "fresh"}}, reader.gate.wait(ctx, "nws")
+}
+
+type gatedPTWCReader struct{ gate sourceGate }
+
+func (reader gatedPTWCReader) LatestProduct(ctx context.Context) (ptwc.Snapshot, error) {
+	return ptwc.Snapshot{Source: ptwc.SourceStatus{Status: "fresh"}}, reader.gate.wait(ctx, "ptwc")
+}
+
+type gatedComCatReader struct{ gate sourceGate }
+
+func (reader gatedComCatReader) RecentEvents(ctx context.Context) (usgs.Snapshot, error) {
+	return usgs.Snapshot{Source: usgs.SourceStatus{Status: "fresh"}}, reader.gate.wait(ctx, "usgs_comcat")
+}
+
+type gatedHANSReader struct{ gate sourceGate }
+
+func (reader gatedHANSReader) Snapshot(ctx context.Context) (hans.Snapshot, error) {
+	return hans.Snapshot{Status: "unavailable"}, reader.gate.wait(ctx, "usgs_hans")
+}
+
 func TestNWSAdvisoryWatchWarningAndCAPResponseNeverBecomeOrder(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
@@ -203,6 +246,77 @@ func TestAllOperationalSourceFailuresFailClosed(t *testing.T) {
 	})
 	if _, err := service.Snapshot(context.Background()); !errors.Is(err, ErrNoOperationalSources) {
 		t.Fatalf("expected ErrNoOperationalSources, got %v", err)
+	}
+}
+
+func TestSnapshotLoadsIndependentSourcesConcurrently(t *testing.T) {
+	t.Parallel()
+
+	gate := sourceGate{
+		started: make(chan string, 4),
+		release: make(chan struct{}),
+	}
+	service := NewService(Config{
+		NWS:    gatedNWSReader{gate: gate},
+		PTWC:   gatedPTWCReader{gate: gate},
+		ComCat: gatedComCatReader{gate: gate},
+		HANS:   gatedHANSReader{gate: gate},
+	})
+	result := make(chan error, 1)
+	go func() {
+		_, err := service.Snapshot(context.Background())
+		result <- err
+	}()
+
+	started := map[string]bool{}
+	for range 4 {
+		select {
+		case source := <-gate.started:
+			started[source] = true
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("sources did not start concurrently: %#v", started)
+		}
+	}
+	close(gate.release)
+	if err := <-result; err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+}
+
+func TestSnapshotCancellationReleasesConcurrentSources(t *testing.T) {
+	t.Parallel()
+
+	gate := sourceGate{
+		started: make(chan string, 4),
+		release: make(chan struct{}),
+	}
+	service := NewService(Config{
+		NWS:    gatedNWSReader{gate: gate},
+		PTWC:   gatedPTWCReader{gate: gate},
+		ComCat: gatedComCatReader{gate: gate},
+		HANS:   gatedHANSReader{gate: gate},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := service.Snapshot(ctx)
+		result <- err
+	}()
+	for range 4 {
+		select {
+		case <-gate.started:
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("sources did not start before cancellation")
+		}
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrNoOperationalSources) {
+			t.Fatalf("Snapshot() error = %v, want ErrNoOperationalSources", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Snapshot() did not return after cancellation")
 	}
 }
 

@@ -3,7 +3,9 @@ package collaboration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -115,6 +117,124 @@ func TestSQLiteStoreRecordsStructuredCollaborationEvents(t *testing.T) {
 	}
 	if len(plan.Audit) != 4 {
 		t.Fatalf("audit events = %d, want 4", len(plan.Audit))
+	}
+}
+
+func TestSQLiteStoreConcurrentCreatorsAndReaders(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenSQLite(filepath.Join(t.TempDir(), "collaboration.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const count = 24
+	ids := make(chan string, count)
+	failures := make(chan error, count)
+	var creators sync.WaitGroup
+	for index := range count {
+		creators.Add(1)
+		go func() {
+			defer creators.Done()
+			input := fixtureCreateInput()
+			input.Title = fmt.Sprintf("Concurrent plan %d", index)
+			plan, err := store.Create(context.Background(), input, "plan_editor")
+			if err != nil {
+				failures <- err
+				return
+			}
+			ids <- plan.ID
+		}()
+	}
+	creators.Wait()
+	close(ids)
+	close(failures)
+	for err := range failures {
+		t.Fatalf("concurrent Create() error = %v", err)
+	}
+
+	var readers sync.WaitGroup
+	readFailures := make(chan error, count)
+	for planID := range ids {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			plan, err := store.Get(context.Background(), planID)
+			if err != nil {
+				readFailures <- err
+				return
+			}
+			if plan.CurrentVersion != 1 || len(plan.Audit) != 1 {
+				readFailures <- fmt.Errorf("incomplete concurrent plan %s", planID)
+			}
+		}()
+	}
+	readers.Wait()
+	close(readFailures)
+	for err := range readFailures {
+		t.Fatal(err)
+	}
+}
+
+func TestSQLiteStoreConcurrentStaleWritersDoNotLoseUpdates(t *testing.T) {
+	t.Parallel()
+
+	store, err := OpenSQLite(filepath.Join(t.TempDir(), "collaboration.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	plan, err := store.Create(context.Background(), fixtureCreateInput(), "plan_editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const writers = 20
+	results := make(chan error, writers)
+	var waitGroup sync.WaitGroup
+	for index := range writers {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			results <- func() error {
+				_, err := store.Update(context.Background(), plan.ID, UpdateInput{
+					ExpectedRevision: plan.Revision,
+					Title:            fmt.Sprintf("Concurrent update %d", index),
+					Summary:          "Only one stale writer may commit.",
+					Status:           StatusInReview,
+					Snapshot:         fixtureSnapshot("concurrent"),
+				}, "plan_editor")
+				return err
+			}()
+		}()
+	}
+	waitGroup.Wait()
+	close(results)
+
+	successes := 0
+	conflicts := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected concurrent Update() error = %v", err)
+		}
+	}
+	if successes != 1 || conflicts != writers-1 {
+		t.Fatalf("successes=%d conflicts=%d, want 1 and %d", successes, conflicts, writers-1)
+	}
+	persisted, err := store.Get(context.Background(), plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Revision != plan.Revision+1 ||
+		persisted.CurrentVersion != plan.CurrentVersion+1 ||
+		len(persisted.Versions) != 2 {
+		t.Fatalf("concurrent writers produced inconsistent plan: %#v", persisted)
 	}
 }
 

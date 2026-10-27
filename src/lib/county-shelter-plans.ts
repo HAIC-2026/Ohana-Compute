@@ -88,6 +88,10 @@ function loadSnapshot() {
   return activeRequest
 }
 
+export function preloadCountyShelterPlans() {
+  void loadSnapshot().catch(() => undefined)
+}
+
 export function useCountyShelterPlans(): CountyShelterPlanState {
   const [revision, setRevision] = useState(0)
   const [state, setState] = useState<Omit<CountyShelterPlanState, 'retry'>>(

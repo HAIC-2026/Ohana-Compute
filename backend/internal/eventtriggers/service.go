@@ -132,6 +132,27 @@ type Service struct {
 	now    func() time.Time
 }
 
+type sourceResult[T any] struct {
+	value    T
+	err      error
+	duration time.Duration
+}
+
+func loadSource[T any](
+	ctx context.Context,
+	load func(context.Context) (T, error),
+) <-chan sourceResult[T] {
+	result := make(chan sourceResult[T], 1)
+	go func() {
+		started := time.Now()
+		value, err := load(ctx)
+		result <- sourceResult[T]{
+			value: value, err: err, duration: time.Since(started),
+		}
+	}()
+	return result
+}
+
 func NewService(config Config) *Service {
 	if config.NWS == nil || config.PTWC == nil || config.ComCat == nil || config.HANS == nil {
 		panic("eventtriggers: all source readers are required")
@@ -159,47 +180,48 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	successes := 0
 
-	started := time.Now()
-	nwsSnapshot, err := service.nws.ActiveAlerts(ctx)
-	if err != nil {
-		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "nws", Error: err.Error()})
+	nwsResult := loadSource(ctx, service.nws.ActiveAlerts)
+	ptwcResult := loadSource(ctx, service.ptwc.LatestProduct)
+	comCatResult := loadSource(ctx, service.comCat.RecentEvents)
+	hansResult := loadSource(ctx, service.hans.Snapshot)
+
+	nwsSource := <-nwsResult
+	if nwsSource.err != nil {
+		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "nws", Error: nwsSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "nws", "NOAA National Weather Service", "weather_alert", "https://www.weather.gov/hfo/"))
-		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: "error", Duration: time.Since(started)})
+		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: "error", Duration: nwsSource.duration})
 	} else {
 		successes++
-		result.Triggers = append(result.Triggers, normalizeNWS(nwsSnapshot, now)...)
-		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: sourceOutcome(nwsSnapshot.Source.Status), Duration: time.Since(started)})
+		result.Triggers = append(result.Triggers, normalizeNWS(nwsSource.value, now)...)
+		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: sourceOutcome(nwsSource.value.Source.Status), Duration: nwsSource.duration})
 	}
 
-	started = time.Now()
-	ptwcSnapshot, err := service.ptwc.LatestProduct(ctx)
-	if err != nil {
-		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "ptwc", Error: err.Error()})
+	ptwcSource := <-ptwcResult
+	if ptwcSource.err != nil {
+		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "ptwc", Error: ptwcSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "ptwc", "NOAA Pacific Tsunami Warning Center", "tsunami_product", "https://www.tsunami.gov/"))
-		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: "error", Duration: time.Since(started)})
+		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: "error", Duration: ptwcSource.duration})
 	} else {
 		successes++
-		result.Triggers = append(result.Triggers, normalizePTWC(ptwcSnapshot, now))
-		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: sourceOutcome(ptwcSnapshot.Source.Status), Duration: time.Since(started)})
+		result.Triggers = append(result.Triggers, normalizePTWC(ptwcSource.value, now))
+		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: sourceOutcome(ptwcSource.value.Source.Status), Duration: ptwcSource.duration})
 	}
 
-	started = time.Now()
-	comCatSnapshot, err := service.comCat.RecentEvents(ctx)
-	if err != nil {
-		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_comcat", Error: err.Error()})
+	comCatSource := <-comCatResult
+	if comCatSource.err != nil {
+		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_comcat", Error: comCatSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "usgs_comcat", "U.S. Geological Survey", "earthquake", "https://earthquake.usgs.gov/earthquakes/map/"))
-		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: "error", Duration: time.Since(started)})
+		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: "error", Duration: comCatSource.duration})
 	} else {
 		successes++
-		result.Triggers = append(result.Triggers, normalizeComCat(comCatSnapshot, now)...)
-		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: sourceOutcome(comCatSnapshot.Source.Status), Duration: time.Since(started)})
+		result.Triggers = append(result.Triggers, normalizeComCat(comCatSource.value, now)...)
+		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: sourceOutcome(comCatSource.value.Source.Status), Duration: comCatSource.duration})
 	}
 
-	started = time.Now()
-	hansSnapshot, hansErr := service.hans.Snapshot(ctx)
-	if hansErr != nil {
-		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_hans", Error: hansErr.Error()})
-		hansSnapshot = hans.Snapshot{
+	hansSource := <-hansResult
+	if hansSource.err != nil {
+		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_hans", Error: hansSource.err.Error()})
+		hansSource.value = hans.Snapshot{
 			Authority:   "U.S. Geological Survey Hawaiian Volcano Observatory",
 			Status:      "unavailable",
 			RetrievedAt: now,
@@ -207,11 +229,11 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 			OfficialURL: "https://volcanoes.usgs.gov/hans-public/",
 		}
 	}
-	result.Triggers = append(result.Triggers, normalizeHANS(hansSnapshot, now))
+	result.Triggers = append(result.Triggers, normalizeHANS(hansSource.value, now))
 	reportSourceObservation(ctx, SourceObservation{
 		Source:   "usgs_hans",
 		Outcome:  "error",
-		Duration: time.Since(started),
+		Duration: hansSource.duration,
 	})
 
 	if successes == 0 {

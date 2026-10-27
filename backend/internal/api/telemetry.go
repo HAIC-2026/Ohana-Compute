@@ -37,6 +37,8 @@ var (
 		"planning_brief_generate",
 		"planning_brief_update",
 		"field_packet_download",
+		"collaboration_plan_save",
+		"collaboration_version_save",
 		"shelter_county_select",
 		"shelter_provenance_open",
 		"shelter_plan_retry",

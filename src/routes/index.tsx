@@ -53,6 +53,7 @@ import {
   usesCatalogWorkflow,
   usePlanningAreaCatalog,
 } from '../lib/planning-areas'
+import { preloadCountyShelterPlans } from '../lib/county-shelter-plans'
 import { usePlanningStore } from '../store/planning-store'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -72,6 +73,7 @@ const InsightsPanel = lazy(loadInsightsPanel)
 
 function preloadResponseWorkspace() {
   void loadInsightsPanel()
+  preloadCountyShelterPlans()
 }
 
 const hazardIcons: Record<HazardId, typeof Waves> = {

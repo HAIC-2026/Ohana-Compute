@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,7 +14,7 @@ import (
 const (
 	SchemaVersion         = "grounded-planning-draft.v1"
 	ContextSchemaVersion  = "grounded-planning-context.v1"
-	ModelPolicyVersion    = "grounded-planning-policy.v1"
+	ModelPolicyVersion    = "grounded-planning-policy.v2"
 	maxSections           = 6
 	maxClaimsPerSection   = 6
 	maxActions            = 8
@@ -33,6 +33,19 @@ var (
 	ErrPolicyBlocked   = errors.New("grounded planning output was blocked by policy")
 	ErrRateLimited     = errors.New("grounded planning rate limit exceeded")
 	ErrDraftNotFound   = errors.New("grounded planning draft not found")
+)
+
+var (
+	providerURLPattern       = regexp.MustCompile(`(?i)(?:[a-z][a-z0-9+.-]*://|www\.)`)
+	policyClausePattern      = regexp.MustCompile(`[.!?;]+`)
+	policyCompoundPattern    = regexp.MustCompile(`(?i)\s*(?:,|:|\b(?:and|but|or|then|while)\b)\s*`)
+	prohibitedPolicyPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\b(?:you|residents?|people|the public|occupants?|households?|visitors?|community members?)\s+(?:must|should|need to|are ordered to)\s+(?:leave|evacuate)\b`),
+		regexp.MustCompile(`(?i)(?:^|[.!?;]\s+)(?:leave|evacuate)\s+(?:now|immediately)\b`),
+		regexp.MustCompile(`(?i)(?:^|[.!?;]\s+)(?:the\s+)?(?:shelter|route|road|facility|partner|resource|capacity)\s+(?:is|are|remains?|has been|have been)\s+(?:open|available|passable|operational|ready|confirmed)\b`),
+		regexp.MustCompile(`(?i)(?:^|[.!?;]\s+)(?:the\s+)?(?:plan|draft|request)\s+(?:is|was|has been)\s+approved\b`),
+		regexp.MustCompile(`(?i)(?:^|[.!?;]\s+)(?:take|stop|change)\s+(?:your\s+)?(?:medication|medicine|dose|dosage)\b`),
+	}
 )
 
 type Operation string
@@ -326,23 +339,31 @@ func validateText(name string, value string) error {
 		strings.ContainsAny(trimmed, "\x00\r") {
 		return fmt.Errorf("%w: %s is invalid", ErrInvalidOutput, name)
 	}
-	if parsed, err := url.ParseRequestURI(trimmed); err == nil && parsed.IsAbs() {
+	if providerURLPattern.MatchString(trimmed) {
 		return fmt.Errorf("%w: provider output must not include source URLs", ErrInvalidOutput)
 	}
 	return nil
 }
 
 func enforcePolicy(value string) error {
-	lower := strings.ToLower(value)
-	for _, pattern := range []string{
-		"evacuation order", "mandatory evacuation", "all clear", "all-clear",
-		"activate partner", "partner activated", "assigned to partner",
-		"capacity confirmed", "shelter is open", "route is open",
-		"road is passable", "officially approved", "agency approved",
-		"medical advice", "take medication", "no outages", "zero outages",
-		"no unmet need", "zero unmet need",
-	} {
-		if strings.Contains(lower, pattern) {
+	for _, clause := range policyClausePattern.Split(value, -1) {
+		lower := strings.TrimSpace(strings.ToLower(clause))
+		if lower == "" {
+			continue
+		}
+		if body, ok := verificationBody(lower); ok {
+			segments := policyCompoundPattern.Split(body, -1)
+			if !validVerificationSegment(segments[0]) {
+				return fmt.Errorf("%w: prohibited operational or authority claim", ErrPolicyBlocked)
+			}
+			for _, segment := range segments[1:] {
+				if len(policyViolationSpans(segment)) > 0 {
+					return fmt.Errorf("%w: prohibited operational or authority claim", ErrPolicyBlocked)
+				}
+			}
+			continue
+		}
+		if len(policyViolationSpans(clause)) > 0 {
 			return fmt.Errorf("%w: prohibited operational or authority claim", ErrPolicyBlocked)
 		}
 	}
@@ -350,4 +371,81 @@ func enforcePolicy(value string) error {
 		return fmt.Errorf("%w: invented quantitative values are not allowed", ErrPolicyBlocked)
 	}
 	return nil
+}
+
+func verificationBody(value string) (string, bool) {
+	if body, ok := strings.CutPrefix(value, "do not assume "); ok {
+		return body, true
+	}
+	for _, prefix := range []string{"confirm ", "verify ", "determine "} {
+		if !strings.HasPrefix(value, prefix) {
+			continue
+		}
+		if _, body, ok := strings.Cut(value, " whether "); ok {
+			return body, true
+		}
+	}
+	return "", false
+}
+
+func validVerificationSegment(value string) bool {
+	spans := policyViolationSpans(value)
+	if len(spans) == 0 {
+		return true
+	}
+	if len(spans) > 1 {
+		return false
+	}
+	switch strings.TrimSpace(strings.ToLower(value[:spans[0][0]])) {
+	case "", "a", "an", "the", "current", "there is", "there are":
+		return true
+	default:
+		return false
+	}
+}
+
+func policyViolationSpans(value string) [][2]int {
+	spans := make([][2]int, 0)
+	lower := strings.ToLower(value)
+	for _, pattern := range []string{
+		"evacuation order", "mandatory evacuation", "all clear", "all-clear",
+		"activate partner", "partner activated", "assigned to partner",
+		"capacity confirmed", "officially approved", "agency approved",
+		"medical advice", "no outages", "zero outages",
+		"no unmet need", "zero unmet need",
+	} {
+		for offset := 0; offset < len(lower); {
+			index := strings.Index(lower[offset:], pattern)
+			if index < 0 {
+				break
+			}
+			start := offset + index
+			spans = append(spans, [2]int{start, start + len(pattern)})
+			offset = start + len(pattern)
+		}
+	}
+	for _, pattern := range prohibitedPolicyPatterns {
+		for _, match := range pattern.FindAllStringIndex(value, -1) {
+			spans = append(spans, [2]int{match[0], match[1]})
+		}
+	}
+	if len(spans) < 2 {
+		return spans
+	}
+	sort.Slice(spans, func(left int, right int) bool {
+		return spans[left][0] < spans[right][0]
+	})
+	merged := make([][2]int, 0, len(spans))
+	merged = append(merged, spans[0])
+	mergedEnd := spans[0][1]
+	for _, span := range spans[1:] {
+		if span[0] <= mergedEnd {
+			mergedEnd = max(mergedEnd, span[1])
+			merged[len(merged)-1][1] = mergedEnd
+			continue
+		}
+		merged = append(merged, span)
+		mergedEnd = span[1]
+	}
+	return merged
 }

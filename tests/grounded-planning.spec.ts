@@ -83,7 +83,7 @@ test('grounded planning drafts require citations and human approval', async ({
   const applied = await appliedResponse.json()
   expect(applied.current_version).toBe(initialPlan.current_version + 1)
   expect(applied.versions.at(-1).ai_assistance).toEqual({
-    provider_policy_version: 'grounded-planning-policy.v1',
+    provider_policy_version: 'grounded-planning-policy.v2',
     input_context_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
   })
   expect(applied.audit.at(-1).action).toBe('ai_draft_applied')

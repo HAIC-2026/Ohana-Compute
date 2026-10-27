@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/collaboration"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
@@ -250,11 +251,23 @@ func writeCollaborationFailure(
 	case errors.Is(err, collaboration.ErrInvalidInput):
 		metrics.observeCollaboration(operation, "invalid")
 		writeCollaborationError(writer, http.StatusBadRequest, err.Error())
+	case isCollaborationStorageUnavailable(err):
+		metrics.observeCollaboration(operation, "unavailable")
+		logger.Error("collaboration storage unavailable", "operation", operation, "error", err)
+		writeCollaborationError(writer, http.StatusServiceUnavailable, "collaboration storage is temporarily unavailable")
 	default:
 		metrics.observeCollaboration(operation, "error")
 		logger.Error("collaboration operation failed", "operation", operation, "error", err)
 		writeCollaborationError(writer, http.StatusInternalServerError, "collaboration operation failed")
 	}
+}
+
+func isCollaborationStorageUnavailable(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database is busy") ||
+		strings.Contains(message, "sqlite_busy") ||
+		strings.Contains(message, "sqlite_locked")
 }
 
 func writeCollaborationError(writer http.ResponseWriter, status int, message string) {

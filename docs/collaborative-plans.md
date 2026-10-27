@@ -84,7 +84,9 @@ fails startup.
 
 The Helm chart creates a `ReadWriteOnce` PVC only when
 `collaboration.persistence=sqlite` and rejects `replicaCount` values other than
-`1`. SQLite/PVC is not multi-replica HA. Back up the PVC with the cluster's
+`1`. SQLite deployments use the `Recreate` rollout strategy so an upgrade does
+not start a replacement pod while the existing pod still owns the volume.
+SQLite/PVC is not multi-replica HA. Back up the PVC with the cluster's
 volume-snapshot or backup service; copying a live database file without its WAL
 is not a supported backup. Multi-replica operation requires a future external
 database implementation behind the `collaboration.Store` interface.
