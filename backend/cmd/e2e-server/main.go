@@ -12,6 +12,8 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
@@ -20,6 +22,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/usgs"
 )
 
 type fixtureSources struct{}
@@ -29,7 +32,23 @@ type fixtureArcGIS struct{}
 type fixtureCensus struct{}
 
 func (fixtureSources) ActiveAlerts(context.Context) (nws.Snapshot, error) {
-	return nws.Snapshot{}, nil
+	now := time.Now().UTC()
+	return nws.Snapshot{
+		Alerts: []nws.Alert{{
+			ID: "fixture-nws-advisory", Hazard: "flood",
+			Event: "Flood Advisory", Headline: "Fixture Flood Advisory",
+			Area: "Honolulu County", Severity: "Minor", Certainty: "Likely",
+			Urgency: "Expected", ResponseType: "Evacuate",
+			Effective:   now.Add(-15 * time.Minute).Format(time.RFC3339),
+			Expires:     now.Add(90 * time.Minute).Format(time.RFC3339),
+			Instruction: "Follow authorized local instructions.",
+		}},
+		Source: nws.SourceStatus{
+			ID: "nws-hi-alerts", Authority: "NOAA National Weather Service",
+			URL:         "https://api.weather.gov/alerts/active?area=HI",
+			RetrievedAt: now, FreshUntil: now.Add(5 * time.Minute), Status: "fresh",
+		},
+	}, nil
 }
 
 func (fixtureSources) ActiveCyclones(context.Context) (cphc.Snapshot, error) {
@@ -37,7 +56,51 @@ func (fixtureSources) ActiveCyclones(context.Context) (cphc.Snapshot, error) {
 }
 
 func (fixtureSources) LatestProduct(context.Context) (ptwc.Snapshot, error) {
-	return ptwc.Snapshot{}, nil
+	now := time.Now().UTC()
+	return ptwc.Snapshot{
+		Product: ptwc.Product{
+			Identifier: "fixture-ptwc-watch", SentAt: now.Add(-10 * time.Minute).Format(time.RFC3339),
+			Status: "Actual", MessageType: "Alert", Event: "Tsunami Watch",
+			ActionLevel: "watch", ResponseType: "Prepare", Urgency: "Expected",
+			Severity: "Severe", Certainty: "Possible",
+			Onset:   now.Add(-10 * time.Minute).Format(time.RFC3339),
+			Expires: now.Add(2 * time.Hour).Format(time.RFC3339), IsCurrent: true,
+			SenderName: "PTWC", Headline: "Fixture Tsunami Watch",
+			Web: "https://www.tsunami.gov/",
+		},
+		Source: ptwc.SourceStatus{
+			ID: "ptwc-cap", Authority: "NOAA Pacific Tsunami Warning Center",
+			URL:         "https://www.tsunami.gov/events/xml/PHEBCAP.xml",
+			RetrievedAt: now, FreshUntil: now.Add(time.Minute), Status: "fresh",
+		},
+	}, nil
+}
+
+func (fixtureSources) RecentEvents(context.Context) (usgs.Snapshot, error) {
+	now := time.Now().UTC()
+	return usgs.Snapshot{
+		Events: []usgs.Event{
+			{
+				ID: "fixture-comcat-tsunami", Title: "M 6.8 fixture earthquake",
+				DetailURL: "https://earthquake.usgs.gov/earthquakes/eventpage/fixture",
+				Time:      now.Add(-20 * time.Minute).Format(time.RFC3339),
+				Updated:   now.Add(-5 * time.Minute).Format(time.RFC3339),
+				Magnitude: 6.8, Type: "earthquake", Tsunami: true, Status: "reviewed",
+			},
+			{
+				ID: "fixture-comcat-no-tsunami", Title: "M 3.2 fixture earthquake",
+				DetailURL: "https://earthquake.usgs.gov/earthquakes/eventpage/fixture-small",
+				Time:      now.Add(-40 * time.Minute).Format(time.RFC3339),
+				Updated:   now.Add(-30 * time.Minute).Format(time.RFC3339),
+				Magnitude: 3.2, Type: "earthquake", Tsunami: false, Status: "reviewed",
+			},
+		},
+		Source: usgs.SourceStatus{
+			ID: "usgs-comcat", Authority: "U.S. Geological Survey",
+			URL:         "https://earthquake.usgs.gov/fdsnws/event/1/query",
+			RetrievedAt: now, FreshUntil: now.Add(2 * time.Minute), Status: "fresh",
+		},
+	}, nil
 }
 
 func (fixtureSources) TsunamiRisk(
@@ -172,6 +235,9 @@ func main() {
 	planningAreaFixtures := planningareas.NewCatalog()
 	resourceDemandFixture := resourcedemand.NewCalculator()
 	partnerMatchingFixture := partnermatching.NewMatcher()
+	eventTriggerFixtures := eventtriggers.NewService(eventtriggers.Config{
+		NWS: fixtures, PTWC: fixtures, ComCat: fixtures, HANS: hans.NewClient(nil),
+	})
 	server := api.NewServer(api.Config{
 		Alerts:          fixtures,
 		Cyclones:        fixtures,
@@ -183,6 +249,7 @@ func main() {
 		PlanningAreas:   planningAreaFixtures,
 		ResourceDemand:  resourceDemandFixture,
 		PartnerMatching: partnerMatchingFixture,
+		EventTriggers:   eventTriggerFixtures,
 		AllowedOrigins:  []string{"http://127.0.0.1:13000"},
 		Logger:          slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	})

@@ -108,6 +108,99 @@ export const communityProfile = {
     "All values describe aggregate planning geographies. They must not be used to infer an individual's disability, language, medical equipment, income, transportation access, or evacuation behavior.",
 }
 
+export const eventTriggerSnapshot = {
+  schema_version: 'event-trigger-snapshot.v1',
+  generated_at: '2026-10-27T08:00:00Z',
+  status: 'complete',
+  planning_disclaimer: 'Planning context — not an evacuation order',
+  county_order_notice: 'County evacuation-order data unavailable',
+  unavailable_meaning: 'Unavailable does not mean no order.',
+  triggers: [
+    {
+      schema_version: 'event-trigger-snapshot.v1',
+      generated_at: '2026-10-27T08:00:00Z',
+      source: 'nws',
+      hazard_event_kind: 'flood',
+      jurisdiction_scope: 'multi_county',
+      lifecycle: 'active',
+      planning_state: 'prepare',
+      authority_kind: 'federal_warning_center',
+      legal_order_status: 'not_an_evacuation_order',
+      authority_limitation:
+        'Planning context only. A CAP response type is not a legal evacuation order.',
+      planning_consequence:
+        'Monitor the official source and prepare without inferring an evacuation order.',
+      title: 'Fixture Flood Advisory',
+      facts: {
+        severity: 'Minor',
+        certainty: 'Likely',
+        urgency: 'Expected',
+        response_type: 'Evacuate',
+      },
+      provenance: {
+        source_authority: 'NOAA National Weather Service',
+        product_id: 'fixture-nws-advisory',
+        product_type: 'Flood Advisory',
+        issued_at: '2026-10-27T07:45:00Z',
+        effective_at: '2026-10-27T07:45:00Z',
+        expires_at: '2026-10-27T09:30:00Z',
+        retrieved_at: '2026-10-27T08:00:00Z',
+        fresh_until: '2026-10-27T08:05:00Z',
+        source_status: 'fresh',
+        official_instructions_url: 'https://www.weather.gov/hfo/',
+      },
+    },
+    {
+      schema_version: 'event-trigger-snapshot.v1',
+      generated_at: '2026-10-27T08:00:00Z',
+      source: 'usgs_hans',
+      hazard_event_kind: 'volcano',
+      jurisdiction_scope: 'statewide',
+      lifecycle: 'unavailable',
+      planning_state: 'unavailable',
+      authority_kind: 'federal_science_agency',
+      legal_order_status: 'unavailable',
+      authority_limitation:
+        'Production ingestion is disabled. Web pages are not scraped.',
+      planning_consequence:
+        'Verify volcano status directly with USGS HVO and local authorities.',
+      title: 'USGS HANS operational feed unavailable',
+      facts: {},
+      provenance: {
+        source_authority: 'U.S. Geological Survey',
+        product_type: 'volcano_notification',
+        retrieved_at: '2026-10-27T08:00:00Z',
+        source_status: 'unavailable',
+        official_instructions_url: 'https://volcanoes.usgs.gov/hans-public/',
+      },
+    },
+    {
+      schema_version: 'event-trigger-snapshot.v1',
+      generated_at: '2026-10-27T08:00:00Z',
+      source: 'county_order',
+      hazard_event_kind: 'all_hazards',
+      jurisdiction_scope: 'county',
+      lifecycle: 'unavailable',
+      planning_state: 'unavailable',
+      authority_kind: 'county_emergency_management',
+      legal_order_status: 'unavailable',
+      authority_limitation:
+        'County evacuation-order data unavailable. Unavailable does not mean no order.',
+      planning_consequence:
+        'Check official County and State channels before making order assumptions.',
+      title: 'County evacuation-order data unavailable',
+      facts: {},
+      provenance: {
+        source_authority: 'Hawaiʻi emergency-management authorities',
+        product_type: 'evacuation_order',
+        retrieved_at: '2026-10-27T08:00:00Z',
+        source_status: 'unavailable',
+        official_instructions_url: 'https://dod.hawaii.gov/hiema/get-ready/',
+      },
+    },
+  ],
+}
+
 export const countyShelterPlans = {
   generated_at: '2026-10-27T00:00:00Z',
   status: 'partial',
@@ -1021,6 +1114,13 @@ export const test = base.extend({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(countyShelterPlans),
+      })
+      await page.route('**/api/v1/planning/event-triggers', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(eventTriggerSnapshot),
+        })
       })
     })
     await page.route('**/api/v1/planning-areas', async (route) => {

@@ -20,8 +20,9 @@ Success means a first-time planner can move from an island-wide event picture to
 
 The minimum complete planner journey is:
 
-1. **Map:** open a named event and planning area, then inspect official
-   aggregate AFN context with source geography and privacy limitations.
+1. **Map:** inspect official operational trigger context, then open a named
+   practice event and planning area and review aggregate AFN context with source
+   geography and privacy limitations.
 2. **Model:** compare the affected-community estimate with shelter, backup
    power, transportation, and route gaps that still require confirmation. Use
    the deterministic resource-demand panel to inspect low/planning/high service
@@ -65,6 +66,16 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - One clearly labeled practice exposure overlay for the selected emergency, with unrelated hazard geometry hidden.
 - An active-event briefing model that combines a named event, expected arrival window, forecast trend, confidence, severity, dominant threats, and event-specific public guidance.
 - Practice active events cover all four challenge scenarios: Hurricane Lala, Tropical Storm Nolo flooding, a Pacific Tsunami Warning, and Leeward Wildfire Koa.
+- Official operational trigger snapshots preserve NWS, PTWC, and USGS ComCat
+  source facts, freshness, expiry, instructions, and deterministic planning
+  consequences. They are visibly distinct from named practice events.
+- The exact planner warning is “Planning context — not an evacuation order.”
+  Forecasts, watches, advisories, warnings, CAP response types, earthquake
+  tsunami flags, and volcano warning levels never become a legal evacuation
+  order.
+- County evacuation-order data is explicitly unavailable, accompanied by
+  “Unavailable does not mean no order.” HANS is provisionally unavailable and
+  production-disabled without a stable supported public machine contract.
 - Island-first navigation that displays one island at a time, divides it into recognizable response zones grounded in official planning-region and neighborhood-board geography, and then produces a local plan for the selected zone.
 - A statewide island selector with four distinct County-level representative
   workflows: Urban Honolulu, Central/West Maui, Hilo/Lower Puna, and East
@@ -165,6 +176,9 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 13. Never present a practice site as an open shelter. Only a current authoritative shelter record can receive an officially open label.
 14. FEMA Zone D means flood risk is undetermined, not low. Zone X and areas outside mapped floodplains must still warn that event flooding can exceed mapped boundaries.
 15. Keep regulatory flood zones, tsunami evacuation zones, and future sea-level-rise scenarios visibly and verbally distinct.
+16. Keep source facts separate from planner interpretations; retain expired
+    products as history, surface stale and unavailable states, and fail closed
+    with `502` when no supported operational trigger source succeeds.
 
 ## Accessibility & Inclusion
 

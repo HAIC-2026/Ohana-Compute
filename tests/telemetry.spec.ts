@@ -34,9 +34,13 @@ test('browser telemetry is batched and excludes private values', async ({
 
   const themeButton = page.locator('.header-actions button')
   await themeButton.click()
+  await themeButton.focus()
+  await page.keyboard.press('Tab')
   const planningAreaSelect = page.getByLabel('Which part of Oʻahu?')
+  await planningAreaSelect.selectOption('oahu-kailua')
+  await planningAreaSelect.selectOption('oahu-town')
   await planningAreaSelect.focus()
-  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Tab')
   await page
     .getByRole('button', { name: 'Open public guidance preview' })
     .click()

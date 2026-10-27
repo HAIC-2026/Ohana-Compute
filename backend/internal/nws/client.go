@@ -22,6 +22,7 @@ type Alert struct {
 	Severity      string          `json:"severity"`
 	Certainty     string          `json:"certainty"`
 	Urgency       string          `json:"urgency"`
+	ResponseType  string          `json:"response_type,omitempty"`
 	Effective     string          `json:"effective,omitempty"`
 	Onset         string          `json:"onset,omitempty"`
 	Expires       string          `json:"expires,omitempty"`
@@ -89,6 +90,7 @@ type properties struct {
 	Severity      string   `json:"severity"`
 	Certainty     string   `json:"certainty"`
 	Urgency       string   `json:"urgency"`
+	ResponseType  string   `json:"response"`
 	Event         string   `json:"event"`
 	Headline      string   `json:"headline"`
 	Description   string   `json:"description"`
@@ -193,6 +195,7 @@ func (client *Client) ActiveAlerts(ctx context.Context) (Snapshot, error) {
 			Severity:      item.Properties.Severity,
 			Certainty:     item.Properties.Certainty,
 			Urgency:       item.Properties.Urgency,
+			ResponseType:  item.Properties.ResponseType,
 			Effective:     item.Properties.Effective,
 			Onset:         item.Properties.Onset,
 			Expires:       item.Properties.Expires,

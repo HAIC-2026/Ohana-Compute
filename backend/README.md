@@ -19,6 +19,7 @@ in a portal.
 - `GET /api/v1/planning-areas`
 - `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
+- `GET /api/v1/planning/event-triggers`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
@@ -28,6 +29,8 @@ in a portal.
 - Normalized NOAA/NWS active alerts for Hawaiʻi
 - Normalized Central Pacific cyclone summaries and official advisory GIS links
 - Normalized Pacific Tsunami Warning Center CAP status and instructions
+- Versioned operational event-trigger snapshots joining NWS, PTWC, and USGS
+  ComCat with explicit HANS and County-order unavailable records
 - Coordinate-scoped HDOT planned lane closures for the next seven days
 - Normalized Hawaiʻi State GIS tsunami, FEMA DFIRM, coastal-planning, and
   DLNR wildfire-risk responses
@@ -54,6 +57,22 @@ retrieval time, cache freshness deadline, and `fresh` or `stale` status.
 Planning layers remain labeled as planning context; they do not become live
 incident perimeters, inundation forecasts, road closures, or evacuation
 orders.
+
+`GET /api/v1/planning/event-triggers` is the legal-semantics boundary for
+operational source facts. Every trigger includes a bounded source, hazard/event
+kind, jurisdiction scope, lifecycle, planning state, authority kind, legal
+order status, authority limitation, planning consequence, and provenance.
+NWS uses its five-minute cache, PTWC its one-minute cache, and ComCat a
+two-minute cache with a bounded 24-hour Hawaiʻi-region query. Product expiry
+controls expired history; ComCat events older than six hours are retained as
+expired history. Stale cache fallbacks remain explicit. HANS is
+production-disabled and unavailable until USGS exposes a stable supported
+public machine contract; the adapter never scrapes web pages. County/State
+order data defaults to unavailable, and unavailable never means no order.
+Only a future attributable authorized governor or mayor manual record could
+represent a legal order. If all supported operational sources fail, the
+endpoint returns `502`; otherwise failures are preserved in a partial
+snapshot.
 
 `GET /api/v1/shelter-plans` is a provenance catalog rather than an operational
 shelter feed. Its curated records may identify published or reference-only

@@ -73,12 +73,12 @@ source-selection decision and first adapter were actionable.)
 
 ### Phased source decision
 
-| Phase                       | Integrate or prepare                                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **P0**                      | NWS alerts; CPHC hurricane products; PTWC tsunami products; State tsunami zones and DFIRM; FEMA open shelters; HDOT planned closures; ACS. |
-| **P1**                      | USGS gauges; WFIGS incidents/perimeters; verified island transit feeds; HHS emPOWER; CDC SVI; county shelter/resource adapters.            |
-| **P2**                      | FEMA NRI/history; utility outages by agreement; dated DLNR fire-risk context; long-range climate and sea-level-rise analyses.              |
-| **Skip as runtime sources** | Geoportal, HAIC Hub, portal HTML scraping, and any application without a supported machine contract.                                       |
+| Phase                       | Integrate or prepare                                                                                                                                                                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0**                      | NWS alerts; CPHC hurricane products; PTWC tsunami products; USGS ComCat earthquakes; HANS provisional unavailable; County evacuation-order unavailable default; State tsunami zones and DFIRM; FEMA open shelters; HDOT planned closures; ACS. |
+| **P1**                      | USGS gauges; WFIGS incidents/perimeters; verified island transit feeds; HHS emPOWER; CDC SVI; county shelter/resource adapters.                                                                                                                |
+| **P2**                      | FEMA NRI/history; utility outages by agreement; dated DLNR fire-risk context; long-range climate and sea-level-rise analyses.                                                                                                                  |
+| **Skip as runtime sources** | Geoportal, HAIC Hub, portal HTML scraping, and any application without a supported machine contract.                                                                                                                                           |
 
 ## Counter-evidence
 
@@ -109,6 +109,20 @@ county-owned resources; P2 remains optional or agreement-dependent.
   - Procuring private utility or county data agreements.
   - Building a historical data warehouse or prediction model.
   - Treating planning layers as live evacuation orders or road closures.
+
+### Operational event-trigger decision
+
+The supported machine-readable P0 trigger sources are NWS API/CAP, PTWC
+CAP/Atom, and USGS ComCat FDSN Event GeoJSON. They require source-specific
+freshness: five minutes for NWS, one minute for PTWC, and two minutes for
+ComCat, while product expiry remains authoritative and ComCat preserves a
+bounded 24-hour history with a six-hour active planning window. HANS is
+provisionally cataloged but production-disabled because a stable supported
+public machine contract was not defensible; the product must not scrape its
+web pages. No verified unified County/State order feed was found, so missing
+evacuation-order data is unavailable rather than “none.” Only an explicit,
+attributable authorized governor or mayor communication could populate a
+future manual order path.
 
 ## Open questions / what I'd read next
 

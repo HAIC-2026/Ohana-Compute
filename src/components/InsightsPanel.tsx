@@ -55,6 +55,7 @@ import {
 import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
+import { EventTriggerPanel } from './EventTriggerPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import { PartnerMatchPanel } from './PartnerMatchPanel'
 import { ResourceDemandPanel } from './ResourceDemandPanel'
@@ -83,6 +84,10 @@ import {
   usePartnerMatches,
 } from '../lib/partner-matching'
 import { countyIdForIsland } from '../lib/county-shelter-plans'
+import {
+  primaryOperationalTrigger,
+  useEventTriggers,
+} from '../lib/event-triggers'
 
 const resourceKindLabels = {
   shelter: 'Shelter',
@@ -135,6 +140,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const [resourceDemandDays, setResourceDemandDays] = useState(3)
   const [resourceDemandStandard, setResourceDemandStandard] =
     useState<ResourceDemandStandard>('evacuation')
+  const eventTriggerState = useEventTriggers()
+  const primaryEventTrigger = primaryOperationalTrigger(
+    eventTriggerState.snapshot,
+  )
   const area = areas.find((item) => item.id === selectedAreaId) ?? areas[0]
   const planningAreaCatalog = usePlanningAreaCatalog()
   const catalogArea = findStatewidePlanningArea(
@@ -357,6 +366,22 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             summary: activeEvent.summary,
           }
         : undefined,
+      eventTrigger: primaryEventTrigger
+        ? {
+            title:
+              primaryEventTrigger.title ||
+              primaryEventTrigger.provenance.product_type,
+            source: primaryEventTrigger.provenance.source_authority,
+            lifecycle: primaryEventTrigger.lifecycle,
+            planningState: primaryEventTrigger.planning_state,
+            consequence: primaryEventTrigger.planning_consequence,
+            retrievedAt: primaryEventTrigger.provenance.retrieved_at,
+            expiresAt: primaryEventTrigger.provenance.expires_at,
+            officialURL:
+              primaryEventTrigger.provenance.official_instructions_url,
+            legalOrderStatus: primaryEventTrigger.legal_order_status,
+          }
+        : undefined,
       planningContext: catalogArea
         ? {
             jurisdiction:
@@ -519,6 +544,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             area.summary}
         </p>
 
+        <EventTriggerPanel />
         <CommunityAfnSummary coordinates={planningCoordinates} detailed />
         <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
         <StatewidePlanningDepthPanel areaId={area.id} />

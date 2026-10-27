@@ -12,6 +12,17 @@ export type FieldBriefingInput = {
     arrival: string
     summary: string
   }
+  eventTrigger?: {
+    title: string
+    source: string
+    lifecycle: string
+    planningState: string
+    consequence: string
+    retrievedAt: string
+    expiresAt?: string
+    officialURL: string
+    legalOrderStatus: string
+  }
   planningContext?: {
     jurisdiction: string
     afnFixture: string
@@ -314,6 +325,34 @@ export function createFieldBriefingHTML(input: FieldBriefingInput) {
   const eventSummary = input.event
     ? `<div class="event-summary"><strong>${escapeHTML(input.event.status)} · ${escapeHTML(input.event.arrival)}</strong><span>${escapeHTML(input.event.summary)}</span></div>`
     : ''
+  const eventTrigger = input.eventTrigger
+    ? `
+      <section>
+        <div class="section-title">
+          <div>
+            <h2>Official operational trigger context</h2>
+            <p>Planning context — not an evacuation order</p>
+          </div>
+          <span class="status partial">${escapeHTML(input.eventTrigger.lifecycle)} · ${escapeHTML(input.eventTrigger.planningState.replaceAll('_', ' '))}</span>
+        </div>
+        <div class="event-summary">
+          <strong>${escapeHTML(input.eventTrigger.title)}</strong>
+          <span>${escapeHTML(input.eventTrigger.consequence)}</span>
+        </div>
+        <div class="baseline">
+          <div><span>Authority</span><strong>${escapeHTML(input.eventTrigger.source)}</strong></div>
+          <div><span>Retrieved</span><strong>${escapeHTML(input.eventTrigger.retrievedAt)}</strong></div>
+          <div><span>Expires</span><strong>${escapeHTML(input.eventTrigger.expiresAt ?? 'Not reported')}</strong></div>
+          <div><span>Legal order status</span><strong>${escapeHTML(input.eventTrigger.legalOrderStatus.replaceAll('_', ' '))}</strong></div>
+        </div>
+        <p><a href="${escapeHTML(input.eventTrigger.officialURL)}">Open official source</a></p>
+        <p class="source-warning"><strong>County evacuation-order data unavailable.</strong> Unavailable does not mean no order.</p>
+      </section>`
+    : `
+      <section>
+        <h2>Official operational trigger context unavailable</h2>
+        <p class="source-warning"><strong>County evacuation-order data unavailable.</strong> Unavailable does not mean no order.</p>
+      </section>`
   const decision = input.match.decision
     ? `
       <div class="decision">
@@ -416,6 +455,7 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
       </header>
       <p class="notice">Practice planning artifact. Confirm forecasts, shelter status, routes, assignments, and local conditions before operational use.</p>
       ${eventSummary}
+      ${eventTrigger}
       ${planningContext}
 
       <section>

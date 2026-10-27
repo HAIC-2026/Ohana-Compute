@@ -36,6 +36,7 @@ func TestActiveAlertsNormalizesAndCaches(t *testing.T) {
 					"severity":"Severe",
 					"certainty":"Likely",
 					"urgency":"Immediate",
+					"response":"Evacuate",
 					"event":"Flash Flood Warning",
 					"headline":"Flash Flood Warning issued for East Honolulu",
 					"description":"Heavy rain is occurring.",
@@ -67,6 +68,9 @@ func TestActiveAlertsNormalizesAndCaches(t *testing.T) {
 	}
 	if len(first.Alerts) != 1 || first.Alerts[0].Hazard != "flood" {
 		t.Fatalf("unexpected normalized alerts: %#v", first.Alerts)
+	}
+	if first.Alerts[0].ResponseType != "Evacuate" {
+		t.Fatalf("expected CAP response type, got %#v", first.Alerts[0])
 	}
 	if first.Source.Status != "fresh" || second.Source.Status != "fresh" {
 		t.Fatalf("expected fresh source statuses: %#v %#v", first.Source, second.Source)

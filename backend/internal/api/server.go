@@ -17,6 +17,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
@@ -76,6 +77,10 @@ type PartnerMatcher interface {
 	Match(context.Context, partnermatching.Query) (partnermatching.Response, error)
 }
 
+type EventTriggerReader interface {
+	Snapshot(context.Context) (eventtriggers.Snapshot, error)
+}
+
 type Config struct {
 	Alerts          AlertReader
 	Cyclones        CycloneReader
@@ -87,6 +92,7 @@ type Config struct {
 	PlanningAreas   PlanningAreaReader
 	ResourceDemand  ResourceDemandCalculator
 	PartnerMatching PartnerMatcher
+	EventTriggers   EventTriggerReader
 	AllowedOrigins  []string
 	Logger          *slog.Logger
 	Registry        *prometheus.Registry
@@ -131,6 +137,9 @@ func NewServer(config Config) *Server {
 	if config.PartnerMatching == nil {
 		defaultMatcher := partnermatching.NewMatcher()
 		config.PartnerMatching = defaultMatcher
+	}
+	if config.EventTriggers == nil {
+		config.EventTriggers = unavailableEventTriggerReader{}
 	}
 	logger := config.Logger
 	if logger == nil {
@@ -216,6 +225,10 @@ func NewServer(config Config) *Server {
 		"GET /api/v1/planning/partner-matches",
 		partnerMatchHandler(logger, config.PartnerMatching),
 	)
+	mux.HandleFunc(
+		"GET /api/v1/planning/event-triggers",
+		eventTriggerHandler(logger, metrics, config.EventTriggers),
+	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,
 		"acs-5-year",
@@ -256,6 +269,14 @@ func NewServer(config Config) *Server {
 		instrumentHTTP(metrics, cors(config.AllowedOrigins, mux)),
 	)
 	return &Server{handler: handler}
+}
+
+type unavailableEventTriggerReader struct{}
+
+func (unavailableEventTriggerReader) Snapshot(
+	context.Context,
+) (eventtriggers.Snapshot, error) {
+	return eventtriggers.Snapshot{}, eventtriggers.ErrNoOperationalSources
 }
 
 func (server *Server) Handler() http.Handler {
