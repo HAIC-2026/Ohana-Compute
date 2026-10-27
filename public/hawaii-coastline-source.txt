@@ -1,0 +1,12 @@
+Hawaii coastline reference geometry
+Source: U.S. Census Bureau 2024 Cartographic Boundary Files, states, 1:500,000
+Retrieved: 2026-10-27
+Download: https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip
+Documentation: https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html
+State FIPS: 15
+Geometry: source shoreline-clipped MultiPolygon; geographic NAD83 longitude/latitude.
+Conversion: extracted STATEFP 15; retained source rings and coordinates as GeoJSON.
+Scale: generalized at 1:500,000; not suitable for street-level decisions.
+Purpose: locally served geographic reference beneath external street tiles.
+Not a road map, hazard boundary, evacuation zone, or navigational authority.
+U.S. Census Bureau government data; public domain.

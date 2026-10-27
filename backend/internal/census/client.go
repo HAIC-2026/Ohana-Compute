@@ -338,16 +338,11 @@ func (client *Client) getJSON(
 	)
 	response, err := client.httpClient.Do(request)
 	if err != nil {
-		return err
+		return errors.New("Census API request failed")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
-		return fmt.Errorf(
-			"HTTP %d: %s",
-			response.StatusCode,
-			strings.TrimSpace(string(body)),
-		)
+		return fmt.Errorf("Census API returned HTTP %d", response.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(target)
 }

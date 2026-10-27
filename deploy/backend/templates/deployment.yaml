@@ -22,6 +22,10 @@ metadata:
   name: hawaii-resilience-backend
 spec:
   replicas: {{ .Values.replicaCount }}
+{{- if eq .Values.collaboration.persistence "sqlite" }}
+  strategy:
+    type: Recreate
+{{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: hawaii-resilience-backend

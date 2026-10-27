@@ -67,6 +67,11 @@ const emptyOfficialGeometry: GeoJSON.FeatureCollection = {
 const mapStyle = {
   version: 8 as const,
   sources: {
+    coastline: {
+      type: 'geojson' as const,
+      data: '/hawaii-coastline.geojson',
+      attribution: 'U.S. Census Bureau · Hawaiʻi state boundary',
+    },
     carto: {
       type: 'raster' as const,
       tiles: [
@@ -79,6 +84,23 @@ const mapStyle = {
     },
   },
   layers: [
+    {
+      id: 'ocean',
+      type: 'background' as const,
+      paint: { 'background-color': '#c9e2ec' },
+    },
+    {
+      id: 'hawaii-land',
+      type: 'fill' as const,
+      source: 'coastline',
+      paint: { 'fill-color': '#e5e9d8' },
+    },
+    {
+      id: 'hawaii-coastline',
+      type: 'line' as const,
+      source: 'coastline',
+      paint: { 'line-color': '#527b83', 'line-width': 1.5 },
+    },
     {
       id: 'carto',
       type: 'raster' as const,
@@ -164,6 +186,9 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   } = planningState
   const [isClient, setIsClient] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [streetMapUnavailable, setStreetMapUnavailable] = useState(false)
+  const [geographyUnavailable, setGeographyUnavailable] = useState(false)
+  const [geographyVisible, setGeographyVisible] = useState(false)
   const [colorVersion, setColorVersion] = useState(0)
   const [officialEvacuationZone, setOfficialEvacuationZone] =
     useState<OfficialEvacuationZone | null>(null)
@@ -351,17 +376,17 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   }, [locationFocus, mapLoaded, selectedPlanningZone])
 
   useEffect(() => {
-    if (!mapLoaded || locationFocus) return
+    if (!mapLoaded || locationFocus || mobilePanel === 'resident') return
     mapRef.current?.flyTo({
       center: selectedArea.coordinates,
       zoom: selectedArea.island === 'Oʻahu' ? 9.15 : 9.3,
       duration: 900,
       essential: true,
     })
-  }, [locationFocus, mapLoaded, selectedArea])
+  }, [locationFocus, mapLoaded, mobilePanel, selectedArea])
 
   useEffect(() => {
-    if (!mapLoaded || !showResidentRoute) return
+    if (!mapLoaded || !showResidentRoute || mobilePanel !== 'resident') return
     const coordinates = residentRouteSegments.flatMap(
       (segment) => segment.coordinates,
     )
@@ -377,7 +402,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           ? 90
           : {
               top: 100,
-              right: mobilePanel === 'resident' ? 100 : 430,
+              right: 100,
               bottom: 100,
               left: 620,
             },
@@ -414,8 +439,16 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
     <div
       className="map-frame"
       data-map-loaded={mapLoaded}
+      data-map-geography-visible={geographyVisible}
       data-telemetry-category="map"
     >
+      {(streetMapUnavailable || geographyUnavailable) && (
+        <div className="map-availability" role="status">
+          {geographyUnavailable
+            ? 'Coastline unavailable'
+            : 'Street map interrupted · Coastline view'}
+        </div>
+      )}
       <nav className="map-story-chips" aria-label="Quick map layers">
         <button
           type="button"
@@ -506,6 +539,20 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         onLoad={() => {
           setMapLoaded(true)
           markBrowserLifecycle('map_ready')
+        }}
+        onError={(event) => {
+          if (!('sourceId' in event)) return
+          if (event.sourceId === 'carto') setStreetMapUnavailable(true)
+          if (event.sourceId === 'coastline') setGeographyUnavailable(true)
+        }}
+        onIdle={() => {
+          const map = mapRef.current
+          if (!map) return
+          setGeographyVisible(
+            map.queryRenderedFeatures(undefined, {
+              layers: ['hawaii-coastline'],
+            }).length > 0,
+          )
         }}
         initialViewState={{
           longitude: -157.97,

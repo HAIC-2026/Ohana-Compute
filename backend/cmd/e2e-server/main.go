@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
@@ -268,6 +271,13 @@ func (fixtureSources) PlannedClosures(
 }
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("run e2e server", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "18080"
@@ -286,8 +296,7 @@ func main() {
 	})
 	identityService, err := identity.NewService(identity.Config{}, nil)
 	if err != nil {
-		slog.Error("create disabled e2e identity service", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("create disabled e2e identity service: %w", err)
 	}
 	var collaborationStore collaboration.Store
 	var groundedPlanningService *groundedplanning.Service
@@ -302,20 +311,36 @@ func main() {
 			},
 		}, fixtureVerifier{})
 		if err != nil {
-			slog.Error("create configured e2e identity service", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("create configured e2e identity service: %w", err)
 		}
 		databasePath := os.Getenv("E2E_COLLABORATION_SQLITE_PATH")
 		if databasePath == "" {
-			databasePath = filepath.Join(
-				os.TempDir(),
-				"hawaii-resilience-collaboration-e2e-"+os.Getenv("PORT")+".db",
+			databaseFile, createErr := os.CreateTemp(
+				"",
+				"hawaii-resilience-collaboration-e2e-*.db",
 			)
+			if createErr != nil {
+				return fmt.Errorf(
+					"create e2e collaboration database path: %w",
+					createErr,
+				)
+			}
+			databasePath = databaseFile.Name()
+			if closeErr := databaseFile.Close(); closeErr != nil {
+				return fmt.Errorf(
+					"close e2e collaboration database file: %w",
+					closeErr,
+				)
+			}
+			defer func() {
+				_ = os.Remove(databasePath)
+				_ = os.Remove(databasePath + "-shm")
+				_ = os.Remove(databasePath + "-wal")
+			}()
 		}
 		collaborationStore, err = collaboration.OpenSQLite(databasePath)
 		if err != nil {
-			slog.Error("create e2e collaboration store", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("create e2e collaboration store: %w", err)
 		}
 		defer collaborationStore.Close()
 		if os.Getenv("E2E_ENABLE_GROUNDED_PLANNING") == "1" {
@@ -355,10 +380,35 @@ func main() {
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	if err := httpServer.ListenAndServe(); err != nil {
-		slog.Error("e2e server stopped", "error", err)
-		os.Exit(1)
+	serverErrors := make(chan error, 1)
+	go func() {
+		serverErrors <- httpServer.ListenAndServe()
+	}()
+	signalContext, stopSignals := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stopSignals()
+	select {
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve e2e API: %w", err)
+		}
+	case <-signalContext.Done():
+		shutdownContext, cancelShutdown := context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+		defer cancelShutdown()
+		if err := httpServer.Shutdown(shutdownContext); err != nil {
+			return fmt.Errorf("shut down e2e server: %w", err)
+		}
+		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve e2e API: %w", err)
+		}
 	}
+	return nil
 }
 
 func fixtureProfile() community.Profile {

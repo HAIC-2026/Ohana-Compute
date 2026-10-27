@@ -14,6 +14,7 @@ import type {
   PartnerCapability,
   PartnerMatchState,
 } from '../lib/partner-matching'
+import { useRovingTabs } from './RovingTabs'
 
 const capabilityLabels: Record<PartnerCapability, string> = {
   'mass-care-coordination': 'Mass-care coordination',
@@ -67,6 +68,18 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
     }
   }, [response, selectedCapability])
 
+  const selected =
+    response?.matches.find(
+      (match) => match.capability === selectedCapability,
+    ) ?? response?.matches[0]
+  const capabilityTabs = useRovingTabs({
+    label: 'Response capability',
+    values: response?.matches.map((match) => match.capability) ?? [],
+    selectedValue:
+      selected?.capability ?? selectedCapability ?? 'mass-care-coordination',
+    onSelect: setSelectedCapability,
+  })
+
   if (state.status === 'loading') {
     return (
       <section
@@ -110,9 +123,7 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
     )
   }
 
-  const selected =
-    response.matches.find((match) => match.capability === selectedCapability) ??
-    response.matches[0]
+  if (!selected) return null
 
   return (
     <section
@@ -140,17 +151,12 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
         </div>
       </div>
 
-      <div
-        className="partner-capability-tabs"
-        role="tablist"
-        aria-label="Response capability"
-      >
+      <div className="partner-capability-tabs" {...capabilityTabs.tabListProps}>
         {response.matches.map((match) => (
           <button
             key={match.capability}
             type="button"
-            role="tab"
-            aria-selected={match.capability === selected.capability}
+            {...capabilityTabs.getTabProps(match.capability)}
             className={[
               match.capability === selected.capability ? 'is-active' : '',
               `is-${match.status}`,
@@ -171,7 +177,7 @@ export function PartnerMatchPanel({ state }: { state: PartnerMatchState }) {
         ))}
       </div>
 
-      <div className="partner-match-detail" role="tabpanel">
+      <div className="partner-match-detail" {...capabilityTabs.panelProps}>
         <div className="partner-match-title">
           <div>
             <span>Selected capability</span>

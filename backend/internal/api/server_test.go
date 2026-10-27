@@ -1063,6 +1063,22 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 				"route": "home",
 				"viewport": "large",
 				"outcome": "success"
+			},
+			{
+				"kind": "interaction",
+				"action": "collaboration_plan_save",
+				"category": "planning",
+				"route": "home",
+				"viewport": "large",
+				"outcome": "success"
+			},
+			{
+				"kind": "interaction",
+				"action": "collaboration_version_save",
+				"category": "planning",
+				"route": "home",
+				"viewport": "large",
+				"outcome": "success"
 			}
 		]
 	}`
@@ -1091,6 +1107,8 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 		`hawaii_resilience_browser_event_duration_seconds_count{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_events_total{action="field_packet_download",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_events_total{action="shelter_county_select",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_events_total{action="collaboration_plan_save",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_events_total{action="collaboration_version_save",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_telemetry_batches_total{outcome="accepted"} 1`,
 	} {
 		if !strings.Contains(metricsBody, metric) {
@@ -1262,6 +1280,9 @@ func TestHTTPMetricsUseRoutePatternsAndResponseStatus(t *testing.T) {
 	metric := `hawaii_resilience_http_requests_total{method="GET",route="/healthz",status="200"} 1`
 	if !strings.Contains(metricsResponse.Body.String(), metric) {
 		t.Fatalf("metrics missing %q:\n%s", metric, metricsResponse.Body.String())
+	}
+	if strings.Contains(metricsResponse.Body.String(), "ignored=private") {
+		t.Fatalf("metrics exposed raw query string:\n%s", metricsResponse.Body.String())
 	}
 }
 

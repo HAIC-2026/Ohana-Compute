@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,6 +75,60 @@ func TestDeterministicPolicyEvals(t *testing.T) {
 			want: ErrPolicyBlocked,
 		},
 		{
+			name: "de facto evacuation instruction",
+			mutate: func(draft *ProviderDraft) {
+				draft.Actions[0].Text = "Residents must leave immediately."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "verification prefix does not exempt later instruction",
+			mutate: func(draft *ProviderDraft) {
+				draft.Actions[0].Text =
+					"Confirm whether conditions changed. Residents must leave immediately."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "verification prefix does not exempt compound instruction",
+			mutate: func(draft *ProviderDraft) {
+				draft.Actions[0].Text =
+					"Confirm whether the shelter is open and residents must leave immediately."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "verification prefix does not exempt alternative instruction",
+			mutate: func(draft *ProviderDraft) {
+				draft.Actions[0].Text =
+					"Confirm whether the shelter is open or residents must leave immediately."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "verification prefix does not exempt dash instruction",
+			mutate: func(draft *ProviderDraft) {
+				draft.Actions[0].Text =
+					"Confirm whether conditions changed — residents must leave immediately."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "availability inference",
+			mutate: func(draft *ProviderDraft) {
+				draft.Sections[0].Claims[0].Text = "The shelter remains available."
+			},
+			want: ErrPolicyBlocked,
+		},
+		{
+			name: "embedded source URL",
+			mutate: func(draft *ProviderDraft) {
+				draft.Sections[0].Claims[0].Text =
+					"Review updates at https://untrusted.example.test/status."
+			},
+			want: ErrInvalidOutput,
+		},
+		{
 			name: "partner activation claim",
 			mutate: func(draft *ProviderDraft) {
 				draft.Actions[0].Text = "Activate partner support immediately."
@@ -116,6 +171,25 @@ func TestDeterministicPolicyEvals(t *testing.T) {
 				t.Fatalf("validateProviderDraft() error = %v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestPolicyAllowsVerificationAndUncertaintyLanguage(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{
+		"Plans should leave room for accessible accommodations.",
+		"Confirm whether the shelter is available.",
+		"Confirm whether the shelter is open.",
+		"Do not assume the road is operational.",
+		"Confirm whether a mandatory evacuation order exists.",
+		"Verify whether residents should leave before changing the plan.",
+		"Verify whether residents should leave and document the decision.",
+		"Confirm with a clinician whether to take medication.",
+	} {
+		if err := enforcePolicy(value); err != nil {
+			t.Fatalf("enforcePolicy(%q) error = %v", value, err)
+		}
 	}
 }
 
@@ -243,6 +317,78 @@ func TestServiceRejectsMissingEvidence(t *testing.T) {
 	})
 	if !errors.Is(err, ErrMissingEvidence) {
 		t.Fatalf("Generate() error = %v, want ErrMissingEvidence", err)
+	}
+}
+
+func TestServiceConcurrentRateLimitDoesNotMutatePlan(t *testing.T) {
+	t.Parallel()
+
+	store, err := collaboration.OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	plan, err := store.Create(context.Background(), collaboration.CreateInput{
+		Jurisdiction: "honolulu",
+		AreaRef:      "aggregate-area",
+		Hazard:       "flood",
+		Title:        "Controlled title",
+		Summary:      "Controlled summary",
+		Status:       collaboration.StatusDraft,
+		Snapshot: collaboration.Snapshot{
+			SourceRefs: []string{"acs-5-year"},
+		},
+	}, "plan_editor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(Config{
+		Provider:      &FakeProvider{},
+		Store:         store,
+		RequestLimit:  5,
+		RequestWindow: time.Hour,
+	})
+
+	const attempts = 20
+	results := make(chan error, attempts)
+	var waitGroup sync.WaitGroup
+	for range attempts {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			_, err := service.Generate(context.Background(), "same-subject", GenerateRequest{
+				PlanID:           plan.ID,
+				ExpectedRevision: plan.Revision,
+				Operation:        OperationIdentifyGaps,
+				Style:            StyleConcise,
+			})
+			results <- err
+		}()
+	}
+	waitGroup.Wait()
+	close(results)
+
+	successes := 0
+	rateLimited := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrRateLimited):
+			rateLimited++
+		default:
+			t.Fatalf("unexpected Generate() error = %v", err)
+		}
+	}
+	if successes != 5 || rateLimited != attempts-5 {
+		t.Fatalf("successes=%d rate_limited=%d", successes, rateLimited)
+	}
+	persisted, err := store.Get(context.Background(), plan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Revision != plan.Revision || persisted.CurrentVersion != plan.CurrentVersion {
+		t.Fatalf("generation mutated plan: before=%#v after=%#v", plan, persisted)
 	}
 }
 

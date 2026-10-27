@@ -2,8 +2,10 @@ package census
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -170,4 +172,36 @@ func TestCommunityProfileSurfacesUpstreamFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "HTTP 503") {
 		t.Fatalf("expected explicit upstream error, got %v", err)
 	}
+}
+
+func TestTransportFailureDoesNotExposeAPIKey(t *testing.T) {
+	t.Parallel()
+
+	const apiKey = "private-census-key"
+	client := NewClient(Config{
+		APIKey: apiKey,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return nil, errors.New(request.URL.String())
+		})},
+	})
+	err := client.getJSON(
+		context.Background(),
+		"https://api.census.gov/data",
+		url.Values{"key": {apiKey}},
+		&map[string]any{},
+	)
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if strings.Contains(err.Error(), apiKey) || strings.Contains(err.Error(), "key=") {
+		t.Fatalf("transport error exposed Census credential: %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(
+	request *http.Request,
+) (*http.Response, error) {
+	return function(request)
 }
