@@ -19,6 +19,7 @@ import {
   usePlanningAreaCatalog,
 } from '../lib/planning-areas'
 import { usePlanningStore } from '../store/planning-store'
+import { useRovingTabs } from './RovingTabs'
 
 const fallbackDecisions: Record<
   HazardId,
@@ -128,12 +129,18 @@ export function NeighborhoodBriefingPanel({
   const briefings = catalogBriefing
     ? [catalogBriefing]
     : getNeighborhoodBriefings(areaId)
-
-  if (briefings.length === 0) return null
-
   const selected =
     briefings.find((briefing) => briefing.id === selectedNeighborhoodId) ??
-    briefings[0]
+    briefings.at(0)
+  const neighborhoodTabs = useRovingTabs({
+    label: 'Neighborhood',
+    values: briefings.map((briefing) => briefing.id),
+    selectedValue: selected?.id ?? selectedNeighborhoodId ?? '',
+    onSelect: selectNeighborhood,
+  })
+
+  if (!selected) return null
+
   const decision = selected.decisions[hazard] ?? fallbackDecisions[hazard]
   const trafficHazards = hazardTrafficHazards[hazard] ?? selected.trafficHazards
   const afnActions =
@@ -147,19 +154,17 @@ export function NeighborhoodBriefingPanel({
     >
       <div className="neighborhood-heading">
         <div>
-          <small>Plan by neighborhood</small>
-          <h3>What applies closest to you?</h3>
+          <h3>Neighborhood</h3>
         </div>
         <span>Practice locations</span>
       </div>
 
-      <div className="neighborhood-tabs" role="tablist">
+      <div className="neighborhood-tabs" {...neighborhoodTabs.tabListProps}>
         {briefings.map((briefing) => (
           <button
             key={briefing.id}
             type="button"
-            role="tab"
-            aria-selected={briefing.id === selected.id}
+            {...neighborhoodTabs.getTabProps(briefing.id)}
             className={briefing.id === selected.id ? 'is-active' : ''}
             onClick={() => selectNeighborhood(briefing.id)}
           >
@@ -171,11 +176,14 @@ export function NeighborhoodBriefingPanel({
       <div
         className="neighborhood-panel"
         data-testid={`neighborhood-${selected.id}`}
+        {...neighborhoodTabs.panelProps}
       >
-        <div className="neighborhood-summary">
-          <MapPinned size={17} />
-          <p>{hazardSummary}</p>
-        </div>
+        {!compact && (
+          <div className="neighborhood-summary">
+            <MapPinned size={17} />
+            <p>{hazardSummary}</p>
+          </div>
+        )}
 
         <div className="shelter-decision">
           <HousePlus size={18} />
@@ -183,8 +191,11 @@ export function NeighborhoodBriefingPanel({
             <small>Resident decision</small>
             <strong>{decision.label}</strong>
             <p>{decision.action}</p>
-            <span>Why: {decision.reason}</span>
-            <span>Decision point: {decision.trigger}</span>
+            <details open={!compact}>
+              <summary>Decision criteria</summary>
+              <span>{decision.reason}</span>
+              <span>{decision.trigger}</span>
+            </details>
           </div>
         </div>
 

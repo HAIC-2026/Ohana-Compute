@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Accessibility,
   AlertTriangle,
@@ -39,6 +39,7 @@ import type {
   OfficialWildfireRisk,
 } from '../lib/official-emergency-data'
 import { usePlanningStore } from '../store/planning-store'
+import { useRovingTabs } from './RovingTabs'
 
 const resourceLabels: Record<ResidentResourceKind, string> = {
   shelter: 'Safe shelter',
@@ -66,6 +67,11 @@ const supportedLanguages = [
   'Samoan',
   'Spanish',
 ]
+
+type LocationFeedback = {
+  kind: 'status' | 'error'
+  text: string
+}
 
 export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
   const {
@@ -116,7 +122,10 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
   const currentHazard =
     activeEvents.find((item) => item.id === selectedEventId)?.hazard ?? hazard
   const [address, setAddress] = useState(plan.startLabel)
-  const [locationMessage, setLocationMessage] = useState('')
+  const [locationFeedback, setLocationFeedback] =
+    useState<LocationFeedback | null>(null)
+  const [locationPending, setLocationPending] = useState(false)
+  const locationRequestRef = useRef(0)
   const [officialZone, setOfficialZone] =
     useState<OfficialEvacuationZone | null>(null)
   const [zoneLookupFailed, setZoneLookupFailed] = useState(false)
@@ -134,6 +143,13 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     setAddress(plan.startLabel)
   }, [plan.startLabel])
+
+  useEffect(
+    () => () => {
+      locationRequestRef.current += 1
+    },
+    [],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -205,39 +221,79 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     currentHazard === 'hurricane'
       ? 'Hurricane rain, drainage failure, and storm surge can flood beyond mapped FEMA boundaries.'
       : 'Heavy rain and drainage flooding can occur outside mapped FEMA boundaries.'
+  const destinationTabs = useRovingTabs({
+    label: 'Resident destination',
+    values: plan.resources.map((resource) => resource.id),
+    selectedValue: selectedResource.id,
+    onSelect: selectResidentResource,
+  })
 
   const useAddress = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const matchedPlan = findResidentRoutePlan(address)
+    locationRequestRef.current += 1
+    setLocationPending(false)
+    const normalizedAddress = address.trim()
+    if (!normalizedAddress) {
+      setLocationFeedback({
+        kind: 'error',
+        text: 'Enter an address, intersection, landmark, or ZIP code before finding routes.',
+      })
+      return
+    }
+    const matchedPlan = findResidentRoutePlan(normalizedAddress)
     if (!matchedPlan) {
-      setLocationMessage(
-        'No practice route found. Try Mānoa, Kakaʻako, Ala Moana, Kaimukī, Kāhala, Hawaiʻi Kai, 96816, or 96825.',
-      )
+      setLocationFeedback({
+        kind: 'error',
+        text: 'No practice route found. Try Mānoa, Kakaʻako, Ala Moana, Kaimukī, Kāhala, Hawaiʻi Kai, 96816, or 96825.',
+      })
       return
     }
     selectResidentPlan(matchedPlan.id)
-    setLocationMessage(
-      `Showing the nearest practice routes for ${matchedPlan.name}.`,
-    )
+    setLocationFeedback({
+      kind: 'status',
+      text: `Showing the nearest practice routes for ${matchedPlan.name}.`,
+    })
   }
 
   const useCurrentLocation = () => {
-    setLocationMessage('Finding your nearest practice route…')
+    if (!('geolocation' in navigator)) {
+      setLocationFeedback({
+        kind: 'error',
+        text: 'Current location is unavailable in this browser. Enter an address or landmark instead.',
+      })
+      return
+    }
+    const requestID = locationRequestRef.current + 1
+    locationRequestRef.current = requestID
+    setLocationPending(true)
+    setLocationFeedback({
+      kind: 'status',
+      text: 'Finding your nearest practice route…',
+    })
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (locationRequestRef.current !== requestID) return
         const matchedPlan = getNearestResidentRoutePlan([
           position.coords.longitude,
           position.coords.latitude,
         ])
         selectResidentPlan(matchedPlan.id)
-        setLocationMessage(
-          `Showing the nearest available practice routes for ${matchedPlan.name}.`,
-        )
+        setLocationPending(false)
+        setLocationFeedback({
+          kind: 'status',
+          text: `Showing the nearest available practice routes for ${matchedPlan.name}.`,
+        })
       },
-      () => {
-        setLocationMessage(
-          'Location permission was not available. Enter an address or landmark instead.',
-        )
+      (error) => {
+        if (locationRequestRef.current !== requestID) return
+        setLocationPending(false)
+        const text =
+          error.code === error.PERMISSION_DENIED
+            ? 'Location permission was denied. Enter an address or landmark instead.'
+            : error.code === error.TIMEOUT
+              ? 'Current location took too long to respond. Try again or enter an address.'
+              : 'Current location could not be determined. Enter an address or landmark instead.'
+        setLocationFeedback({ kind: 'error', text })
       },
       { enableHighAccuracy: false, timeout: 5000 },
     )
@@ -245,9 +301,10 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
 
   const readDirections = () => {
     if (!('speechSynthesis' in window)) {
-      setLocationMessage(
-        'Read-aloud is unavailable in this browser. The written steps remain available below.',
-      )
+      setLocationFeedback({
+        kind: 'error',
+        text: 'Read-aloud is unavailable in this browser. The written steps remain available below.',
+      })
       return
     }
     window.speechSynthesis.cancel()
@@ -256,9 +313,10 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
     )
     message.lang = 'en-US'
     window.speechSynthesis.speak(message)
-    setLocationMessage(
-      `Reading the written route aloud. ${preferredLanguage} help at the destination ${selectedResource.languages.includes(preferredLanguage) ? 'is listed' : 'must be confirmed'}.`,
-    )
+    setLocationFeedback({
+      kind: 'status',
+      text: `Reading the written route aloud. ${preferredLanguage} help at the destination ${selectedResource.languages.includes(preferredLanguage) ? 'is listed' : 'must be confirmed'}.`,
+    })
   }
 
   if (!showPlan) {
@@ -297,10 +355,18 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
           </div>
           <span>Practice lookup</span>
         </div>
-        <form onSubmit={useAddress}>
+        <form onSubmit={useAddress} noValidate>
           <MapPin size={18} />
+          <label className="sr-only" htmlFor="resident-route-location">
+            Home address or landmark
+          </label>
           <input
-            aria-label="Home address or landmark"
+            id="resident-route-location"
+            name="resident-route-location"
+            autoComplete="street-address"
+            enterKeyHint="search"
+            aria-describedby="resident-location-help resident-location-feedback"
+            aria-invalid={locationFeedback?.kind === 'error'}
             value={address}
             onChange={(event) => setAddress(event.target.value)}
           />
@@ -309,14 +375,30 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
         <button
           type="button"
           className="use-location"
+          disabled={locationPending}
+          aria-describedby="resident-location-privacy"
           onClick={useCurrentLocation}
         >
           <LocateFixed size={16} />
-          Use my current location
+          {locationPending
+            ? 'Finding current location…'
+            : 'Use my current location'}
         </button>
-        {locationMessage && (
-          <p className="location-feedback" role="status">
-            {locationMessage}
+        <p id="resident-location-help" className="resident-location-help">
+          Practice matching happens in this browser. The entered location is not
+          stored with the response plan.
+        </p>
+        <p id="resident-location-privacy" className="sr-only">
+          Current coordinates are used only to choose the nearest practice route
+          and are not displayed or stored.
+        </p>
+        {locationFeedback && (
+          <p
+            id="resident-location-feedback"
+            className={`location-feedback is-${locationFeedback.kind}`}
+            role={locationFeedback.kind === 'error' ? 'alert' : 'status'}
+          >
+            {locationFeedback.text}
           </p>
         )}
       </section>
@@ -662,15 +744,14 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
             <p>Each destination has a road-level practice route.</p>
           </div>
         </div>
-        <div className="destination-tabs" role="tablist">
+        <div className="destination-tabs" {...destinationTabs.tabListProps}>
           {plan.resources.map((resource) => {
             const Icon = resourceIcons[resource.kind]
             return (
               <button
                 key={resource.id}
                 type="button"
-                role="tab"
-                aria-selected={resource.id === selectedResource.id}
+                {...destinationTabs.getTabProps(resource.id)}
                 className={
                   resource.id === selectedResource.id ? 'is-active' : ''
                 }
@@ -683,7 +764,7 @@ export function ResidentRoutePanel({ compact = false }: { compact?: boolean }) {
           })}
         </div>
 
-        <div className="selected-destination">
+        <div className="selected-destination" {...destinationTabs.panelProps}>
           <div className="destination-title">
             <div>
               <small>{resourceLabels[selectedResource.kind]}</small>

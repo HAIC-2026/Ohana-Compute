@@ -81,9 +81,25 @@ test('collaborative plans preserve versions and reject stale writes', async ({
     'Saved a new immutable plan version',
   )
 
-  await collaboration.getByLabel('Bounded operational note').fill(privateNote)
+  const noteField = collaboration.getByLabel('Bounded operational note')
+  await noteField.fill(privateNote)
+  await page.route(
+    `**/api/v1/collaboration/plans/${planId}/comments`,
+    async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Shared storage unavailable' }),
+      })
+    },
+    { times: 1 },
+  )
+  await collaboration.getByRole('button', { name: 'Add planning note' }).click()
+  await expect(noteField).toHaveValue(privateNote)
+  await expect(collaboration.getByRole('alert')).toBeVisible()
   await collaboration.getByRole('button', { name: 'Add planning note' }).click()
   await expect(collaboration).toContainText(privateNote)
+  await expect(noteField).toHaveValue('')
 
   await collaboration
     .locator('summary')
@@ -147,12 +163,17 @@ test('collaborative plans preserve versions and reject stale writes', async ({
   )
   expect(advanceResponse.ok()).toBe(true)
 
+  const unsavedConflictTitle = 'Unsaved conflict recovery draft'
+  await collaboration.getByLabel('Plan title').fill(unsavedConflictTitle)
   await collaboration.getByRole('button', { name: 'Save new version' }).click()
   await expect(collaboration).toContainText('A newer change is already stored')
   await collaboration
     .getByRole('button', { name: 'Refresh and review' })
     .click()
   await expect(collaboration).toContainText('Loaded the latest shared plan')
+  await expect(collaboration.getByLabel('Plan title')).toHaveValue(
+    unsavedConflictTitle,
+  )
 
   const staleResponse = await request.put(
     `${backendURL}/api/v1/collaboration/plans/${planId}`,

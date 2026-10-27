@@ -19,7 +19,7 @@ test('desktop selects an island response zone and creates local steps', async ({
 
   await expect(
     page.getByRole('heading', {
-      name: 'Plan mass care before the next disaster',
+      name: 'Mass care planner',
     }),
   ).toBeVisible()
   await expect(page.getByLabel('Choose island')).toHaveValue('Oʻahu')
@@ -374,6 +374,9 @@ test('Town neighborhood panels change shelter and route guidance', async ({
       })
       .first(),
   ).toBeVisible()
+  await planningSheet
+    .getByText('Data coverage and limitations', { exact: true })
+    .click()
   await expect(
     planningSheet.getByRole('heading', { name: 'Challenge readiness' }),
   ).toBeVisible()
@@ -730,7 +733,7 @@ test('mobile controls preserve the selected response zone', async ({
   await expect(page.getByRole('radio', { name: 'Tsunami' })).toBeVisible()
 
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
 
@@ -837,7 +840,10 @@ test('resident route adapts for address, no car, language, and resource need', a
     page.getByRole('heading', { name: 'Public guidance preview' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Use my current location' }).click()
+  const locationButton = page.getByRole('button', {
+    name: 'Use my current location',
+  })
+  await locationButton.click()
   await expect(
     page.getByText(
       'Showing the nearest available practice routes for Kakaʻako–Ala Moana.',
@@ -939,6 +945,128 @@ test('resident route adapts for address, no car, language, and resource need', a
   ).toBeVisible()
 })
 
+test('planner sheets, tabs, and resident lookup are keyboard-safe', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+
+  const neighborhoodTab = page
+    .getByRole('tab', { name: 'Mānoa–Makiki' })
+    .first()
+  await neighborhoodTab.focus()
+  await neighborhoodTab.press('ArrowRight')
+  const nextNeighborhood = page
+    .getByRole('tab', { name: 'Kakaʻako–Ala Moana' })
+    .first()
+  await expect(nextNeighborhood).toBeFocused()
+  await expect(nextNeighborhood).toHaveAttribute('aria-selected', 'true')
+
+  const opener = page.getByRole('button', {
+    name: 'Open public guidance preview',
+  })
+  await opener.focus()
+  await opener.click()
+  const dialog = page.getByRole('dialog', {
+    name: 'Public guidance preview',
+  })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  await expect(
+    dialog.getByRole('button', { name: 'Close panel' }),
+  ).toBeFocused()
+  expect(
+    await page
+      .locator('.atlas-header')
+      .evaluate((element) => element instanceof HTMLElement && element.inert),
+  ).toBe(true)
+  expect(
+    await page.locator('body').evaluate((element) => element.style.overflow),
+  ).toBe('hidden')
+  await page.keyboard.press('Shift+Tab')
+  expect(
+    await dialog.evaluate((element) =>
+      element.contains(document.activeElement),
+    ),
+  ).toBe(true)
+
+  const location = dialog.getByLabel('Home address or landmark')
+  await location.fill('   ')
+  await dialog.getByRole('button', { name: 'Find routes' }).click()
+  await expect(
+    dialog.getByRole('alert').filter({
+      hasText:
+        'Enter an address, intersection, landmark, or ZIP code before finding routes.',
+    }),
+  ).toBeVisible()
+  await expect(location).toHaveAttribute('aria-invalid', 'true')
+
+  const shelterTab = dialog.getByRole('tab', { name: 'Safe shelter' })
+  await shelterTab.focus()
+  await shelterTab.press('End')
+  const pickupTab = dialog.getByRole('tab', { name: 'No-car pickup' })
+  await expect(pickupTab).toBeFocused()
+  await expect(pickupTab).toHaveAttribute('aria-selected', 'true')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(opener).toBeFocused()
+  expect(
+    await page
+      .locator('.atlas-header')
+      .evaluate((element) => element instanceof HTMLElement && element.inert),
+  ).toBe(false)
+})
+
+test('resident geolocation exposes pending and bounded errors', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (
+          _success: PositionCallback,
+          error: PositionErrorCallback,
+        ) => {
+          window.setTimeout(
+            () =>
+              error({
+                code: 3,
+                message: 'timeout',
+                PERMISSION_DENIED: 1,
+                POSITION_UNAVAILABLE: 2,
+                TIMEOUT: 3,
+              }),
+            1_000,
+          )
+        },
+      },
+    })
+  })
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Open public guidance preview' })
+    .click()
+  const dialog = page.getByRole('dialog', {
+    name: 'Public guidance preview',
+  })
+  const locationButton = dialog.getByRole('button', {
+    name: 'Use my current location',
+  })
+  await locationButton.click()
+  await expect(
+    dialog.getByRole('button', { name: 'Finding current location…' }),
+  ).toBeDisabled()
+  await expect(dialog.getByRole('alert')).toContainText(
+    'Current location took too long to respond',
+  )
+  await expect(dialog.getByText(/longitude|latitude/i)).toHaveCount(0)
+})
+
 test('official source failures never become a reassuring status', async ({
   page,
 }, testInfo) => {
@@ -976,7 +1104,7 @@ test('official source failures never become a reassuring status', async ({
   ).not.toBeVisible()
 })
 
-test('road-level route requests live basemap tiles', async ({
+test('road-level route requests street-detail tiles', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
@@ -1005,6 +1133,79 @@ test('road-level route requests live basemap tiles', async ({
   expect(roadTile.url()).not.toContain('World_Light_Gray_Base')
 })
 
+test('real coastlines render and pan when street tiles fail', async ({
+  page,
+}) => {
+  await page.route('**/World_Street_Map/MapServer/tile/**', (route) =>
+    route.abort('failed'),
+  )
+  const coastlineResponse = page.waitForResponse('**/hawaii-coastline.geojson')
+  await page.goto('/')
+  const geometry = await (await coastlineResponse).json()
+  expect(geometry.features[0].properties.STATE).toBe('15')
+  expect(geometry.features[0].geometry.type).toBe('MultiPolygon')
+  const map = page.locator('.map-frame')
+  await expect(map).toHaveAttribute('data-map-geography-visible', 'true')
+  await expect(
+    page.getByText('Street map interrupted · Coastline view', { exact: true }),
+  ).toBeVisible()
+
+  const canvas = page.locator('.maplibregl-canvas')
+  const before = await canvas.screenshot()
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (!box) throw new Error('Map canvas has no bounds')
+  const x = box.x + box.width * 0.5
+  const y = box.y + box.height * 0.55
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 65, y - 25, { steps: 12 })
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await canvas.screenshot()).equals(before))
+    .toBe(false)
+  await expect(map).toHaveAttribute('data-map-geography-visible', 'true')
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+  await expect(map).toHaveAttribute('data-map-geography-visible', 'true')
+  await page.screenshot({
+    path: test.info().outputPath('coastline-fallback.png'),
+  })
+})
+
+test('partial street tile success does not hide a tile failure', async ({
+  page,
+}) => {
+  let failedTiles = 0
+  let successfulTiles = 0
+  const tileImage = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 256
+    return canvas.toDataURL('image/png').split(',')[1]
+  })
+  await page.route('**/World_Street_Map/MapServer/tile/**', async (route) => {
+    if (failedTiles === 0) {
+      failedTiles++
+      await route.abort('failed')
+      return
+    }
+    successfulTiles++
+    await route.fulfill({
+      contentType: 'image/png',
+      body: Buffer.from(tileImage, 'base64'),
+    })
+  })
+  await page.goto('/')
+  await expect(page.locator('.map-frame')).toHaveAttribute(
+    'data-map-geography-visible',
+    'true',
+  )
+  expect(failedTiles).toBe(1)
+  expect(successfulTiles).toBeGreaterThan(0)
+  await expect(
+    page.getByText('Street map interrupted · Coastline view', { exact: true }),
+  ).toBeVisible()
+})
+
 test('mobile resident route exposes no-car and language controls', async ({
   page,
 }, testInfo) => {
@@ -1016,7 +1217,7 @@ test('mobile resident route exposes no-car and language controls', async ({
   await page.getByRole('button', { name: 'Map', exact: true }).click()
   await page.getByRole('radio', { name: 'Tsunami' }).click()
   await page
-    .getByRole('complementary')
+    .getByRole('dialog')
     .getByRole('button', { name: 'Close panel' })
     .click()
   await page
@@ -1100,6 +1301,10 @@ test('all four challenge events switch the resident risk answer', async ({
   await expect(
     page.getByText('Heaviest rain bands possible in 24–48 hours'),
   ).toBeVisible()
+  await page
+    .locator('.public-guidance')
+    .getByText('Public guidance', { exact: true })
+    .click()
   await expect(
     page.getByText(
       'Plan around flood-prone roads and identify an alternate route now.',

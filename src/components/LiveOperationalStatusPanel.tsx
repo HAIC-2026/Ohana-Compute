@@ -12,6 +12,7 @@ import type {
   OperationalDomain,
   OperationalDomainStatus,
 } from '../lib/operational-status'
+import { useRovingTabs } from './RovingTabs'
 
 const domainLabels: Record<OperationalDomain, string> = {
   evacuation_order: 'Orders',
@@ -67,6 +68,16 @@ export const LiveOperationalStatusPanel = memo(
       if (defaultDomain) setSelectedDomain(defaultDomain.domain)
     }, [defaultDomain])
 
+    const selected =
+      domains.find((domain) => domain.domain === selectedDomain) ??
+      defaultDomain
+    const domainTabs = useRovingTabs({
+      label: 'Operational domains',
+      values: domains.map((domain) => domain.domain),
+      selectedValue: selected?.domain ?? selectedDomain,
+      onSelect: setSelectedDomain,
+    })
+
     if (status === 'loading') {
       return (
         <section
@@ -115,10 +126,6 @@ export const LiveOperationalStatusPanel = memo(
       )
     }
 
-    const selected =
-      domains.find((domain) => domain.domain === selectedDomain) ??
-      defaultDomain
-
     if (!selected) return null
 
     return (
@@ -142,17 +149,12 @@ export const LiveOperationalStatusPanel = memo(
 
         <p className="live-status-disclaimer">{snapshot.disclaimer}</p>
 
-        <div
-          className="live-status-domains"
-          role="tablist"
-          aria-label="Operational domains"
-        >
+        <div className="live-status-domains" {...domainTabs.tabListProps}>
           {domains.map((domain) => (
             <button
               key={domain.domain}
               type="button"
-              role="tab"
-              aria-selected={selected.domain === domain.domain}
+              {...domainTabs.getTabProps(domain.domain)}
               className={selected.domain === domain.domain ? 'is-active' : ''}
               data-status={domain.status}
               data-telemetry-action="live_status_select"
@@ -165,7 +167,7 @@ export const LiveOperationalStatusPanel = memo(
           ))}
         </div>
 
-        <div className="live-status-detail">
+        <div className="live-status-detail" {...domainTabs.panelProps}>
           <div className="live-status-title">
             <div>
               <span className={`is-${selected.status}`}>

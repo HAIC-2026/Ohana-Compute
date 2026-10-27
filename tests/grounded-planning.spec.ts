@@ -63,6 +63,20 @@ test('grounded planning drafts require citations and human approval', async ({
   expect(unchanged.current_version).toBe(initialPlan.current_version)
   expect(unchanged.revision).toBe(initialPlan.revision)
 
+  await collaboration
+    .getByLabel('Bounded operational note')
+    .fill('Aggregate evidence review updated after draft generation.')
+  await collaboration.getByRole('button', { name: 'Add planning note' }).click()
+  await expect(assist).toContainText('Preserved prior-revision draft')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeDisabled()
+  await expect(
+    assist.getByRole('button', { name: 'Generate grounded draft' }),
+  ).toBeEnabled()
+  await assist.getByRole('button', { name: 'Generate grounded draft' }).click()
+  await expect(assist).toContainText('AI synthesis')
+
   await assist.getByRole('button', { name: 'Reject draft' }).click()
   await expect(assist).toContainText(
     'Draft rejected. The collaborative plan was not changed.',
@@ -110,6 +124,21 @@ test('grounded planning drafts require citations and human approval', async ({
   expect(advanceResponse.ok()).toBe(true)
   await assist.getByRole('button', { name: 'Apply selected content' }).click()
   await expect(assist).toContainText('The plan revision changed')
+  await expect(assist).toContainText('AI synthesis')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeDisabled()
+  await assist.getByRole('button', { name: 'Refresh shared plan' }).click()
+  await expect(assist).toContainText(
+    'Latest shared plan loaded. The prior draft is preserved for reference',
+  )
+  await expect(assist).toContainText('AI synthesis')
+  await expect(
+    assist.getByRole('button', { name: 'Apply selected content' }),
+  ).toBeDisabled()
+  await expect(
+    assist.getByRole('button', { name: 'Generate grounded draft' }),
+  ).toBeEnabled()
 
   const metricsResponse = await request.get(`${backendURL}/metrics`)
   const metrics = await metricsResponse.text()

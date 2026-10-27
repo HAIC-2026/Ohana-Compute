@@ -29,6 +29,7 @@ type Props = {
   plan: CollaborativePlan
   canWrite: boolean
   onPlanApplied: (plan: CollaborativePlan) => void
+  onRefreshPlan: () => Promise<CollaborativePlan | null>
 }
 
 type SurfaceState =
@@ -47,6 +48,7 @@ export function GroundedPlanningAssist({
   plan,
   canWrite,
   onPlanApplied,
+  onRefreshPlan,
 }: Props) {
   const [status, setStatus] = useState<GroundedPlanningStatus | null>(null)
   const [state, setState] = useState<SurfaceState>('loading')
@@ -57,6 +59,9 @@ export function GroundedPlanningAssist({
   const [selectedSections, setSelectedSections] = useState<string[]>([])
   const [selectedActions, setSelectedActions] = useState<string[]>([])
   const [message, setMessage] = useState<string | null>(null)
+  const [messageKind, setMessageKind] = useState<'status' | 'error'>('status')
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [draftNeedsRegeneration, setDraftNeedsRegeneration] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -83,8 +88,8 @@ export function GroundedPlanningAssist({
 
   const generate = async () => {
     setState('generating')
+    setPendingAction('generate')
     setMessage(null)
-    setDraft(null)
     try {
       const next = await generateGroundedPlanningDraft(plan.id, {
         expected_revision: plan.revision,
@@ -92,6 +97,7 @@ export function GroundedPlanningAssist({
         style,
       })
       setDraft(next)
+      setDraftNeedsRegeneration(false)
       setSelectedSections(next.sections.map((section) => section.id))
       setSelectedActions(next.actions.map((action) => action.id))
       setState('draft')
@@ -99,20 +105,28 @@ export function GroundedPlanningAssist({
       const statusCode = groundedPlanningErrorStatus(error)
       if (statusCode === 409) {
         setState('stale')
+        setDraftNeedsRegeneration(draft !== null)
+        setMessageKind('error')
         setMessage(null)
       } else if (statusCode === 422) {
         setState('policy-blocked')
+        setMessageKind('error')
         setMessage(error instanceof Error ? error.message : null)
       } else {
         setState('provider-unavailable')
+        setMessageKind('error')
         setMessage(error instanceof Error ? error.message : null)
       }
+    } finally {
+      setPendingAction(null)
     }
   }
 
   const apply = async () => {
     if (!draft) return
     setState('generating')
+    setPendingAction('apply')
+    setMessage(null)
     try {
       const nextPlan = await applyGroundedPlanningDraft(
         plan.id,
@@ -124,47 +138,99 @@ export function GroundedPlanningAssist({
         },
       )
       onPlanApplied(nextPlan)
+      setDraft(null)
+      setSelectedSections([])
+      setSelectedActions([])
       setState('applied')
+      setMessageKind('status')
       setMessage(
         'Selected draft content was applied as a human-authored plan version.',
       )
     } catch (error) {
       if (groundedPlanningErrorStatus(error) === 409) {
         setState('stale')
+        setDraftNeedsRegeneration(true)
+        setMessageKind('error')
         setMessage(null)
       } else {
         setState('provider-unavailable')
+        setMessageKind('error')
         setMessage(error instanceof Error ? error.message : null)
       }
+    } finally {
+      setPendingAction(null)
     }
   }
 
   const reject = async () => {
     if (!draft) return
     setState('generating')
+    setPendingAction('reject')
+    setMessage(null)
     try {
       await rejectGroundedPlanningDraft(plan.id, draft.draft_id, {
         expected_revision: plan.revision,
       })
       setDraft(null)
       setState('rejected')
+      setMessageKind('status')
       setMessage('Draft rejected. The collaborative plan was not changed.')
     } catch (error) {
       if (groundedPlanningErrorStatus(error) === 409) {
         setState('stale')
+        setDraftNeedsRegeneration(true)
+        setMessageKind('error')
         setMessage(null)
       } else {
         setState('provider-unavailable')
+        setMessageKind('error')
         setMessage(error instanceof Error ? error.message : null)
       }
+    } finally {
+      setPendingAction(null)
     }
   }
+
+  const refreshPlan = async () => {
+    setPendingAction('refresh')
+    setMessage(null)
+    const refreshedPlan = await onRefreshPlan()
+    setPendingAction(null)
+    if (!refreshedPlan) {
+      setMessageKind('error')
+      setMessage(
+        'The latest shared plan could not be loaded. Your draft is still available.',
+      )
+      return
+    }
+    setState('ready')
+    setMessageKind('status')
+    setMessage(
+      draft
+        ? 'Latest shared plan loaded. The prior draft is preserved for reference; generate a new draft before applying content.'
+        : 'Latest shared plan loaded. You can generate a new grounded draft.',
+    )
+  }
+
+  const showDraft =
+    draft &&
+    (state === 'draft' ||
+      state === 'stale' ||
+      state === 'provider-unavailable' ||
+      state === 'policy-blocked' ||
+      state === 'generating' ||
+      draftNeedsRegeneration)
+  const draftRevisionChanged =
+    draft !== null && draft.plan_revision !== plan.revision
+  const requiresRegeneration = draftNeedsRegeneration || draftRevisionChanged
+  const isPending = pendingAction !== null
 
   return (
     <section
       className={`planning-assist is-${state}`}
       data-testid="grounded-planning-assist"
       aria-label="Planning assist review"
+      aria-busy={isPending}
     >
       <header>
         <div>
@@ -200,6 +266,7 @@ export function GroundedPlanningAssist({
       )}
 
       {(state === 'ready' ||
+        state === 'draft' ||
         state === 'rejected' ||
         state === 'applied' ||
         state === 'provider-unavailable' ||
@@ -207,7 +274,17 @@ export function GroundedPlanningAssist({
         state === 'stale') && (
         <>
           {(message || state !== 'ready') && (
-            <div className="planning-assist-state" role="status">
+            <div
+              className="planning-assist-state"
+              role={
+                messageKind === 'error' ||
+                state === 'stale' ||
+                state === 'policy-blocked' ||
+                state === 'provider-unavailable'
+                  ? 'alert'
+                  : 'status'
+              }
+            >
               {state === 'applied' ? (
                 <CheckCircle2 size={17} />
               ) : state === 'rejected' ? (
@@ -223,6 +300,15 @@ export function GroundedPlanningAssist({
                       ? 'The provider output failed citation or policy checks and cannot be applied.'
                       : 'The configured provider is unavailable. Retry without changing the local plan.')}
               </span>
+              {state === 'stale' && (
+                <button
+                  type="button"
+                  onClick={() => void refreshPlan()}
+                  disabled={isPending}
+                >
+                  <RefreshCw size={15} /> Refresh shared plan
+                </button>
+              )}
             </div>
           )}
           <div className="planning-assist-controls">
@@ -230,6 +316,7 @@ export function GroundedPlanningAssist({
               Controlled operation
               <select
                 value={operation}
+                disabled={isPending}
                 onChange={(event) =>
                   setOperation(event.target.value as GroundedPlanningOperation)
                 }
@@ -243,6 +330,7 @@ export function GroundedPlanningAssist({
               Draft style
               <select
                 value={style}
+                disabled={isPending}
                 onChange={(event) =>
                   setStyle(event.target.value as GroundedPlanningStyle)
                 }
@@ -251,7 +339,11 @@ export function GroundedPlanningAssist({
                 <option value="structured">Structured</option>
               </select>
             </label>
-            <button type="button" disabled={!canWrite} onClick={generate}>
+            <button
+              type="button"
+              disabled={!canWrite || isPending || state === 'stale'}
+              onClick={generate}
+            >
               <RefreshCw size={15} /> Generate grounded draft
             </button>
           </div>
@@ -261,11 +353,15 @@ export function GroundedPlanningAssist({
       {state === 'generating' && (
         <div className="planning-assist-state" role="status">
           <LoaderCircle className="spin" size={17} />
-          Validating bounded evidence, citations, and policy
+          {pendingAction === 'apply'
+            ? 'Applying the selected content as a reviewed plan version'
+            : pendingAction === 'reject'
+              ? 'Rejecting the draft without changing the plan'
+              : 'Validating bounded evidence, citations, and policy'}
         </div>
       )}
 
-      {state === 'draft' && draft && (
+      {showDraft && (
         <div className="planning-assist-draft">
           <div className="planning-assist-label">
             <strong>AI synthesis</strong>
@@ -273,10 +369,19 @@ export function GroundedPlanningAssist({
               {draft.provider_class} · policy {draft.model_policy_version}
             </span>
           </div>
+          {requiresRegeneration && (
+            <div className="planning-assist-stale-draft" role="status">
+              Preserved prior-revision draft. Generate again before selecting or
+              applying content.
+            </div>
+          )}
           {draft.sections.map((section) => (
             <label className="planning-assist-selection" key={section.id}>
               <input
                 type="checkbox"
+                disabled={
+                  isPending || state === 'stale' || requiresRegeneration
+                }
                 checked={selectedSections.includes(section.id)}
                 onChange={(event) =>
                   setSelectedSections((current) =>
@@ -303,6 +408,9 @@ export function GroundedPlanningAssist({
             <label className="planning-assist-selection" key={action.id}>
               <input
                 type="checkbox"
+                disabled={
+                  isPending || state === 'stale' || requiresRegeneration
+                }
                 checked={selectedActions.includes(action.id)}
                 onChange={(event) =>
                   setSelectedActions((current) =>
@@ -348,13 +456,22 @@ export function GroundedPlanningAssist({
             </ul>
           </div>
           <div className="planning-assist-actions">
-            <button type="button" onClick={reject}>
+            <button
+              type="button"
+              onClick={reject}
+              disabled={isPending || state === 'stale' || requiresRegeneration}
+            >
               <XCircle size={15} /> Reject draft
             </button>
             <button
               type="button"
               onClick={apply}
-              disabled={selectedSections.length + selectedActions.length === 0}
+              disabled={
+                isPending ||
+                state === 'stale' ||
+                requiresRegeneration ||
+                selectedSections.length + selectedActions.length === 0
+              }
             >
               <FileCheck2 size={15} /> Apply selected content
             </button>

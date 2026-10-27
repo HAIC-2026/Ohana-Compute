@@ -570,11 +570,14 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         <div className="area-title">
           <h2>Mass care plan for {displayPlace}</h2>
         </div>
-        <p>
-          {selectedPlanningZone?.summary ??
-            locationFocus?.summary ??
-            area.summary}
-        </p>
+        <details>
+          <summary>Area context</summary>
+          <p>
+            {selectedPlanningZone?.summary ??
+              locationFocus?.summary ??
+              area.summary}
+          </p>
+        </details>
 
         <EventTriggerPanel />
         <LiveOperationalStatusPanel coordinates={planningCoordinates} />
@@ -783,7 +786,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         )}
       </section>
 
-      <section className="challenge-readiness">
+      <details className="challenge-readiness">
+        <summary>Data coverage and limitations</summary>
         <div className="section-heading">
           <div>
             <h2>Challenge readiness</h2>
@@ -858,7 +862,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             </div>
           </article>
         </div>
-      </section>
+      </details>
 
       <section className="luna-section">
         <IdentityBoundary state={identitySessionState} />
@@ -868,18 +872,13 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           </span>
           <div>
             <h2>Response checklist</h2>
-            <p>A human-reviewable starting point for coordinating teams</p>
           </div>
         </div>
 
         {!brief && !isGenerating && (
           <div className="brief-empty">
             <Sparkles size={20} />
-            <p>
-              Create a prioritized list of actions from the selected event,
-              affected communities, resource checks, and route constraints. The
-              completed list unlocks a printable offline field packet.
-            </p>
+            <p>Review actions, then export a field packet.</p>
             <button
               type="button"
               data-telemetry-action="planning_brief_generate"

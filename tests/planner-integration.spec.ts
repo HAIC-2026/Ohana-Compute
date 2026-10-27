@@ -233,12 +233,10 @@ test('official advisory context never becomes an evacuation order and missing Co
 
   await page.goto('/')
   const panel = page.getByTestId('event-trigger-panel').first()
-  await expect(panel).toContainText(
-    'Planning context — not an evacuation order',
-  )
+  await expect(panel).toContainText('Not an evacuation order')
   await expect(panel).toContainText('Fixture Flood Advisory')
-  await expect(panel).toContainText('County evacuation-order data unavailable')
-  await expect(panel).toContainText('Unavailable does not mean no order.')
+  await expect(panel).toContainText('County order data unavailable')
+  await expect(panel).toContainText('an order may still be in effect.')
   await expect(panel).not.toContainText('County order: none')
 
   const metricsResponse = await request.get(`${backendURL}/metrics`)
@@ -348,6 +346,9 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await expect(
     planningSheet.getByText('3 · Match response partners'),
   ).toBeVisible()
+  await planningSheet
+    .getByText('Data coverage and limitations', { exact: true })
+    .click()
   for (const criterion of [
     'Actionable',
     'Usable',
