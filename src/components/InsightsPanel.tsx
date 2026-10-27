@@ -45,6 +45,7 @@ import { hawaiiDhsReferences } from '../lib/official-references'
 import { analyzeAfnPlanning } from '../lib/planning-analysis'
 import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
+import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { NeighborhoodBriefingPanel } from './NeighborhoodBriefingPanel'
 import {
   areas,
@@ -459,6 +460,11 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         </div>
       </section>
 
+      <CountyShelterPlanPanel
+        island={area.island}
+        practiceResources={resourceInventory}
+      />
+
       <section className="inventory-section">
         <div className="section-heading">
           <div>
@@ -485,7 +491,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   <strong>{site.name}</strong>
                   <small>
                     {site.kind === 'transport' ? 'Transport' : 'Shelter'} ·
-                    capacity {site.capacity}
+                    capacity {site.capacity} · Practice record
                   </small>
                 </span>
                 <em className={confirmed ? 'is-confirmed' : ''}>
@@ -502,6 +508,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <p>
               Capacity {selectedResource.capacity} ·{' '}
               {selectedResource.capabilities.join(' · ')}
+            </p>
+            <p>
+              Practice record · Opening status not reported · County validation
+              required
             </p>
           </div>
           {selectedResource.status === 'confirmed' ||

@@ -1,4 +1,4 @@
-import { communityProfile, expect, test } from './fixtures'
+import { communityProfile, countyShelterPlans, expect, test } from './fixtures'
 
 import { mockOfficialHawaiiKaiStatus } from './support/mock-backend'
 
@@ -84,6 +84,17 @@ test('desktop selects an island response zone and creates local steps', async ({
   await expect(hotspotPanel).toContainText(
     'Data-derived weaknesses · AI drafts wording only',
   )
+  const shelterPlanPanel = page.getByTestId('county-shelter-plans')
+  await expect(shelterPlanPanel).toContainText('County shelter plans')
+  await expect(shelterPlanPanel).toContainText('1/4')
+  await expect(shelterPlanPanel).toContainText(
+    "Four emergency-management jurisdictions cover Hawaiʻi's five political counties",
+  )
+  await expect(shelterPlanPanel).toContainText('Published plan reference')
+  await expect(shelterPlanPanel).toContainText('Official facility records')
+  await expect(shelterPlanPanel).toContainText(
+    'They are not ingested from a County plan',
+  )
   await expect(page.getByText(/\d+\/\d+ confirmed/)).toBeVisible()
   await expect(
     page
@@ -114,6 +125,93 @@ test('desktop selects an island response zone and creates local steps', async ({
       ),
   ).toBeVisible()
   await expect(page.getByText('5 sources used')).toBeVisible()
+})
+
+test('County shelter plans preserve provenance and unavailable coverage', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+
+  const shelterPlanPanel = page.getByTestId('county-shelter-plans')
+  await expect(shelterPlanPanel).toContainText('Emergency Shelter Handbook')
+  await expect(shelterPlanPanel).toContainText(
+    'does not report current openings',
+  )
+
+  await shelterPlanPanel.getByRole('tab', { name: 'Hawaiʻi' }).click()
+  await expect(shelterPlanPanel).toContainText('Plan unavailable')
+  await expect(shelterPlanPanel).toContainText('Hawaiʻi County Civil Defense')
+  await expect(shelterPlanPanel).toContainText(
+    'No supported public County shelter plan',
+  )
+  await expect(shelterPlanPanel).not.toContainText('Open now')
+
+  await shelterPlanPanel.getByRole('tab', { name: 'Maui' }).click()
+  await expect(shelterPlanPanel).toContainText(
+    'Kalawao County emergency-management scope',
+  )
+  await expect(shelterPlanPanel).toContainText(
+    'For emergency management under HRS Chapter 127A, Maui includes Kalawao',
+  )
+  await expect(
+    shelterPlanPanel.getByRole('link', {
+      name: /HRS §127A-2 emergency-management scope/,
+    }),
+  ).toHaveAttribute('href', 'https://example.test/hrs-127a-2')
+  await expect(
+    shelterPlanPanel.getByRole('link', {
+      name: /HRS §326-34 Kalawao governance/,
+    }),
+  ).toHaveAttribute('href', 'https://example.test/hrs-326-34')
+})
+
+test('County shelter plans expose stale and fail-closed states', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'))
+  const staleSnapshot = structuredClone(countyShelterPlans)
+  staleSnapshot.jurisdictions[0].plan_records[0].freshness = 'stale'
+  await page.route('**/api/v1/shelter-plans', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(staleSnapshot),
+    })
+  })
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  await expect(page.getByTestId('county-shelter-plans')).toContainText(
+    'Review overdue',
+  )
+
+  await page.unroute('**/api/v1/shelter-plans')
+  await page.route('**/api/v1/shelter-plans', async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'live source unavailable',
+        source: 'county-shelter-plans',
+      }),
+    })
+  })
+  await page.reload()
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const unavailablePanel = page.getByTestId('county-shelter-plans')
+  await expect(unavailablePanel).toContainText(
+    'County shelter-plan references unavailable',
+  )
+  await expect(unavailablePanel).toContainText(
+    'No plan or facility status is assumed',
+  )
+  await expect(
+    unavailablePanel.getByRole('button', { name: 'Retry' }),
+  ).toBeVisible()
 })
 
 test('planner consumes official aggregate AFN context', async ({

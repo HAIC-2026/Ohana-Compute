@@ -30,6 +30,9 @@ households.
 - Statewide FEMA DFIRM flood classification and nearby flood boundaries
 - Hawaiʻi DLNR-DOFAW community wildfire planning-risk classification
 - FEMA/Red Cross National Shelter System open-shelter checks
+- County shelter-plan provenance across four emergency-management
+  jurisdictions covering Hawaiʻi's five political counties, kept separate from
+  live FEMA status and practice facility records
 - Road-following driving and walking practice routes
 - A TheBus Route 1L walk-bus-walk example for Hawaiʻi Kai
 - No-car, mobility, medical-power, language, written-direction, and read-aloud
@@ -99,6 +102,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/risk/flood?lat={latitude}&lon={longitude}`
 - `GET /api/v1/risk/wildfire?lat={latitude}&lon={longitude}`
 - `GET /api/v1/shelters/open?lat={latitude}&lon={longitude}`
+- `GET /api/v1/shelter-plans`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -112,6 +116,22 @@ burst of planner requests produces one upstream refresh per source and
 coordinate. Coordinate caches are size-bounded, public errors omit upstream
 diagnostics and coordinates, and request-body/header timeouts bound slow
 clients. Raw source failures remain available in server logs.
+
+The Response Plan also consumes a curated County shelter-plan catalog. It
+reports published, reference-only, unavailable, and stale planning sources,
+explicit local-validation gaps, and a statewide coverage summary. The catalog
+does not infer a facility roster, capacity, accessibility, backup power, pet
+support, or opening status from planning documents. Existing synthetic
+facilities remain labeled `Practice record`; only the separate FEMA National
+Shelter System endpoint can report an officially open shelter.
+
+Hawaiʻi has five political counties but four County emergency-management
+jurisdictions under
+[HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
+[Kalawao remains a separate county](https://data.capitol.hawaii.gov/hrscurrent/Vol06_Ch0321-0344/HRS0326/HRS_0326-0034.htm)
+under State Department of Health administration and is included with Maui for
+Chapter 127A emergency-management responsibilities; the planner surfaces this
+special case instead of inventing an independent Kalawao shelter agency.
 
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
@@ -211,6 +231,8 @@ status meaning.
 The official sources provide planning context, not a complete live incident
 picture:
 
+- County shelter-plan references provide provenance and planning coverage, not
+  an authorized County facility roster or live operating status.
 - The wildfire layer is community planning risk, not a live fire perimeter.
 - FEMA flood zones do not predict the exact extent of an active storm.
 - The sea-level-rise layer is a long-range planning scenario, not a current
@@ -218,7 +240,7 @@ picture:
 - Practice shelters and routes are not represented as officially open.
 - HDOT planned lane closures are construction context, not live emergency road
   status or proof of passability.
-- Live emergency road closures, transit arrivals, county shelter capacity, and
+- Live emergency road closures, transit arrivals, County shelter capacity, and
   incident evacuation orders are not yet integrated.
 
 When an official source fails, the interface reports the status as unavailable
@@ -237,6 +259,8 @@ instead of substituting a reassuring answer.
 - `src/lib/official-emergency-data.ts` maps normalized backend responses into
   resident-facing hazard and shelter models without calling government sources
   directly from the browser.
+- `src/lib/county-shelter-plans.ts` loads the curated County planning envelope
+  and preserves unavailable, partial, stale, and retry states.
 - `src/store/planning-store.ts` holds the client scenario state.
 - `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
   event adapters, official hazard and shelter adapters, community-planning

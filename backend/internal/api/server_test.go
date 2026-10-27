@@ -18,6 +18,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 )
 
@@ -41,6 +42,11 @@ type transportationReaderStub struct {
 	err           error
 	lastLatitude  float64
 	lastLongitude float64
+}
+
+type shelterPlanReaderStub struct {
+	snapshot shelterplans.Snapshot
+	err      error
 }
 
 type officialReaderStub struct {
@@ -180,6 +186,12 @@ func (stub *transportationReaderStub) PlannedClosures(
 ) (transportation.Snapshot, error) {
 	stub.lastLatitude = latitude
 	stub.lastLongitude = longitude
+	return stub.snapshot, stub.err
+}
+
+func (stub shelterPlanReaderStub) Snapshot(
+	context.Context,
+) (shelterplans.Snapshot, error) {
 	return stub.snapshot, stub.err
 }
 
@@ -395,6 +407,111 @@ func TestSourcesEndpointIncludesPhases(t *testing.T) {
 	}
 }
 
+func TestShelterPlansEndpointReturnsCuratedProvenance(t *testing.T) {
+	t.Parallel()
+
+	retrievedAt := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		ShelterPlans: shelterPlanReaderStub{snapshot: shelterplans.Snapshot{
+			GeneratedAt: retrievedAt,
+			Status:      "partial",
+			Summary: shelterplans.Summary{
+				JurisdictionsWithPublishedPlan: 1,
+				PlanningJurisdictionsTotal:     4,
+				PoliticalCountiesTotal:         5,
+				OfficialFacilityRecords:        0,
+				JurisdictionsRequiringReview:   4,
+			},
+			Jurisdictions: []shelterplans.JurisdictionPlan{
+				{
+					ID:               "honolulu",
+					Name:             "City and County of Honolulu",
+					Coverage:         "published",
+					IngestionStatus:  "curated",
+					ValidationStatus: "local_validation_required",
+					PlanRecords: []shelterplans.PlanRecord{
+						{
+							ID:             "honolulu-handbook",
+							Title:          "Emergency Shelter Handbook",
+							Authority:      "Honolulu Department of Emergency Management",
+							SourceURL:      "https://example.invalid/handbook.pdf",
+							SourceStatus:   "published",
+							RetrievedAt:    retrievedAt,
+							FreshUntil:     retrievedAt.Add(90 * 24 * time.Hour),
+							Freshness:      "fresh",
+							OperationalUse: "planning_reference_only",
+						},
+					},
+					FacilityRecords: []shelterplans.FacilityRecord{},
+				},
+			},
+		}},
+	})
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/shelter-plans", nil),
+	)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var snapshot shelterplans.Snapshot
+	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
+		t.Fatalf("decode shelter plan snapshot: %v", err)
+	}
+	if snapshot.Summary.OfficialFacilityRecords != 0 {
+		t.Fatalf(
+			"official facility records = %d, want 0",
+			snapshot.Summary.OfficialFacilityRecords,
+		)
+	}
+	if snapshot.Jurisdictions[0].PlanRecords[0].OperationalUse != "planning_reference_only" {
+		t.Fatalf(
+			"unexpected operational use: %+v",
+			snapshot.Jurisdictions[0].PlanRecords[0],
+		)
+	}
+}
+
+func TestShelterPlansEndpointFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	server := NewServer(Config{
+		Alerts:          alertReaderStub{},
+		Cyclones:        cycloneReaderStub{},
+		TsunamiProducts: tsunamiProductReaderStub{},
+		Official:        &officialReaderStub{},
+		Community:       &communityReaderStub{},
+		Transportation:  &transportationReaderStub{},
+		ShelterPlans: shelterPlanReaderStub{
+			err: errors.New("curated catalog unavailable"),
+		},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/shelter-plans", nil),
+	)
+
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "curated catalog unavailable") {
+		t.Fatalf("response leaked internal error: %s", response.Body.String())
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
+	}
+}
+
 func TestRiskEndpointValidatesAndPassesCoordinates(t *testing.T) {
 	t.Parallel()
 
@@ -538,6 +655,14 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 				"route": "home",
 				"viewport": "large",
 				"outcome": "success"
+			},
+			{
+				"kind": "interaction",
+				"action": "shelter_county_select",
+				"category": "planning",
+				"route": "home",
+				"viewport": "large",
+				"outcome": "success"
 			}
 		]
 	}`
@@ -565,6 +690,7 @@ func TestBrowserTelemetryEndpointAggregatesBoundedMetrics(t *testing.T) {
 		`hawaii_resilience_browser_events_total{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_event_duration_seconds_count{action="hazard_select",category="button",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_events_total{action="field_packet_download",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
+		`hawaii_resilience_browser_events_total{action="shelter_county_select",category="planning",kind="interaction",outcome="success",route="home",viewport="large"} 1`,
 		`hawaii_resilience_browser_telemetry_batches_total{outcome="accepted"} 1`,
 	} {
 		if !strings.Contains(metricsBody, metric) {
@@ -843,6 +969,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/risk/flood" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/risk/wildfire" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/shelters/open" + coordinateQuery},
+		{method: http.MethodGet, path: "/api/v1/shelter-plans"},
 		{method: http.MethodGet, path: "/api/v1/community/acs" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/svi" + coordinateQuery},
 		{method: http.MethodGet, path: "/api/v1/community/empower" + coordinateQuery},
@@ -882,6 +1009,7 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 		"/api/v1/risk/flood",
 		"/api/v1/risk/wildfire",
 		"/api/v1/shelters/open",
+		"/api/v1/shelter-plans",
 		"/api/v1/community/acs",
 		"/api/v1/community/svi",
 		"/api/v1/community/empower",

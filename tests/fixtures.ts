@@ -108,6 +108,159 @@ export const communityProfile = {
     "All values describe aggregate planning geographies. They must not be used to infer an individual's disability, language, medical equipment, income, transportation access, or evacuation behavior.",
 }
 
+export const countyShelterPlans = {
+  generated_at: '2026-10-27T00:00:00Z',
+  status: 'partial',
+  summary: {
+    jurisdictions_with_published_plan: 1,
+    planning_jurisdictions_total: 4,
+    political_counties_total: 5,
+    official_facility_records: 0,
+    jurisdictions_requiring_review: 4,
+  },
+  jurisdictions: [
+    {
+      id: 'honolulu',
+      name: 'City and County of Honolulu',
+      islands: ['Oʻahu'],
+      political_counties: ['Honolulu'],
+      coverage: 'published',
+      ingestion_status: 'curated',
+      validation_status: 'local_validation_required',
+      plan_records: [
+        {
+          id: 'honolulu-emergency-shelter-handbook-2024',
+          title: 'Emergency Shelter Handbook',
+          record_type: 'county_shelter_handbook',
+          jurisdiction: 'City and County of Honolulu',
+          authority: 'Honolulu Department of Emergency Management',
+          source_url: 'https://example.test/honolulu-shelter-handbook.pdf',
+          source_status: 'published',
+          retrieved_at: '2026-10-26T00:00:00Z',
+          fresh_until: '2027-01-24T00:00:00Z',
+          freshness: 'fresh',
+          operational_use: 'planning_reference_only',
+          notes:
+            'The handbook informs County shelter planning but does not report current openings, capacity, or facility readiness.',
+        },
+      ],
+      facility_records: [],
+      gaps: [
+        'No authorized machine-readable County shelter roster is available.',
+        'Facility capability and opening status require County validation.',
+      ],
+    },
+    {
+      id: 'maui',
+      name: 'County of Maui',
+      islands: ['Maui', 'Molokaʻi', 'Lānaʻi'],
+      political_counties: ['Maui', 'Kalawao'],
+      coverage: 'partial',
+      ingestion_status: 'reference_only',
+      validation_status: 'local_validation_required',
+      special_jurisdiction: {
+        title: 'Kalawao County emergency-management scope',
+        description:
+          'Kalawao remains a separate political county under State Department of Health administration. For emergency management under HRS Chapter 127A, Maui includes Kalawao.',
+        sources: [
+          {
+            title: 'HRS §127A-2 emergency-management scope',
+            source_url: 'https://example.test/hrs-127a-2',
+          },
+          {
+            title: 'HRS §326-34 Kalawao governance',
+            source_url: 'https://example.test/hrs-326-34',
+          },
+        ],
+      },
+      plan_records: [
+        {
+          id: 'maui-integrated-preparedness-plan',
+          title: 'Integrated Preparedness Plan',
+          record_type: 'county_preparedness_plan',
+          jurisdiction: 'County of Maui',
+          authority: 'Maui Emergency Management Agency',
+          source_url: 'https://example.test/maui-preparedness-plan',
+          source_status: 'reference_only',
+          retrieved_at: '2026-10-26T00:00:00Z',
+          fresh_until: '2027-01-24T00:00:00Z',
+          freshness: 'fresh',
+          operational_use: 'planning_reference_only',
+          notes:
+            'The public preparedness plan provides capability context, not an authoritative shelter roster.',
+        },
+      ],
+      facility_records: [],
+      gaps: [
+        'No supported public County shelter plan or machine-readable facility roster was located.',
+        'Coverage for Maui, Molokaʻi, Lānaʻi, and State DOH-administered Kalawao must be validated separately.',
+      ],
+    },
+    {
+      id: 'hawaii',
+      name: 'County of Hawaiʻi',
+      islands: ['Hawaiʻi'],
+      political_counties: ['Hawaiʻi'],
+      coverage: 'unavailable',
+      ingestion_status: 'reference_only',
+      validation_status: 'local_validation_required',
+      plan_records: [
+        {
+          id: 'hawaii-civil-defense-reference',
+          title: 'Hawaiʻi County Civil Defense',
+          record_type: 'agency_reference',
+          jurisdiction: 'County of Hawaiʻi',
+          authority: 'Hawaiʻi County Civil Defense Agency',
+          source_url: 'https://example.test/hawaii-civil-defense',
+          source_status: 'reference_only',
+          retrieved_at: '2026-10-26T00:00:00Z',
+          fresh_until: '2027-01-24T00:00:00Z',
+          freshness: 'fresh',
+          operational_use: 'agency_reference_only',
+          notes:
+            'The agency page is a validation path, not an ingested shelter plan.',
+        },
+      ],
+      facility_records: [],
+      gaps: [
+        'No supported public County shelter plan or facility roster was located.',
+        'County review is required before operational use.',
+      ],
+    },
+    {
+      id: 'kauai',
+      name: 'County of Kauaʻi',
+      islands: ['Kauaʻi', 'Niʻihau'],
+      political_counties: ['Kauaʻi'],
+      coverage: 'unavailable',
+      ingestion_status: 'reference_only',
+      validation_status: 'local_validation_required',
+      plan_records: [
+        {
+          id: 'kauai-ema-reference',
+          title: 'Kauaʻi Emergency Management Agency',
+          record_type: 'agency_reference',
+          jurisdiction: 'County of Kauaʻi',
+          authority: 'Kauaʻi Emergency Management Agency',
+          source_url: 'https://example.test/kauai-ema',
+          source_status: 'reference_only',
+          retrieved_at: '2026-10-26T00:00:00Z',
+          fresh_until: '2027-01-24T00:00:00Z',
+          freshness: 'fresh',
+          operational_use: 'agency_reference_only',
+          notes:
+            'The agency page is a validation path, not an ingested shelter plan.',
+        },
+      ],
+      facility_records: [],
+      gaps: [
+        'No supported public County shelter plan or facility roster was located.',
+        'Coverage for Kauaʻi and Niʻihau requires County validation.',
+      ],
+    },
+  ],
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.route('**/api/v1/community/profile?*', async (route) => {
@@ -115,6 +268,13 @@ export const test = base.extend({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify(communityProfile),
+      })
+    })
+    await page.route('**/api/v1/shelter-plans', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(countyShelterPlans),
       })
     })
     await use(page)
