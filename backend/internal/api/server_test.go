@@ -422,12 +422,13 @@ func TestShelterPlansEndpointReturnsCuratedProvenance(t *testing.T) {
 			GeneratedAt: retrievedAt,
 			Status:      "partial",
 			Summary: shelterplans.Summary{
-				CountiesWithPublishedPlan: 1,
-				CountiesTotal:             4,
-				OfficialFacilityRecords:   0,
-				CountiesRequiringReview:   4,
+				JurisdictionsWithPublishedPlan: 1,
+				PlanningJurisdictionsTotal:     4,
+				PoliticalCountiesTotal:         5,
+				OfficialFacilityRecords:        0,
+				JurisdictionsRequiringReview:   4,
 			},
-			Counties: []shelterplans.CountyPlan{
+			Jurisdictions: []shelterplans.JurisdictionPlan{
 				{
 					ID:               "honolulu",
 					Name:             "City and County of Honolulu",
@@ -472,8 +473,11 @@ func TestShelterPlansEndpointReturnsCuratedProvenance(t *testing.T) {
 			snapshot.Summary.OfficialFacilityRecords,
 		)
 	}
-	if snapshot.Counties[0].PlanRecords[0].OperationalUse != "planning_reference_only" {
-		t.Fatalf("unexpected operational use: %+v", snapshot.Counties[0].PlanRecords[0])
+	if snapshot.Jurisdictions[0].PlanRecords[0].OperationalUse != "planning_reference_only" {
+		t.Fatalf(
+			"unexpected operational use: %+v",
+			snapshot.Jurisdictions[0].PlanRecords[0],
+		)
 	}
 }
 

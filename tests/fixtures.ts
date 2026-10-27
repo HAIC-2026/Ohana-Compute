@@ -112,16 +112,18 @@ export const countyShelterPlans = {
   generated_at: '2026-10-27T00:00:00Z',
   status: 'partial',
   summary: {
-    counties_with_published_plan: 1,
-    counties_total: 4,
+    jurisdictions_with_published_plan: 1,
+    planning_jurisdictions_total: 4,
+    political_counties_total: 5,
     official_facility_records: 0,
-    counties_requiring_review: 4,
+    jurisdictions_requiring_review: 4,
   },
-  counties: [
+  jurisdictions: [
     {
       id: 'honolulu',
       name: 'City and County of Honolulu',
       islands: ['Oʻahu'],
+      political_counties: ['Honolulu'],
       coverage: 'published',
       ingestion_status: 'curated',
       validation_status: 'local_validation_required',
@@ -152,9 +154,25 @@ export const countyShelterPlans = {
       id: 'maui',
       name: 'County of Maui',
       islands: ['Maui', 'Molokaʻi', 'Lānaʻi'],
+      political_counties: ['Maui', 'Kalawao'],
       coverage: 'partial',
       ingestion_status: 'reference_only',
       validation_status: 'local_validation_required',
+      special_jurisdiction: {
+        title: 'Kalawao County emergency-management scope',
+        description:
+          'Kalawao remains a separate political county under State Department of Health administration. For emergency management under HRS Chapter 127A, Maui includes Kalawao.',
+        sources: [
+          {
+            title: 'HRS §127A-2 emergency-management scope',
+            source_url: 'https://example.test/hrs-127a-2',
+          },
+          {
+            title: 'HRS §326-34 Kalawao governance',
+            source_url: 'https://example.test/hrs-326-34',
+          },
+        ],
+      },
       plan_records: [
         {
           id: 'maui-integrated-preparedness-plan',
@@ -175,13 +193,14 @@ export const countyShelterPlans = {
       facility_records: [],
       gaps: [
         'No supported public County shelter plan or machine-readable facility roster was located.',
-        'Coverage for Maui, Molokaʻi, and Lānaʻi must be validated separately.',
+        'Coverage for Maui, Molokaʻi, Lānaʻi, and State DOH-administered Kalawao must be validated separately.',
       ],
     },
     {
       id: 'hawaii',
       name: 'County of Hawaiʻi',
       islands: ['Hawaiʻi'],
+      political_counties: ['Hawaiʻi'],
       coverage: 'unavailable',
       ingestion_status: 'reference_only',
       validation_status: 'local_validation_required',
@@ -212,6 +231,7 @@ export const countyShelterPlans = {
       id: 'kauai',
       name: 'County of Kauaʻi',
       islands: ['Kauaʻi', 'Niʻihau'],
+      political_counties: ['Kauaʻi'],
       coverage: 'unavailable',
       ingestion_status: 'reference_only',
       validation_status: 'local_validation_required',

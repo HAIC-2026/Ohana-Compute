@@ -82,8 +82,8 @@ export function CountyShelterPlanPanel({
   }
 
   const selectedCounty =
-    snapshot.counties.find((county) => county.id === selectedCountyId) ??
-    snapshot.counties[0]
+    snapshot.jurisdictions.find((county) => county.id === selectedCountyId) ??
+    snapshot.jurisdictions[0]
   const practiceShelters = practiceResources.filter(
     (resource) => resource.kind === 'shelter',
   )
@@ -102,21 +102,22 @@ export function CountyShelterPlanPanel({
           <span>County-led planning input</span>
           <h2 id="county-shelter-plans-title">County shelter plans</h2>
           <p>
-            Published references are kept separate from practice facilities and
-            live FEMA open-shelter reports.
+            Four emergency-management jurisdictions cover Hawaiʻi's five
+            political counties. Published references stay separate from practice
+            facilities and live FEMA reports.
           </p>
         </div>
         <div className="county-shelter-summary">
           <strong>
-            {snapshot.summary.counties_with_published_plan}/
-            {snapshot.summary.counties_total}
+            {snapshot.summary.jurisdictions_with_published_plan}/
+            {snapshot.summary.planning_jurisdictions_total}
           </strong>
           <span>published plan reference</span>
         </div>
       </div>
 
       <div className="county-shelter-tabs" role="tablist" aria-label="County">
-        {snapshot.counties.map((county) => (
+        {snapshot.jurisdictions.map((county) => (
           <button
             key={county.id}
             type="button"
@@ -155,6 +156,27 @@ export function CountyShelterPlanPanel({
             <span>{selectedCounty.islands.join(' · ')}</span>
           </div>
         </div>
+
+        {selectedCounty.special_jurisdiction ? (
+          <div className="county-jurisdiction-note">
+            <strong>{selectedCounty.special_jurisdiction.title}</strong>
+            <p>{selectedCounty.special_jurisdiction.description}</p>
+            <div className="county-jurisdiction-sources">
+              {selectedCounty.special_jurisdiction.sources.map((source) => (
+                <a
+                  key={source.source_url}
+                  href={source.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-telemetry-action="shelter_provenance_open"
+                  data-telemetry-category="document"
+                >
+                  {source.title} <ExternalLink size={13} />
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="county-shelter-grid">
           <article>

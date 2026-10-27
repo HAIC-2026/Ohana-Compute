@@ -72,11 +72,14 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - The State’s 1%-annual-chance coastal flood area with 3.2 ft of sea-level rise is shown only as a long-range planning exposure, never as the current storm forecast.
 - Official resident risk is event-dependent: hurricane and flood show FEMA flood risk, tsunami shows the tsunami evacuation classification, and wildfire shows the community fire-risk classification. Unrelated hazard cards and polygons are hidden.
 - The resident route checks FEMA National Shelter System open-shelter data live. If no open Hawaiʻi shelter is reported, the interface says so explicitly and keeps all practice destinations secondary and unverified.
-- The Response Plan shows curated County shelter-plan provenance and coverage
-  for Honolulu, Hawaiʻi, Maui, and Kauaʻi counties, including stale,
-  unavailable, and local-validation-required states. This planning catalog has
-  no official facility records and stays separate from FEMA live status and
-  synthetic practice inventory.
+- The Response Plan shows curated County shelter-plan provenance across four
+  Chapter 127A emergency-management jurisdictions covering Hawaiʻi's five
+  political counties, including stale, unavailable, and
+  local-validation-required states. Kalawao remains a separate political
+  county under State Department of Health administration and is explicitly
+  included with Maui only for emergency-management scope. This planning
+  catalog has no official facility records and stays separate from FEMA live
+  status and synthetic practice inventory.
 - Route guidance changes for residents without cars, residents needing mobility help, and residents needing powered medical support.
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.

@@ -30,7 +30,8 @@ in a portal.
   DLNR wildfire-risk responses
 - Normalized FEMA ESF6 open shelters sorted by resident distance
 - Curated County shelter-plan provenance, freshness, coverage gaps, and local
-  validation requirements for Honolulu, Hawaiʻi, Maui, and Kauaʻi counties
+  validation requirements for four Chapter 127A emergency-management
+  jurisdictions covering Hawaiʻi's five political counties
 - Aggregate community-planning profiles from Census ACS, CDC/ATSDR SVI, HHS
   emPOWER, and FEMA National Risk Index
 - Five-minute in-memory cache with ETag revalidation
@@ -52,6 +53,16 @@ an authorized County roster is integrated. It never derives capacity,
 capabilities, accessibility, or opening status from planning prose. Catalog
 references become explicitly stale after their bounded review window, and a
 reader failure returns `502` without a success-shaped fallback.
+
+The response distinguishes political geography from emergency-management
+authority. Kalawao is a separate political county under State Department of
+Health administration under
+[HRS §326-34](https://data.capitol.hawaii.gov/hrscurrent/Vol06_Ch0321-0344/HRS0326/HRS_0326-0034.htm),
+while
+[HRS §127A-2](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm)
+includes Kalawao in Maui for emergency-management responsibilities. The API
+therefore exposes four planning jurisdictions, five political counties, and an
+explicit sourced Kalawao note.
 
 HDOT closure results are planned roadwork, not emergency road status or proof
 that a route is passable. The PTWC endpoint exposes the latest product and its

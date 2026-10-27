@@ -72,10 +72,25 @@ test('planner completes the Map Model Match journey through the Go API', async (
   ).toContainText('Data-derived weaknesses · AI drafts wording only')
   const shelterPlanPanel = planningSheet.getByTestId('county-shelter-plans')
   await expect(shelterPlanPanel).toContainText('County shelter plans')
+  await expect(shelterPlanPanel).toContainText(
+    "Four emergency-management jurisdictions cover Hawaiʻi's five political counties",
+  )
   await expect(shelterPlanPanel).toContainText('Emergency Shelter Handbook')
   await expect(shelterPlanPanel).toContainText('Official facility records')
   await expect(shelterPlanPanel).toContainText(
     'They are not ingested from a County plan',
+  )
+  await shelterPlanPanel.getByRole('tab', { name: 'Maui' }).click()
+  await expect(shelterPlanPanel).toContainText(
+    'Kalawao County emergency-management scope',
+  )
+  await expect(
+    shelterPlanPanel.getByRole('link', {
+      name: /HRS §127A-2 emergency-management scope/,
+    }),
+  ).toHaveAttribute(
+    'href',
+    'https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm',
   )
   await shelterPlanPanel.getByRole('tab', { name: 'Hawaiʻi' }).click()
   await expect(shelterPlanPanel).toContainText('Plan unavailable')

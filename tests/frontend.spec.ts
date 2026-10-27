@@ -87,6 +87,9 @@ test('desktop selects an island response zone and creates local steps', async ({
   const shelterPlanPanel = page.getByTestId('county-shelter-plans')
   await expect(shelterPlanPanel).toContainText('County shelter plans')
   await expect(shelterPlanPanel).toContainText('1/4')
+  await expect(shelterPlanPanel).toContainText(
+    "Four emergency-management jurisdictions cover Hawaiʻi's five political counties",
+  )
   await expect(shelterPlanPanel).toContainText('Published plan reference')
   await expect(shelterPlanPanel).toContainText('Official facility records')
   await expect(shelterPlanPanel).toContainText(
@@ -145,6 +148,24 @@ test('County shelter plans preserve provenance and unavailable coverage', async 
     'No supported public County shelter plan',
   )
   await expect(shelterPlanPanel).not.toContainText('Open now')
+
+  await shelterPlanPanel.getByRole('tab', { name: 'Maui' }).click()
+  await expect(shelterPlanPanel).toContainText(
+    'Kalawao County emergency-management scope',
+  )
+  await expect(shelterPlanPanel).toContainText(
+    'For emergency management under HRS Chapter 127A, Maui includes Kalawao',
+  )
+  await expect(
+    shelterPlanPanel.getByRole('link', {
+      name: /HRS §127A-2 emergency-management scope/,
+    }),
+  ).toHaveAttribute('href', 'https://example.test/hrs-127a-2')
+  await expect(
+    shelterPlanPanel.getByRole('link', {
+      name: /HRS §326-34 Kalawao governance/,
+    }),
+  ).toHaveAttribute('href', 'https://example.test/hrs-326-34')
 })
 
 test('County shelter plans expose stale and fail-closed states', async ({
@@ -152,7 +173,7 @@ test('County shelter plans expose stale and fail-closed states', async ({
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
   const staleSnapshot = structuredClone(countyShelterPlans)
-  staleSnapshot.counties[0].plan_records[0].freshness = 'stale'
+  staleSnapshot.jurisdictions[0].plan_records[0].freshness = 'stale'
   await page.route('**/api/v1/shelter-plans', async (route) => {
     await route.fulfill({
       status: 200,

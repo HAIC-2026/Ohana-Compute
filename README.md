@@ -30,8 +30,9 @@ households.
 - Statewide FEMA DFIRM flood classification and nearby flood boundaries
 - Hawaiʻi DLNR-DOFAW community wildfire planning-risk classification
 - FEMA/Red Cross National Shelter System open-shelter checks
-- County shelter-plan provenance and coverage gaps for all four counties,
-  kept separate from live FEMA status and practice facility records
+- County shelter-plan provenance across four emergency-management
+  jurisdictions covering Hawaiʻi's five political counties, kept separate from
+  live FEMA status and practice facility records
 - Road-following driving and walking practice routes
 - A TheBus Route 1L walk-bus-walk example for Hawaiʻi Kai
 - No-car, mobility, medical-power, language, written-direction, and read-aloud
@@ -123,6 +124,14 @@ does not infer a facility roster, capacity, accessibility, backup power, pet
 support, or opening status from planning documents. Existing synthetic
 facilities remain labeled `Practice record`; only the separate FEMA National
 Shelter System endpoint can report an officially open shelter.
+
+Hawaiʻi has five political counties but four County emergency-management
+jurisdictions under
+[HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
+[Kalawao remains a separate county](https://data.capitol.hawaii.gov/hrscurrent/Vol06_Ch0321-0344/HRS0326/HRS_0326-0034.htm)
+under State Department of Health administration and is included with Maui for
+Chapter 127A emergency-management responsibilities; the planner surfaces this
+special case instead of inventing an independent Kalawao shelter agency.
 
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match

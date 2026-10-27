@@ -22,13 +22,22 @@ func TestCatalogReturnsPartialCountyCoverageWithoutInventedFacilities(t *testing
 	if snapshot.Status != "partial" {
 		t.Fatalf("status = %q, want partial", snapshot.Status)
 	}
-	if len(snapshot.Counties) != 4 {
-		t.Fatalf("county count = %d, want 4", len(snapshot.Counties))
-	}
-	if snapshot.Summary.CountiesWithPublishedPlan != 1 {
+	if len(snapshot.Jurisdictions) != 4 {
 		t.Fatalf(
-			"published county plans = %d, want 1",
-			snapshot.Summary.CountiesWithPublishedPlan,
+			"planning jurisdiction count = %d, want 4",
+			len(snapshot.Jurisdictions),
+		)
+	}
+	if snapshot.Summary.JurisdictionsWithPublishedPlan != 1 {
+		t.Fatalf(
+			"published jurisdiction plans = %d, want 1",
+			snapshot.Summary.JurisdictionsWithPublishedPlan,
+		)
+	}
+	if snapshot.Summary.PoliticalCountiesTotal != 5 {
+		t.Fatalf(
+			"political counties = %d, want 5",
+			snapshot.Summary.PoliticalCountiesTotal,
 		)
 	}
 	if snapshot.Summary.OfficialFacilityRecords != 0 {
@@ -37,17 +46,38 @@ func TestCatalogReturnsPartialCountyCoverageWithoutInventedFacilities(t *testing
 			snapshot.Summary.OfficialFacilityRecords,
 		)
 	}
-	for _, county := range snapshot.Counties {
-		if county.ValidationStatus != "local_validation_required" {
+	for _, jurisdiction := range snapshot.Jurisdictions {
+		if jurisdiction.ValidationStatus != "local_validation_required" {
 			t.Fatalf(
-				"county %q validation status = %q",
-				county.ID,
-				county.ValidationStatus,
+				"jurisdiction %q validation status = %q",
+				jurisdiction.ID,
+				jurisdiction.ValidationStatus,
 			)
 		}
-		if len(county.FacilityRecords) != 0 {
-			t.Fatalf("county %q contains invented facility records", county.ID)
+		if len(jurisdiction.FacilityRecords) != 0 {
+			t.Fatalf(
+				"jurisdiction %q contains invented facility records",
+				jurisdiction.ID,
+			)
 		}
+	}
+
+	maui := snapshot.Jurisdictions[1]
+	if maui.SpecialJurisdiction == nil {
+		t.Fatal("Maui jurisdiction is missing the Kalawao scope note")
+	}
+	if len(maui.SpecialJurisdiction.Sources) != 2 {
+		t.Fatalf(
+			"Kalawao jurisdiction sources = %d, want 2",
+			len(maui.SpecialJurisdiction.Sources),
+		)
+	}
+	if len(maui.PoliticalCounties) != 2 ||
+		maui.PoliticalCounties[1] != "Kalawao" {
+		t.Fatalf(
+			"Maui political counties = %#v, want Maui and Kalawao",
+			maui.PoliticalCounties,
+		)
 	}
 }
 
@@ -64,8 +94,8 @@ func TestCatalogMarksCuratedReferencesStaleAfterReviewWindow(t *testing.T) {
 		t.Fatalf("Snapshot returned error: %v", err)
 	}
 
-	for _, county := range snapshot.Counties {
-		for _, record := range county.PlanRecords {
+	for _, jurisdiction := range snapshot.Jurisdictions {
+		for _, record := range jurisdiction.PlanRecords {
 			if record.Freshness != "stale" {
 				t.Fatalf(
 					"record %q freshness = %q, want stale",

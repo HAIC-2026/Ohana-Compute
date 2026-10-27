@@ -26,9 +26,18 @@ export type CountyShelterPlan = {
   id: 'honolulu' | 'maui' | 'hawaii' | 'kauai'
   name: string
   islands: string[]
+  political_counties: string[]
   coverage: ShelterPlanCoverage
   ingestion_status: ShelterPlanIngestionStatus
   validation_status: 'local_validation_required' | 'validated'
+  special_jurisdiction?: {
+    title: string
+    description: string
+    sources: Array<{
+      title: string
+      source_url: string
+    }>
+  }
   plan_records: CountyShelterPlanRecord[]
   facility_records: Array<{
     id: string
@@ -46,12 +55,13 @@ export type CountyShelterPlanSnapshot = {
   generated_at: string
   status: 'partial' | 'complete' | 'unavailable'
   summary: {
-    counties_with_published_plan: number
-    counties_total: number
+    jurisdictions_with_published_plan: number
+    planning_jurisdictions_total: number
+    political_counties_total: number
     official_facility_records: number
-    counties_requiring_review: number
+    jurisdictions_requiring_review: number
   }
-  counties: CountyShelterPlan[]
+  jurisdictions: CountyShelterPlan[]
 }
 
 export type CountyShelterPlanState = {

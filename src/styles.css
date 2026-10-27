@@ -3525,6 +3525,42 @@ select:focus-visible {
   font-size: 10px;
 }
 
+.county-jurisdiction-note {
+  display: grid;
+  padding: 10px;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--cp-accent) 32%, var(--cp-border));
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--cp-accent) 6%, var(--cp-surface));
+}
+
+.county-jurisdiction-note strong {
+  font-size: 11px;
+}
+
+.county-jurisdiction-note p {
+  margin: 0;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.county-jurisdiction-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.county-jurisdiction-sources a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cp-accent);
+  font-size: 10px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .county-shelter-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4805,6 +4841,7 @@ select:focus-visible {
   }
 
   .county-shelter-heading p,
+  .county-jurisdiction-note p,
   .county-practice-disclosure span,
   .county-shelter-gap-list li,
   .county-plan-record small,
@@ -4859,6 +4896,11 @@ select:focus-visible {
 
   .county-plan-record a {
     min-height: 40px;
+    font-size: 13px;
+  }
+
+  .county-jurisdiction-note strong,
+  .county-jurisdiction-sources a {
     font-size: 13px;
   }
 

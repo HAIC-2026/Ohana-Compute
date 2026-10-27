@@ -6,10 +6,11 @@ import (
 )
 
 type Summary struct {
-	CountiesWithPublishedPlan int `json:"counties_with_published_plan"`
-	CountiesTotal             int `json:"counties_total"`
-	OfficialFacilityRecords   int `json:"official_facility_records"`
-	CountiesRequiringReview   int `json:"counties_requiring_review"`
+	JurisdictionsWithPublishedPlan int `json:"jurisdictions_with_published_plan"`
+	PlanningJurisdictionsTotal     int `json:"planning_jurisdictions_total"`
+	PoliticalCountiesTotal         int `json:"political_counties_total"`
+	OfficialFacilityRecords        int `json:"official_facility_records"`
+	JurisdictionsRequiringReview   int `json:"jurisdictions_requiring_review"`
 }
 
 type PlanRecord struct {
@@ -38,23 +39,36 @@ type FacilityRecord struct {
 	SourcePlanRecordID string   `json:"source_plan_record_id"`
 }
 
-type CountyPlan struct {
-	ID               string           `json:"id"`
-	Name             string           `json:"name"`
-	Islands          []string         `json:"islands"`
-	Coverage         string           `json:"coverage"`
-	IngestionStatus  string           `json:"ingestion_status"`
-	ValidationStatus string           `json:"validation_status"`
-	PlanRecords      []PlanRecord     `json:"plan_records"`
-	FacilityRecords  []FacilityRecord `json:"facility_records"`
-	Gaps             []string         `json:"gaps"`
+type JurisdictionSource struct {
+	Title     string `json:"title"`
+	SourceURL string `json:"source_url"`
+}
+
+type SpecialJurisdiction struct {
+	Title       string               `json:"title"`
+	Description string               `json:"description"`
+	Sources     []JurisdictionSource `json:"sources"`
+}
+
+type JurisdictionPlan struct {
+	ID                  string               `json:"id"`
+	Name                string               `json:"name"`
+	Islands             []string             `json:"islands"`
+	PoliticalCounties   []string             `json:"political_counties"`
+	Coverage            string               `json:"coverage"`
+	IngestionStatus     string               `json:"ingestion_status"`
+	ValidationStatus    string               `json:"validation_status"`
+	SpecialJurisdiction *SpecialJurisdiction `json:"special_jurisdiction,omitempty"`
+	PlanRecords         []PlanRecord         `json:"plan_records"`
+	FacilityRecords     []FacilityRecord     `json:"facility_records"`
+	Gaps                []string             `json:"gaps"`
 }
 
 type Snapshot struct {
-	GeneratedAt time.Time    `json:"generated_at"`
-	Status      string       `json:"status"`
-	Summary     Summary      `json:"summary"`
-	Counties    []CountyPlan `json:"counties"`
+	GeneratedAt   time.Time          `json:"generated_at"`
+	Status        string             `json:"status"`
+	Summary       Summary            `json:"summary"`
+	Jurisdictions []JurisdictionPlan `json:"jurisdictions"`
 }
 
 type Catalog struct {
@@ -78,14 +92,15 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 		freshness = "stale"
 	}
 
-	counties := []CountyPlan{
+	jurisdictions := []JurisdictionPlan{
 		{
-			ID:               "honolulu",
-			Name:             "City and County of Honolulu",
-			Islands:          []string{"Oʻahu"},
-			Coverage:         "published",
-			IngestionStatus:  "curated",
-			ValidationStatus: "local_validation_required",
+			ID:                "honolulu",
+			Name:              "City and County of Honolulu",
+			Islands:           []string{"Oʻahu"},
+			PoliticalCounties: []string{"Honolulu"},
+			Coverage:          "published",
+			IngestionStatus:   "curated",
+			ValidationStatus:  "local_validation_required",
 			PlanRecords: []PlanRecord{
 				{
 					ID:             "honolulu-emergency-shelter-handbook-2024",
@@ -109,12 +124,27 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 			},
 		},
 		{
-			ID:               "maui",
-			Name:             "County of Maui",
-			Islands:          []string{"Maui", "Molokaʻi", "Lānaʻi"},
-			Coverage:         "partial",
-			IngestionStatus:  "reference_only",
-			ValidationStatus: "local_validation_required",
+			ID:                "maui",
+			Name:              "County of Maui",
+			Islands:           []string{"Maui", "Molokaʻi", "Lānaʻi"},
+			PoliticalCounties: []string{"Maui", "Kalawao"},
+			Coverage:          "partial",
+			IngestionStatus:   "reference_only",
+			ValidationStatus:  "local_validation_required",
+			SpecialJurisdiction: &SpecialJurisdiction{
+				Title:       "Kalawao County emergency-management scope",
+				Description: "Kalawao remains a separate political county under State Department of Health administration. For emergency management under HRS Chapter 127A, Maui includes Kalawao.",
+				Sources: []JurisdictionSource{
+					{
+						Title:     "HRS §127A-2 emergency-management scope",
+						SourceURL: "https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm",
+					},
+					{
+						Title:     "HRS §326-34 Kalawao governance",
+						SourceURL: "https://data.capitol.hawaii.gov/hrscurrent/Vol06_Ch0321-0344/HRS0326/HRS_0326-0034.htm",
+					},
+				},
+			},
 			PlanRecords: []PlanRecord{
 				{
 					ID:             "maui-integrated-preparedness-plan",
@@ -134,16 +164,17 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 			FacilityRecords: []FacilityRecord{},
 			Gaps: []string{
 				"No supported public County shelter plan or machine-readable facility roster was located.",
-				"Coverage for Maui, Molokaʻi, and Lānaʻi must be validated separately.",
+				"Coverage for Maui, Molokaʻi, Lānaʻi, and State DOH-administered Kalawao must be validated separately.",
 			},
 		},
 		{
-			ID:               "hawaii",
-			Name:             "County of Hawaiʻi",
-			Islands:          []string{"Hawaiʻi"},
-			Coverage:         "unavailable",
-			IngestionStatus:  "reference_only",
-			ValidationStatus: "local_validation_required",
+			ID:                "hawaii",
+			Name:              "County of Hawaiʻi",
+			Islands:           []string{"Hawaiʻi"},
+			PoliticalCounties: []string{"Hawaiʻi"},
+			Coverage:          "unavailable",
+			IngestionStatus:   "reference_only",
+			ValidationStatus:  "local_validation_required",
 			PlanRecords: []PlanRecord{
 				{
 					ID:             "hawaii-civil-defense-reference",
@@ -167,12 +198,13 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 			},
 		},
 		{
-			ID:               "kauai",
-			Name:             "County of Kauaʻi",
-			Islands:          []string{"Kauaʻi", "Niʻihau"},
-			Coverage:         "unavailable",
-			IngestionStatus:  "reference_only",
-			ValidationStatus: "local_validation_required",
+			ID:                "kauai",
+			Name:              "County of Kauaʻi",
+			Islands:           []string{"Kauaʻi", "Niʻihau"},
+			PoliticalCounties: []string{"Kauaʻi"},
+			Coverage:          "unavailable",
+			IngestionStatus:   "reference_only",
+			ValidationStatus:  "local_validation_required",
 			PlanRecords: []PlanRecord{
 				{
 					ID:             "kauai-ema-reference",
@@ -201,11 +233,12 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 		GeneratedAt: generatedAt,
 		Status:      "partial",
 		Summary: Summary{
-			CountiesWithPublishedPlan: 1,
-			CountiesTotal:             len(counties),
-			OfficialFacilityRecords:   0,
-			CountiesRequiringReview:   len(counties),
+			JurisdictionsWithPublishedPlan: 1,
+			PlanningJurisdictionsTotal:     len(jurisdictions),
+			PoliticalCountiesTotal:         5,
+			OfficialFacilityRecords:        0,
+			JurisdictionsRequiringReview:   len(jurisdictions),
 		},
-		Counties: counties,
+		Jurisdictions: jurisdictions,
 	}, nil
 }
