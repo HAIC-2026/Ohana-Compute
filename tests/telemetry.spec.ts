@@ -75,11 +75,17 @@ test('browser telemetry is batched and excludes private values', async ({
 
   await expect.poll(() => batches.length).toBeGreaterThan(0)
   await expect
-    .poll(() =>
-      batches
-        .flatMap((batch) => batch.events)
-        .some((event) => event.action === 'resource_demand_duration'),
-    )
+    .poll(() => {
+      const actions = new Set(
+        batches.flatMap((batch) => batch.events.map((event) => event.action)),
+      )
+      return [
+        'resource_demand_duration',
+        'live_status_select',
+        'shelter_county_select',
+        'partner_capability_select',
+      ].every((action) => actions.has(action))
+    })
     .toBe(true)
   const events = batches.flatMap((batch) => batch.events)
   expect(batches.every((batch) => batch.version === 1)).toBe(true)

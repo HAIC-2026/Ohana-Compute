@@ -34,6 +34,8 @@ type Metrics struct {
 	identityAuthorization      *prometheus.CounterVec
 	collaborationOperations    *prometheus.CounterVec
 	groundedPlanningOperations *prometheus.CounterVec
+	replayRuns                 *prometheus.CounterVec
+	replayChecks               *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -234,6 +236,22 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"operation", "outcome", "provider_class"},
 		),
+		replayRuns: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "historical_replay_runs_total",
+				Help:      "Historical replay runs by controlled fixture category, hazard, and aggregate outcome.",
+			},
+			[]string{"fixture_category", "hazard", "outcome"},
+		),
+		replayChecks: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "historical_replay_checks_total",
+				Help:      "Historical replay checks by controlled fixture category, hazard, group, and outcome.",
+			},
+			[]string{"fixture_category", "hazard", "check_group", "outcome"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -259,6 +277,8 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.identityAuthorization,
 		metrics.collaborationOperations,
 		metrics.groundedPlanningOperations,
+		metrics.replayRuns,
+		metrics.replayChecks,
 	)
 	return metrics
 }

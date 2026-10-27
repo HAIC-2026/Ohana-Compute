@@ -31,6 +31,8 @@ in a portal.
 - `GET /api/v1/shelter-plans`
 - `GET /api/v1/planning-areas`
 - `POST /api/v1/planning/resource-demand`
+- `GET /api/v1/planning/replays`
+- `POST /api/v1/planning/replays/run`
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/planning/event-triggers`
 - `GET /api/v1/planning/live-status?lat={latitude}&lon={longitude}`
@@ -164,6 +166,22 @@ durations, quantities, and record counts, and returns `Cache-Control: no-store`.
 Malformed requests return `400`, unsupported content types return `415`,
 oversized bodies return `413`, and calculator failures return `502` without
 internal error details.
+
+`GET /api/v1/planning/replays` returns the versioned controlled fixture
+catalog. `POST /api/v1/planning/replays/run` accepts only a fixture ID and the
+`current` evaluation standard, then compares bounded Map/Model/Match/Operate
+expectations with current deterministic output. The engine reuses the
+production resource-demand calculator through an injected interface. It does
+not tune coefficients, accept arbitrary URLs or payloads, infer legal orders,
+or reconstruct person-level outcomes. Historical inputs without defensible
+aggregate demand remain unavailable; the labeled tsunami exercise is the only
+fixture with controlled synthetic demand.
+
+Replay JSON is strict, one-object, 4 KiB bounded, and `no-store`. Reports expose
+schema, fixture, engine, calibration, model, and assumption versions; a
+deterministic run ID; per-check actual/expected values; citations; mismatches;
+and sensitivity notes. The catalog and review process are documented in
+[`../docs/historical-replay.md`](../docs/historical-replay.md).
 
 `GET /api/v1/planning/partner-matches` accepts one controlled jurisdiction
 (`honolulu`, `maui`, `hawaii`, or `kauai`) and one to ten unique capability

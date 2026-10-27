@@ -32,13 +32,17 @@ The minimum complete planner journey is:
    decision window. Treat partner-directory results as sourced planning
    associations only; activation, capacity, agreements, contacts, and incident
    assignment require official validation.
-4. Confirm a local resource and generate a human-reviewable response
+4. **Calibrate:** select a reviewed historical incident or labeled exercise and
+   compare bounded Map/Model/Match/Operate expectations with the current
+   deterministic planner. Treat unavailable checks as evidence gaps, not zero,
+   and never interpret the report as prediction or proof of correctness.
+5. Confirm a local resource and generate a human-reviewable response
    checklist.
-5. Download a self-contained field briefing for printing or
+6. Download a self-contained field briefing for printing or
    limited-connectivity coordination.
-6. Preview how the plan becomes accessible resident guidance, including
+7. Preview how the plan becomes accessible resident guidance, including
    no-car and preferred-language needs.
-7. Verify that the browser interactions, backend routes, AFN source health,
+8. Verify that the browser interactions, backend routes, AFN source health,
    profile completeness, and telemetry delivery appear in Prometheus metrics.
 
 `npm run test:integration` exercises this complete journey through a real Go API
@@ -134,6 +138,14 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   coordination. The directory never claims availability, activation, capacity,
   agreements, credentials, contacts, response time, or assignment; stale and
   unsupported associations remain unmatched.
+- The Response Plan lazy-loads a versioned historical incident/exercise replay
+  catalog covering hurricane, tsunami/earthquake, flood, wildfire, and
+  volcanic conditions across Oʻahu, Maui, Hawaiʻi, and Kauaʻi. It groups
+  deterministic checks by Map, Model, Match, and Operate; keeps actual and
+  bounded expected values separate; cites source IDs; and reports
+  pass/warn/unavailable/fail without a composite score. Replays never tune
+  coefficients, reconstruct person-level outcomes, infer legal orders, or
+  mutate operational/collaborative plans.
 - Route guidance changes for residents without cars, residents needing mobility help, and residents needing powered medical support.
 - Residents can choose a preferred language, see whether the selected resource lists that support, and ask the browser to read route directions aloud.
 - Each neighborhood briefing includes a shelter-versus-move decision, decision trigger, responsible lead, communication path, nearest practice resources, evacuation/access routes, traffic hazards, AFN and language-access actions, evidence basis, freshness, and validation status.

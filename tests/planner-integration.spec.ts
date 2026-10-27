@@ -247,6 +247,133 @@ test('official advisory context never becomes an evacuation order and missing Co
   )
 })
 
+test('historical replay reports mismatches without rewriting evidence', async ({
+  page,
+  request,
+}) => {
+  const catalogResponse = await request.get(
+    `${backendURL}/api/v1/planning/replays`,
+  )
+  expect(catalogResponse.ok()).toBe(true)
+  expect(catalogResponse.headers()['cache-control']).toBe('no-store')
+  const catalog = await catalogResponse.json()
+  expect(catalog.schema_version).toBe('historical-replay-catalog.v1')
+  expect(catalog.fixtures).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'hi-flood-2018-kauai-north-shore',
+        hazard: 'flood',
+        island: 'Kauaʻi',
+        jurisdiction: 'County of Kauaʻi',
+      }),
+      expect.objectContaining({
+        id: 'hi-wildfire-2023-lahaina',
+        hazard: 'wildfire',
+        island: 'Maui',
+        jurisdiction: 'County of Maui',
+      }),
+    ]),
+  )
+
+  const rejected = await request.post(
+    `${backendURL}/api/v1/planning/replays/run`,
+    {
+      data: {
+        schema_version: 'historical-replay-request.v1',
+        fixture_id: 'hi-flood-2018-kauai-north-shore',
+        standard: 'current',
+        source_url: 'integration-private-source.example.test',
+      },
+    },
+  )
+  expect(rejected.status()).toBe(400)
+
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Open response workspace', exact: true })
+    .click()
+  const planningSheet = page.locator('.planning-sheet:visible')
+  const panel = planningSheet.getByTestId('replay-calibration-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('Training and calibration only')
+  await expect(panel).toContainText('No coefficients are tuned')
+
+  await panel.getByRole('button', { name: /^Flood/ }).click()
+  await panel.getByRole('button', { name: 'Run calibration replay' }).click()
+  const firstReport = panel.getByLabel('Calibration replay report')
+  await expect(firstReport).toBeVisible()
+  await expect(firstReport).toContainText('County of Kauaʻi')
+  await expect(firstReport).toContainText('unavailable')
+  await expect(firstReport).toContainText('warn')
+  await expect(firstReport).toContainText('noaa-kauai-oahu-flood-2018')
+  const firstRunID = await firstReport
+    .locator('.replay-result-heading small')
+    .textContent()
+  expect(firstRunID).toMatch(/replay-[a-f0-9]{24}/)
+
+  await panel.getByRole('button', { name: 'Run calibration replay' }).click()
+  await expect(panel.getByLabel('Calibration replay report')).toBeVisible()
+  const secondRunID = await panel
+    .getByLabel('Calibration replay report')
+    .locator('.replay-result-heading small')
+    .textContent()
+  expect(secondRunID).toBe(firstRunID)
+
+  await panel.getByRole('button', { name: /^Wildfire/ }).click()
+  await expect(panel).toContainText('County of Maui')
+  await panel.getByRole('button', { name: 'Run calibration replay' }).click()
+  const wildfireReport = panel.getByLabel('Calibration replay report')
+  await expect(wildfireReport).toContainText(
+    '2023 Lahaina wildfire published incident analysis',
+  )
+  await expect(wildfireReport).toContainText(
+    'hawaii-ag-maui-wildfire-phase-two',
+  )
+
+  const downloadPromise = page.waitForEvent('download')
+  await wildfireReport
+    .getByRole('button', { name: 'Export labeled report' })
+    .click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe(
+    'hi-wildfire-2023-lahaina-calibration-report.html',
+  )
+  const downloadedPath = await download.path()
+  const report = await readFile(downloadedPath, 'utf8')
+  expect(report).toContain('Historical/exercise calibration evidence')
+  expect(report).toContain('Not predictive')
+  expect(report).toContain('hawaii-ag-maui-wildfire-phase-two')
+  expect(report).not.toContain('integration-private-source.example.test')
+
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+  await expect
+    .poll(
+      async () => {
+        const metricsResponse = await request.get(`${backendURL}/metrics`)
+        return metricsResponse.text()
+      },
+      { timeout: 10_000 },
+    )
+    .toContain(
+      'hawaii_resilience_browser_events_total{action="replay_run",category="planning"',
+    )
+
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  const metrics = await metricsResponse.text()
+  expect(metrics).toContain(
+    'hawaii_resilience_historical_replay_runs_total{fixture_category="historical_incident",hazard="flood",outcome="warn"}',
+  )
+  expect(metrics).toContain(
+    'hawaii_resilience_historical_replay_checks_total{check_group="Model",fixture_category="historical_incident",hazard="wildfire",outcome="unavailable"}',
+  )
+  expect(metrics).not.toContain('hi-wildfire-2023-lahaina')
+  expect(metrics).not.toContain('Lahaina')
+  expect(metrics).not.toContain('fsri.org')
+  expect(metrics).not.toContain('replay-')
+  expect(metrics).not.toContain('integration-private-source.example.test')
+})
+
 test('planner completes the Map Model Match journey through the Go API', async ({
   page,
   request,

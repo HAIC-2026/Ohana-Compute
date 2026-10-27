@@ -27,6 +27,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/planningareas"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/replay"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
@@ -99,6 +100,7 @@ type Config struct {
 	ShelterPlans      ShelterPlanReader
 	PlanningAreas     PlanningAreaReader
 	ResourceDemand    ResourceDemandCalculator
+	Replay            ReplayEngine
 	PartnerMatching   PartnerMatcher
 	EventTriggers     EventTriggerReader
 	OperationalStatus OperationalStatusReader
@@ -145,6 +147,10 @@ func NewServer(config Config) *Server {
 	if config.ResourceDemand == nil {
 		defaultCalculator := resourcedemand.NewCalculator()
 		config.ResourceDemand = defaultCalculator
+	}
+	if config.Replay == nil {
+		defaultEngine := replay.NewEngine(config.ResourceDemand)
+		config.Replay = defaultEngine
 	}
 	if config.PartnerMatching == nil {
 		defaultMatcher := partnermatching.NewMatcher()
@@ -276,6 +282,14 @@ func NewServer(config Config) *Server {
 	mux.HandleFunc(
 		"POST /api/v1/planning/resource-demand",
 		resourceDemandHandler(logger, config.ResourceDemand),
+	)
+	mux.HandleFunc(
+		"GET /api/v1/planning/replays",
+		replayCatalogHandler(),
+	)
+	mux.HandleFunc(
+		"POST /api/v1/planning/replays/run",
+		replayRunHandler(logger, metrics, config.Replay),
 	)
 	mux.HandleFunc(
 		"GET /api/v1/planning/partner-matches",

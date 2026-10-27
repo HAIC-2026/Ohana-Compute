@@ -21,6 +21,7 @@ Browser events use only these bounded labels:
   `collaboration_version_save`, `event_trigger_select`,
   `event_trigger_provenance_open`, `event_trigger_retry`,
   `live_status_select`, `live_status_provenance_open`, `live_status_retry`,
+  `replay_fixture_select`, `replay_run`, `replay_export`, `replay_retry`,
   `map_interact`,
   `activate`, `change`, `submit`, or `keyboard`
 - `category`: a fixed element category such as `button`, `select`, `map`,
@@ -76,6 +77,8 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_identity_authorization_total`
 - `hawaii_resilience_collaboration_operations_total`
 - `hawaii_resilience_grounded_planning_operations_total`
+- `hawaii_resilience_historical_replay_runs_total`
+- `hawaii_resilience_historical_replay_checks_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -95,6 +98,15 @@ controlled actions `shelter_county_select`, `shelter_provenance_open`,
 organization names, jurisdiction names, event/product IDs, product text,
 capability claims, document titles, model values, calculation IDs, coordinates,
 or source URLs.
+
+Historical replay metrics use only controlled `fixture_category`
+(`historical_incident` or `synthetic_exercise`), hazard
+(`hurricane`, `tsunami_earthquake`, `flood`, `wildfire`, or `volcanic`), check
+group (`Map`, `Model`, `Match`, or `Operate`), and outcome (`pass`, `warn`,
+`unavailable`, or `fail`). Incident names, source URLs, run IDs, coordinates,
+plan IDs, titles, comments, actor IDs, source text, actual values, and expected
+values are never labels or log fields. The Grafana dashboard includes replay
+run and exact-check outcome panels.
 
 Event-trigger metrics use only `nws`, `ptwc`, `usgs_comcat`, and `usgs_hans`
 source labels and `success`, `stale`, or `error` outcomes. Snapshot state is
@@ -234,6 +246,18 @@ sum by (operation, outcome) (
 ```promql
 sum by (operation, outcome, provider_class) (
   rate(hawaii_resilience_grounded_planning_operations_total[5m])
+)
+```
+
+```promql
+sum by (fixture_category, hazard, outcome) (
+  rate(hawaii_resilience_historical_replay_runs_total[5m])
+)
+```
+
+```promql
+sum by (hazard, check_group, outcome) (
+  rate(hawaii_resilience_historical_replay_checks_total[5m])
 )
 ```
 

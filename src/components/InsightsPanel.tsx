@@ -99,6 +99,12 @@ const CollaborativePlanPanel = lazy(() =>
   })),
 )
 
+const ReplayCalibrationPanel = lazy(() =>
+  import('./ReplayCalibrationPanel').then((module) => ({
+    default: module.ReplayCalibrationPanel,
+  })),
+)
+
 const resourceKindLabels = {
   shelter: 'Shelter',
   'medical-power': 'Medical power',
@@ -699,6 +705,20 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       />
 
       <PartnerMatchPanel state={partnerMatchState} />
+
+      <Suspense
+        fallback={
+          <div className="replay-panel is-loading" role="status">
+            <LoaderCircle className="spin" size={18} />
+            <div>
+              <strong>Opening replay evidence</strong>
+              <p>Loading the controlled calibration catalog.</p>
+            </div>
+          </div>
+        }
+      >
+        <ReplayCalibrationPanel />
+      </Suspense>
 
       <CountyShelterPlanPanel
         island={area.island}

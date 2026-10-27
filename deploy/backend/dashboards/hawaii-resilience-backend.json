@@ -714,6 +714,80 @@
       ],
       "title": "Grounded planning operations",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 76
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (fixture_category, hazard, outcome) (rate(hawaii_resilience_historical_replay_runs_total[5m]))",
+          "legendFormat": "{{fixture_category}} / {{hazard}} / {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Historical replay runs",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 76
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (hazard, check_group, outcome) (rate(hawaii_resilience_historical_replay_checks_total[5m]))",
+          "legendFormat": "{{hazard}} / {{check_group}} / {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Historical replay checks",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
@@ -725,7 +799,8 @@
     "afn",
     "event-triggers",
     "operational-status",
-    "grounded-planning"
+    "grounded-planning",
+    "historical-replay"
   ],
   "templating": {
     "list": [
@@ -750,5 +825,5 @@
   "timezone": "browser",
   "title": "Hawaiʻi Mass Care Planner",
   "uid": "hawaii-resilience",
-  "version": 3
+  "version": 4
 }
