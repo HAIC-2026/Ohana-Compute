@@ -20,12 +20,17 @@ An authenticated configured planner can:
 
 Stale mutations return `409` and never overwrite newer work. The interface
 offers **Refresh and review** after a conflict.
+The browser stores only the active plan ID for each controlled planning
+context so a saved plan can be reopened after the panel remounts or the page
+reloads. Plan content remains server-side.
 
 Planning notes and rationales must not contain names, addresses, contact
 details, medical or case records, or person-level information. Assignments are
 to controlled teams or response roles, never named individuals. API responses
 expose a controlled actor role but never a raw subject ID, email address,
-token, or token claim.
+token, or token claim. Server validation rejects explicit sensitive-data
+markers and common phone, street-address, and labeled contact patterns; it is
+an additional fail-closed guard, not a substitute for the controlled workflow.
 
 ## API
 
@@ -44,8 +49,10 @@ All collaboration responses use `Cache-Control: no-store`. Reads require
 
 Mutations accept exactly one JSON object, reject unknown fields, require
 `application/json`, and are limited to 32 KiB. Text and collection lengths,
-status values, roles, capabilities, due windows, and approval decisions are
-bounded.
+controlled jurisdiction/area/event references, status values, roles,
+capabilities, due windows, and approval decisions are bounded. Setting the
+plan status to `approved` also requires
+`collaboration:approve`; write permission alone is insufficient.
 
 ## SQLite persistence
 

@@ -46,6 +46,31 @@ test('collaborative plans preserve versions and reject stale writes', async ({
   await expect(collaboration).toContainText('Shared plan created')
   await expect(collaboration).toContainText('Shared plan · version 1')
 
+  const unauthorizedApproval = await request.post(
+    `${backendURL}/api/v1/collaboration/plans`,
+    {
+      headers: {
+        Authorization: 'Bearer collaboration-editor-e2e-token',
+        'Content-Type': 'application/json',
+      },
+      data: {
+        jurisdiction: createdPlan.jurisdiction,
+        area_ref: createdPlan.area_ref,
+        event_ref: createdPlan.event_ref,
+        hazard: createdPlan.hazard,
+        title: 'Editor-only approval attempt',
+        summary: 'Editors cannot mark a shared plan approved.',
+        status: 'approved',
+        snapshot: createdPlan.versions[0].snapshot,
+      },
+    },
+  )
+  expect(unauthorizedApproval.status()).toBe(403)
+
+  await planningSheet.getByRole('button', { name: 'Update list' }).click()
+  await expect(collaboration).toContainText('Reopened the active shared plan')
+  await expect(collaboration).toContainText('Shared plan · version 1')
+
   await collaboration
     .getByLabel('Planning summary')
     .fill('Second aggregate planning version for coordinated review.')

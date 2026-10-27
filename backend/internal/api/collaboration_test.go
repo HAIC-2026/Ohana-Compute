@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/collaboration"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -77,10 +79,17 @@ func TestCollaborationApprovalRequiresApprovalCapability(t *testing.T) {
 		t,
 		[]string{string(identity.RolePlanEditor)},
 	)
+	store, err := collaboration.OpenSQLite(
+		filepath.Join(t.TempDir(), "collaboration.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
 	mux := http.NewServeMux()
 	registerCollaborationRoutes(
 		mux,
-		nil,
+		store,
 		authenticator,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		newMetrics(prometheus.NewRegistry()),
@@ -96,6 +105,53 @@ func TestCollaborationApprovalRequiresApprovalCapability(t *testing.T) {
 		}`),
 	)
 	request.Header.Set("Authorization", "Bearer fixture-token")
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCollaborationApprovedStatusRequiresApprovalCapability(t *testing.T) {
+	t.Parallel()
+
+	authenticator := collaborationAuthenticator(
+		t,
+		[]string{string(identity.RolePlanEditor)},
+	)
+	store, err := collaboration.OpenSQLite(
+		filepath.Join(t.TempDir(), "collaboration.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	mux := http.NewServeMux()
+	registerCollaborationRoutes(
+		mux,
+		store,
+		authenticator,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		newMetrics(prometheus.NewRegistry()),
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/collaboration/plans",
+		strings.NewReader(`{
+			"jurisdiction":"honolulu",
+			"area_ref":"oahu-town",
+			"event_ref":"hurricane-lala",
+			"hazard":"hurricane",
+			"title":"Aggregate response plan",
+			"summary":"Aggregate coordination summary.",
+			"status":"approved",
+			"snapshot":{"checklist":[],"source_refs":[],"outputs":[]}
+		}`),
+	)
+	request.Header.Set("Authorization", "Bearer collaboration-test-token")
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 

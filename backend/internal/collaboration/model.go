@@ -3,6 +3,7 @@ package collaboration
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -34,6 +35,7 @@ type ChecklistAction struct {
 type OutputReference struct {
 	Stage     string `json:"stage"`
 	Reference string `json:"reference"`
+	Status    string `json:"status"`
 	Summary   string `json:"summary"`
 }
 
@@ -189,14 +191,16 @@ type Comparison struct {
 }
 
 func ValidateCreate(input CreateInput) error {
-	if err := validateBounded("jurisdiction", input.Jurisdiction, 1, 80); err != nil {
+	if err := validateReferenceToken("jurisdiction", input.Jurisdiction, 80); err != nil {
 		return err
 	}
-	if err := validateBounded("area_ref", input.AreaRef, 1, 120); err != nil {
+	if err := validateReferenceToken("area_ref", input.AreaRef, 120); err != nil {
 		return err
 	}
-	if err := validateOptional("event_ref", input.EventRef, 120); err != nil {
-		return err
+	if strings.TrimSpace(input.EventRef) != "" {
+		if err := validateReferenceToken("event_ref", input.EventRef, 120); err != nil {
+			return err
+		}
 	}
 	if err := validateToken("hazard", input.Hazard, 32); err != nil {
 		return err
@@ -364,6 +368,12 @@ func validateVersionFields(
 		if err := validateBounded("output reference", output.Reference, 1, 120); err != nil {
 			return err
 		}
+		if err := validateReferenceToken("output reference", output.Reference, 120); err != nil {
+			return err
+		}
+		if !contains([]string{"available", "partial", "unavailable"}, output.Status) {
+			return errors.New("output status is invalid")
+		}
 		if err := validateBounded("output summary", output.Summary, 1, 280); err != nil {
 			return err
 		}
@@ -438,6 +448,33 @@ func validateToken(name string, value string, maxLength int) error {
 	return nil
 }
 
+func validateReferenceToken(name string, value string, maxLength int) error {
+	if err := validateBounded(name, value, 1, maxLength); err != nil {
+		return err
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') &&
+			(character < '0' || character > '9') &&
+			character != '_' && character != '-' && character != '.' &&
+			character != ':' {
+			return fmt.Errorf("%s must be a controlled reference token", name)
+		}
+	}
+	return nil
+}
+
+var (
+	sensitivePhonePattern = regexp.MustCompile(
+		`(?i)(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}`,
+	)
+	sensitiveAddressPattern = regexp.MustCompile(
+		`(?i)\b\d{1,6}\s+(?:[a-z0-9.'-]+\s+){0,5}(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|court|ct|place|pl|highway|hwy)\b`,
+	)
+	sensitiveLabeledValuePattern = regexp.MustCompile(
+		`(?i)\b(?:resident|client|patient|contact|name|email|phone|address)\s*:`,
+	)
+)
+
 func rejectSensitivePlanningText(value string) error {
 	lower := strings.ToLower(value)
 	for _, marker := range []string{
@@ -447,6 +484,11 @@ func rejectSensitivePlanningText(value string) error {
 		if strings.Contains(lower, marker) {
 			return errors.New("planning notes must not contain personal or case data")
 		}
+	}
+	if sensitivePhonePattern.MatchString(value) ||
+		sensitiveAddressPattern.MatchString(value) ||
+		sensitiveLabeledValuePattern.MatchString(value) {
+		return errors.New("planning notes must not contain personal or case data")
 	}
 	return nil
 }

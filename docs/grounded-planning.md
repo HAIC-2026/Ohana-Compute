@@ -12,9 +12,11 @@ revision and controlled `operation` and `style` enums. The backend loads the
 stored plan and builds a bounded provider context from:
 
 - the controlled hazard token;
+- controlled jurisdiction and selected planning-area reference tokens;
 - catalog-backed source IDs, authority, data class, integration state,
   freshness state, and up to three published limitations;
-- controlled Map/Model/Match output stage and reference tokens; and
+- controlled Map/Model/Match output stage, reference, and
+  available/partial/unavailable state; and
 - aggregate demand line IDs with modeled/unavailable and modeled-gap states;
 - partner capability IDs with matched/unmatched/stale state while operational
   status, capacity, and activation remain explicitly unvalidated; and
@@ -106,6 +108,10 @@ Partial settings fail startup. Do not place credential values, private
 endpoints, tenant identifiers, or selected model identifiers in source
 control, browser configuration, screenshots, logs, metrics, fixtures, or pull
 request text.
+
+The production HTTP server and browser generation request allow a 35-second
+response window, preserving margin around the maximum 30-second provider
+deadline. Other browser API requests retain the shorter default timeout.
 
 ## Citation and policy enforcement
 

@@ -183,6 +183,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     (catalogBriefing ? area.name : selectedNeighborhood?.name) ??
     locationFocus?.name ??
     area.name
+  const planningAreaRef =
+    selectedPlanningZone?.id ?? selectedNeighborhood?.id ?? area.id
   const planningCoordinates =
     selectedPlanningZone?.coordinates ??
     locationFocus?.coordinates ??
@@ -976,7 +978,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
             <CollaborativePlanPanel
               identityState={identitySessionState}
               jurisdiction={partnerJurisdiction}
-              areaRef={area.id}
+              areaRef={planningAreaRef}
               eventRef={activeEvent?.id ?? ''}
               hazard={hazard}
               suggestedTitle={`${displayPlace} ${selectedHazard.label.toLowerCase()} response plan`}
@@ -1004,18 +1006,31 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                 outputs: [
                   {
                     stage: 'map',
-                    reference: area.id,
+                    reference: planningAreaRef,
+                    status: 'available',
                     summary: `${displayPlace} aggregate planning area for ${selectedHazard.label.toLowerCase()}.`,
                   },
                   {
                     stage: 'model',
                     reference: 'resource-demand.v1',
+                    status:
+                      resourceDemandState.status === 'ready'
+                        ? 'available'
+                        : resourceDemandState.status === 'partial'
+                          ? 'partial'
+                          : 'unavailable',
                     summary:
                       'Deterministic aggregate demand ranges and confirmed practice supply gaps.',
                   },
                   {
                     stage: 'match',
                     reference: partnerJurisdiction,
+                    status:
+                      partnerMatchState.status === 'ready'
+                        ? 'available'
+                        : partnerMatchState.status === 'partial'
+                          ? 'partial'
+                          : 'unavailable',
                     summary:
                       'Controlled capability needs matched to sourced planning partners.',
                   },

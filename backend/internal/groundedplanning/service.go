@@ -319,6 +319,8 @@ func buildContext(
 		SchemaVersion: ContextSchemaVersion,
 		Operation:     request.Operation,
 		Style:         request.Style,
+		Jurisdiction:  plan.Jurisdiction,
+		AreaRef:       plan.AreaRef,
 		Hazard:        plan.Hazard,
 		Evidence:      []ContextEvidence{},
 		Outputs:       []StructuredOutput{},
@@ -401,9 +403,15 @@ func buildContext(
 		}
 		contextValue.Outputs = append(contextValue.Outputs, StructuredOutput{
 			Stage:     output.Stage,
-			Reference: output.Stage + "-output",
-			Status:    "available",
+			Reference: output.Reference,
+			Status:    output.Status,
 		})
+		if output.Status == "unavailable" {
+			contextValue.Gaps = append(
+				contextValue.Gaps,
+				"Structured "+output.Stage+" output is unavailable.",
+			)
+		}
 	}
 	for _, line := range version.Snapshot.DemandLines {
 		contextValue.Demand = append(contextValue.Demand, DemandContext{

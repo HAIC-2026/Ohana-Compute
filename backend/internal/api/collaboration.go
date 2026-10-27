@@ -48,6 +48,15 @@ func registerCollaborationRoutes(
 				writeCollaborationError(writer, http.StatusServiceUnavailable, "collaboration persistence is disabled")
 				return
 			}
+			if input.Status == collaboration.StatusApproved &&
+				!requestPrincipalHasCapability(
+					request,
+					identity.CapabilityCollaborationApprove,
+				) {
+				metrics.observeIdentityAuthorization(identity.AuthorizationForbidden)
+				writeCollaborationError(writer, http.StatusForbidden, "insufficient permission")
+				return
+			}
 			plan, err := store.Create(
 				request.Context(),
 				input,
@@ -74,6 +83,15 @@ func registerCollaborationRoutes(
 			}
 			if store == nil {
 				writeCollaborationError(writer, http.StatusServiceUnavailable, "collaboration persistence is disabled")
+				return
+			}
+			if input.Status == collaboration.StatusApproved &&
+				!requestPrincipalHasCapability(
+					request,
+					identity.CapabilityCollaborationApprove,
+				) {
+				metrics.observeIdentityAuthorization(identity.AuthorizationForbidden)
+				writeCollaborationError(writer, http.StatusForbidden, "insufficient permission")
 				return
 			}
 			plan, err := store.Update(
@@ -263,4 +281,12 @@ func principalRole(request *http.Request, preferred identity.Role) string {
 		return string(preferred)
 	}
 	return string(roles[0])
+}
+
+func requestPrincipalHasCapability(
+	request *http.Request,
+	capability identity.Capability,
+) bool {
+	principal, ok := identity.PrincipalFromContext(request.Context())
+	return ok && principal.HasCapability(capability)
 }

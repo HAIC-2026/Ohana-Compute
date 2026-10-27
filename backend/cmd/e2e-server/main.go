@@ -42,15 +42,18 @@ func (fixtureVerifier) Verify(
 	_ context.Context,
 	token string,
 ) (identity.VerifiedIdentity, error) {
-	if token != "collaboration-e2e-token" {
+	roles := []string{
+		string(identity.RolePlanEditor),
+		string(identity.RolePlanApprover),
+	}
+	if token == "collaboration-editor-e2e-token" {
+		roles = []string{string(identity.RolePlanEditor)}
+	} else if token != "collaboration-e2e-token" {
 		return identity.VerifiedIdentity{}, identity.ErrInvalidCredentials
 	}
 	return identity.VerifiedIdentity{
 		Subject: "deterministic-e2e-principal",
-		Roles: []string{
-			string(identity.RolePlanEditor),
-			string(identity.RolePlanApprover),
-		},
+		Roles:   roles,
 	}, nil
 }
 
