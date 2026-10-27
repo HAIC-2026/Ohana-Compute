@@ -4,6 +4,70 @@ import { expect, test } from '@playwright/test'
 
 const backendURL = 'http://127.0.0.1:18080'
 
+test('official advisory context never becomes an evacuation order and missing County-order data stays unavailable', async ({
+  page,
+  request,
+}) => {
+  const response = await request.get(
+    `${backendURL}/api/v1/planning/event-triggers`,
+  )
+  expect(response.ok()).toBe(true)
+  const snapshot = await response.json()
+  expect(snapshot.schema_version).toBe('event-trigger-snapshot.v1')
+  expect(snapshot.county_order_notice).toBe(
+    'County evacuation-order data unavailable',
+  )
+  expect(snapshot.unavailable_meaning).toBe(
+    'Unavailable does not mean no order.',
+  )
+
+  const advisory = snapshot.triggers.find(
+    (trigger: { source: string; provenance: { product_type: string } }) =>
+      trigger.source === 'nws' &&
+      trigger.provenance.product_type === 'Flood Advisory',
+  )
+  expect(advisory).toMatchObject({
+    planning_state: 'prepare',
+    lifecycle: 'active',
+    legal_order_status: 'not_an_evacuation_order',
+    facts: { response_type: 'Evacuate' },
+  })
+
+  const comCat = snapshot.triggers.filter(
+    (trigger: { source: string }) => trigger.source === 'usgs_comcat',
+  )
+  expect(
+    comCat.map(
+      (trigger: { facts: { tsunami_flag: boolean } }) =>
+        trigger.facts.tsunami_flag,
+    ),
+  ).toEqual([true, false])
+  expect(
+    snapshot.triggers.find(
+      (trigger: { source: string }) => trigger.source === 'usgs_hans',
+    ),
+  ).toMatchObject({
+    lifecycle: 'unavailable',
+    planning_state: 'unavailable',
+    legal_order_status: 'unavailable',
+  })
+
+  await page.goto('/')
+  const panel = page.getByTestId('event-trigger-panel').first()
+  await expect(panel).toContainText(
+    'Planning context — not an evacuation order',
+  )
+  await expect(panel).toContainText('Fixture Flood Advisory')
+  await expect(panel).toContainText('County evacuation-order data unavailable')
+  await expect(panel).toContainText('Unavailable does not mean no order.')
+  await expect(panel).not.toContainText('County order: none')
+
+  const metricsResponse = await request.get(`${backendURL}/metrics`)
+  expect(await metricsResponse.text()).toContain(
+    'hawaii_resilience_event_trigger_source_requests_total{outcome="success",source="nws"}',
+  )
+})
+
 test('planner completes the Map Model Match journey through the Go API', async ({
   page,
   request,
@@ -136,6 +200,10 @@ test('planner completes the Map Model Match journey through the Go API', async (
   const downloadedPath = await download.path()
   const packet = await readFile(downloadedPath, 'utf8')
   expect(packet).toContain('Hawaiʻi Mass Care Field Briefing')
+  expect(packet).toContain('Official operational trigger context')
+  expect(packet).toContain('Planning context — not an evacuation order')
+  expect(packet).toContain('County evacuation-order data unavailable')
+  expect(packet).toContain('Unavailable does not mean no order.')
   expect(packet).toContain('1 · Map affected communities')
   expect(packet).toContain('2 · Model needs and gaps')
   expect(packet).toContain('Data-derived AFN planning hotspots')

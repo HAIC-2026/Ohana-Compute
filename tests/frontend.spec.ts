@@ -510,7 +510,10 @@ test('statewide planning catalog failure does not substitute Oahu content', asyn
   ).toBeVisible()
   await expect(planningSheet).not.toContainText('H-1 urban corridor')
   await expect(planningSheet).not.toContainText('Maui Community Shelter')
-  await planningSheet.getByRole('button', { name: 'Retry' }).click()
+  await planningSheet
+    .getByRole('region', { name: 'Statewide planning depth' })
+    .getByRole('button', { name: 'Retry', exact: true })
+    .click()
   await expect(
     planningSheet
       .getByRole('region', { name: 'Statewide planning depth' })

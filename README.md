@@ -26,6 +26,8 @@ households.
 
 - Island- and neighborhood-first planning for Oʻahu examples
 - Event-dependent resident guidance and official map layers
+- Official operational event-trigger snapshots from NWS, PTWC, and USGS
+  ComCat, with HANS and County-order gaps shown as explicitly unavailable
 - Hawaiʻi Statewide GIS tsunami evacuation-zone checks
 - Statewide FEMA DFIRM flood classification and nearby flood boundaries
 - Hawaiʻi DLNR-DOFAW community wildfire planning-risk classification
@@ -110,6 +112,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/planning-areas`
 - `POST /api/v1/planning/resource-demand`
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
+- `GET /api/v1/planning/event-triggers`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and
@@ -166,6 +169,20 @@ the browser sends no organization names, free text, addresses, coordinates, or
 resource values. Matches are planning evidence, not recommendations,
 assignments, endorsements, contracts, or commitments.
 
+`GET /api/v1/planning/event-triggers` composes source-specific NWS, PTWC, and
+USGS ComCat adapters into a versioned planning snapshot. It preserves product
+IDs, types, issue/effective/expiry times, retrieval and freshness, official
+links, severity/certainty/urgency, magnitude, and tsunami flags while keeping
+the deterministic planning consequence separate from source facts. Forecasts,
+watches, advisories, warnings, CAP response types, earthquake tsunami flags,
+and volcano levels never normalize into a legal evacuation order. Expired
+products remain visible as history and are not an all-clear. HANS remains
+production-disabled because no stable supported public machine contract is
+configured; web pages are not scraped. County evacuation-order data is
+`unavailable`, never “none” or “no order.” If NWS, PTWC, and ComCat all fail,
+the route returns `502`; partial source failure returns an explicit partial
+snapshot.
+
 Hawaiʻi has five political counties but four County emergency-management
 jurisdictions under
 [HRS Chapter 127A](https://data.capitol.hawaii.gov/hrscurrent/Vol03_Ch0121-0200D/HRS0127A/HRS_0127A-0002.htm).
@@ -177,7 +194,8 @@ special case instead of inventing an independent Kalawao shelter agency.
 After generating the response checklist, planners can download a standalone
 HTML field briefing. The packet carries the selected Map → Model → Match
 context, official aggregate AFN values, resource and route checks, assigned
-actions, quantitative resource-demand ranges and unavailable lines, sourced
+actions, official trigger context and authority limits, quantitative
+resource-demand ranges and unavailable lines, sourced
 partner associations and operational-validation gaps, public guidance,
 required local validation checks, and direct Hawaiʻi DHS planning-reference
 URLs. It has embedded print styles and no external runtime dependencies, so it
@@ -250,6 +268,10 @@ Official data is requested from:
 - [FEMA National Shelter System](https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer)
 - [Central Pacific Hurricane Center GIS feed](https://www.nhc.noaa.gov/gis-cp.xml)
 - [Pacific Tsunami Warning Center CAP feed](https://www.tsunami.gov/events/xml/PHEBCAP.xml)
+- [USGS ComCat FDSN Event API](https://earthquake.usgs.gov/fdsnws/event/1/)
+- [USGS HANS public site](https://volcanoes.usgs.gov/hans-public/) — provisional
+  and production-disabled until a stable supported machine contract is
+  available
 - [HDOT planned lane closures](https://services.arcgis.com/HQ0xoN0EzDPBOEci/arcgis/rest/services/Lane_Closure_WFL1_View_NoEd/FeatureServer/0)
 
 Official Hawaiʻi DHS guidance is referenced separately from live or aggregate
@@ -316,8 +338,9 @@ instead of substituting a reassuring answer.
   requests provenance-aware matches by four emergency-management jurisdiction
   IDs; it never sends organization names, user text, or operational values.
 - `src/store/planning-store.ts` holds the client scenario state.
-- `backend/` contains the Go API, normalized source catalog, live NWS/CPHC/PTWC
-  event adapters, official hazard and shelter adapters, community-planning
+- `backend/` contains the Go API, normalized source catalog, live
+  NWS/CPHC/PTWC/USGS event adapters, official hazard and shelter adapters,
+  community-planning
   sources, deterministic resource-demand calculator, curated partner matcher,
   and HDOT planned-closure context.
 

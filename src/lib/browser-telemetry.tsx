@@ -29,6 +29,9 @@ const actions = [
   'partner_capability_select',
   'partner_provenance_open',
   'partner_match_retry',
+  'event_trigger_select',
+  'event_trigger_provenance_open',
+  'event_trigger_retry',
   'map_interact',
   'activate',
   'change',
@@ -276,6 +279,7 @@ function flush(useBeacon: boolean) {
       keepalive: true,
       credentials: 'omit',
     }).catch(() => undefined)
+    if (useBeacon && queuedEvents.length > 0) flush(true)
   } catch {
     // Telemetry is best effort and must never disrupt resident workflows.
   }

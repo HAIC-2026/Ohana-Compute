@@ -10,19 +10,22 @@ import (
 )
 
 type Metrics struct {
-	httpRequests       *prometheus.CounterVec
-	httpDuration       *prometheus.HistogramVec
-	httpInFlight       prometheus.Gauge
-	browserEvents      *prometheus.CounterVec
-	browserDuration    *prometheus.HistogramVec
-	telemetryBatches   *prometheus.CounterVec
-	telemetryRejected  *prometheus.CounterVec
-	afnSourceRequests  *prometheus.CounterVec
-	afnSourceDuration  *prometheus.HistogramVec
-	afnProfiles        *prometheus.CounterVec
-	afnSourceRetrieved *prometheus.GaugeVec
-	afnSourceStale     *prometheus.GaugeVec
-	afnMaskedValues    *prometheus.CounterVec
+	httpRequests        *prometheus.CounterVec
+	httpDuration        *prometheus.HistogramVec
+	httpInFlight        prometheus.Gauge
+	browserEvents       *prometheus.CounterVec
+	browserDuration     *prometheus.HistogramVec
+	telemetryBatches    *prometheus.CounterVec
+	telemetryRejected   *prometheus.CounterVec
+	afnSourceRequests   *prometheus.CounterVec
+	afnSourceDuration   *prometheus.HistogramVec
+	afnProfiles         *prometheus.CounterVec
+	afnSourceRetrieved  *prometheus.GaugeVec
+	afnSourceStale      *prometheus.GaugeVec
+	afnMaskedValues     *prometheus.CounterVec
+	eventSourceRequests *prometheus.CounterVec
+	eventSourceDuration *prometheus.HistogramVec
+	eventSnapshots      *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer) *Metrics {
@@ -137,6 +140,33 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 			},
 			[]string{"field"},
 		),
+		eventSourceRequests: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "event_trigger_source_requests_total",
+				Help:      "Operational event-trigger source requests by bounded source and outcome.",
+			},
+			[]string{"source", "outcome"},
+		),
+		eventSourceDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "event_trigger_source_request_duration_seconds",
+				Help:      "Operational event-trigger source latency by bounded source and outcome.",
+				Buckets: []float64{
+					0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+				},
+			},
+			[]string{"source", "outcome"},
+		),
+		eventSnapshots: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "hawaii_resilience",
+				Name:      "event_trigger_snapshots_total",
+				Help:      "Normalized event-trigger snapshots by bounded state.",
+			},
+			[]string{"state"},
+		),
 	}
 	registerer.MustRegister(
 		metrics.httpRequests,
@@ -152,6 +182,9 @@ func newMetrics(registerer prometheus.Registerer) *Metrics {
 		metrics.afnSourceRetrieved,
 		metrics.afnSourceStale,
 		metrics.afnMaskedValues,
+		metrics.eventSourceRequests,
+		metrics.eventSourceDuration,
+		metrics.eventSnapshots,
 	)
 	return metrics
 }

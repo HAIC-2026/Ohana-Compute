@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 
 import { ScenarioControls } from '../components/ScenarioControls'
+import { EventTriggerPanel } from '../components/EventTriggerPanel'
 import { CommunityAfnSummary } from '../components/CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from '../components/NeighborhoodBriefingPanel'
 import { ResidentRoutePanel } from '../components/ResidentRoutePanel'
@@ -373,10 +374,12 @@ function Home() {
               )}
             </div>
 
+            <EventTriggerPanel compact />
+
             <div className="emergency-choice">
               <div className="active-event-heading">
-                <strong>Active events affecting {selectedIsland}</strong>
-                <span>Practice event feed</span>
+                <strong>Named practice event for {selectedIsland}</strong>
+                <span>Practice only</span>
               </div>
               <nav
                 className="active-event-list"

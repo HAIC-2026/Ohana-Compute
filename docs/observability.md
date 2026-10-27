@@ -17,8 +17,9 @@ Browser events use only these bounded labels:
 - `action`: `navigation`, `dom_content_loaded`, `load`, `hydration`,
   `map_ready`, `hazard_select`, `severity_change`, `area_select`,
   `layer_toggle`, `planning_brief_generate`, `planning_brief_update`,
-  `field_packet_download`, `map_interact`, `activate`, `change`, `submit`, or
-  `keyboard`
+  `field_packet_download`, `event_trigger_select`,
+  `event_trigger_provenance_open`, `event_trigger_retry`, `map_interact`,
+  `activate`, `change`, `submit`, or `keyboard`
 - `category`: a fixed element category such as `button`, `select`, `map`,
   `planning`, or `page`
 - `route`: `home` or `other`; raw paths and query strings are never sent
@@ -62,6 +63,9 @@ rate limiting and are never exported as labels.
 - `hawaii_resilience_afn_source_retrieved_timestamp_seconds`
 - `hawaii_resilience_afn_source_stale`
 - `hawaii_resilience_afn_privacy_masked_observations_total`
+- `hawaii_resilience_event_trigger_source_requests_total`
+- `hawaii_resilience_event_trigger_source_request_duration_seconds`
+- `hawaii_resilience_event_trigger_snapshots_total`
 
 HTTP metrics label requests by bounded method, registered route pattern, and
 response status. The middleware wraps every registered endpoint, including
@@ -76,8 +80,16 @@ controlled actions `shelter_county_select`, `shelter_provenance_open`,
 `shelter_plan_retry`, `resource_demand_duration`,
 `resource_demand_standard`, `resource_demand_retry`,
 `partner_capability_select`, `partner_provenance_open`, and
-`partner_match_retry`, never County or organization names, capability claims,
-document titles, model values, calculation IDs, or source URLs.
+`partner_match_retry`, plus `event_trigger_select`,
+`event_trigger_provenance_open`, and `event_trigger_retry`, never County or
+organization names, jurisdiction names, event/product IDs, product text,
+capability claims, document titles, model values, calculation IDs, coordinates,
+or source URLs.
+
+Event-trigger metrics use only `nws`, `ptwc`, `usgs_comcat`, and `usgs_hans`
+source labels and `success`, `stale`, or `error` outcomes. Snapshot state is
+`complete`, `partial`, or `unavailable`. Product IDs, event text, URLs,
+coordinates, and jurisdiction names are never labels.
 
 AFN source metrics use only four source labels: `acs-5-year`,
 `cdc-svi-2022`, `hhs-empower`, and `fema-nri`. Outcomes are `success` or
@@ -141,6 +153,18 @@ sum by (completeness) (
 ```promql
 sum by (source, outcome) (
   rate(hawaii_resilience_afn_source_requests_total[5m])
+)
+```
+
+```promql
+sum by (source, outcome) (
+  rate(hawaii_resilience_event_trigger_source_requests_total[5m])
+)
+```
+
+```promql
+sum by (state) (
+  rate(hawaii_resilience_event_trigger_snapshots_total[5m])
 )
 ```
 

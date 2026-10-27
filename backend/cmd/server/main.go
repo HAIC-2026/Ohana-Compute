@@ -18,6 +18,8 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/partnermatching"
@@ -26,6 +28,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/usgs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
@@ -79,6 +82,13 @@ func main() {
 	tsunamiProducts := ptwc.NewClient(ptwc.Config{
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	})
+	comCatEvents := usgs.NewClient(usgs.Config{
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	})
+	hansProducts := hans.NewClient(nil)
+	eventTriggerService := eventtriggers.NewService(eventtriggers.Config{
+		NWS: alerts, PTWC: tsunamiProducts, ComCat: comCatEvents, HANS: hansProducts,
+	})
 	transportationSources := transportation.NewClient(
 		arcGISClient,
 		transportation.Config{},
@@ -103,6 +113,7 @@ func main() {
 		PlanningAreas:   planningAreaCatalog,
 		ResourceDemand:  resourceDemandCalculator,
 		PartnerMatching: partnerMatcher,
+		EventTriggers:   eventTriggerService,
 		AllowedOrigins:  allowedOrigins,
 		Logger:          logger,
 		Registry:        registry,

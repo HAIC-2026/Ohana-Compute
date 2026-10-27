@@ -32,6 +32,7 @@ var sources = []Source{
 		Limitations: []string{
 			"Rate limits are not published",
 			"Feed silence is not proof that conditions are safe",
+			"Forecasts, watches, advisories, warnings, and CAP response types are not legal evacuation orders",
 			"An alert alone is not a confirmed road closure",
 		},
 	},
@@ -69,6 +70,62 @@ var sources = []Source{
 		Limitations: []string{
 			"Must be joined to evacuation-zone geometry",
 			"Feed silence must never be treated as an all-clear",
+			"Products and CAP response types are planning facts, not legal evacuation orders",
+		},
+	},
+	{
+		ID:            "usgs-comcat",
+		Name:          "USGS ComCat Hawaiʻi-region earthquakes",
+		Authority:     "U.S. Geological Survey",
+		Phase:         "P0",
+		DataClass:     "live",
+		Access:        "FDSN Event GeoJSON API",
+		URL:           "https://earthquake.usgs.gov/fdsnws/event/1/query",
+		UpdateCadence: "Near-real-time; backend refreshes at most every two minutes",
+		Integration:   "integrated-backend",
+		Enables: []string{
+			"Bounded recent earthquake facts, magnitude, review status, and tsunami flag",
+		},
+		Limitations: []string{
+			"The tsunami flag directs planners to PTWC; it is not a local warning or evacuation order",
+			"Earthquake records older than six hours remain visible as expired history within the 24-hour query window",
+		},
+	},
+	{
+		ID:            "usgs-hans",
+		Name:          "USGS HANS volcano notifications",
+		Authority:     "U.S. Geological Survey Hawaiian Volcano Observatory",
+		Phase:         "P0",
+		DataClass:     "live",
+		Access:        "Provisional machine-contract review",
+		URL:           "https://volcanoes.usgs.gov/hans-public/",
+		UpdateCadence: "Event-driven when a supported contract is available",
+		Integration:   "production-disabled-unavailable",
+		Enables: []string{
+			"Future bounded volcano notification and warning-level context",
+		},
+		Limitations: []string{
+			"No stable supported public machine-readable contract is configured",
+			"Web pages are not scraped and production remains explicitly unavailable",
+			"Volcano levels are not legal evacuation orders",
+		},
+	},
+	{
+		ID:            "county-evacuation-orders",
+		Name:          "County and State evacuation orders",
+		Authority:     "Authorized Hawaiʻi governor and county mayors",
+		Phase:         "P0",
+		DataClass:     "live",
+		Access:        "No verified machine-readable statewide source",
+		URL:           "https://dod.hawaii.gov/hiema/get-ready/",
+		UpdateCadence: "Incident-dependent",
+		Integration:   "unavailable-manual-path-not-implemented",
+		Enables: []string{
+			"Future explicit attributable authorized order records",
+		},
+		Limitations: []string{
+			"Missing data is unavailable and never means no order",
+			"Forecasts, warnings, CAP response types, earthquake flags, and volcano levels cannot be promoted into an order",
 		},
 	},
 	{
