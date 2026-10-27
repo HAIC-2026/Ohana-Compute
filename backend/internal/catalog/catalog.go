@@ -1,5 +1,7 @@
 package catalog
 
+import "strings"
+
 type Source struct {
 	ID              string   `json:"id"`
 	Name            string   `json:"name"`
@@ -489,4 +491,31 @@ func All() []Source {
 	result := make([]Source, len(sources))
 	copy(result, sources)
 	return result
+}
+
+func Find(id string) (Source, bool) {
+	normalized := normalizeID(id)
+	for _, source := range sources {
+		if source.ID == normalized {
+			return source, true
+		}
+	}
+	return Source{}, false
+}
+
+func normalizeID(id string) string {
+	switch strings.ToLower(strings.TrimSpace(id)) {
+	case "acs-2024":
+		return "acs-5-year"
+	case "svi-2022":
+		return "cdc-svi"
+	case "hhs-empower":
+		return "hhs-empower"
+	case "fema-nri":
+		return "fema-nri"
+	case "state-gis-demo":
+		return "hawaii-geoportal"
+	default:
+		return strings.ToLower(strings.TrimSpace(id))
+	}
 }

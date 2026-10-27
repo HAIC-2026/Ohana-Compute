@@ -987,7 +987,20 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   owner: priority.owner,
                   timing: priority.timing,
                 })),
-                source_refs: brief.citations.slice(0, 30),
+                source_refs: [
+                  ...brief.citations,
+                  ...(resourceDemandState.response?.sources.map(
+                    (source) => source.id,
+                  ) ?? []),
+                  ...(partnerMatchState.response?.matches.flatMap((match) =>
+                    match.partners.map((partner) => partner.evidence.source_id),
+                  ) ?? []),
+                ]
+                  .filter(
+                    (source, index, sources) =>
+                      sources.indexOf(source) === index,
+                  )
+                  .slice(0, 30),
                 outputs: [
                   {
                     stage: 'map',
@@ -1007,6 +1020,29 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                       'Controlled capability needs matched to sourced planning partners.',
                   },
                 ],
+                demand_lines:
+                  resourceDemandState.response?.lines
+                    .slice(0, 20)
+                    .map((line) => ({
+                      id: line.id,
+                      status: line.status,
+                      gap_state:
+                        line.status === 'unavailable'
+                          ? ('unavailable' as const)
+                          : (line.gap?.planning ?? 0) > 0
+                            ? ('modeled_gap' as const)
+                            : ('no_modeled_gap' as const),
+                    })) ?? [],
+                partner_capabilities:
+                  partnerMatchState.response?.matches
+                    .slice(0, 12)
+                    .map((match) => ({
+                      capability: match.capability,
+                      status: match.status,
+                      operational_status: 'not_validated' as const,
+                      capacity_status: 'not_reported' as const,
+                      activation_status: 'not_reported' as const,
+                    })) ?? [],
               }}
             />
           </Suspense>

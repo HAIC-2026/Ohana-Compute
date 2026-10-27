@@ -148,6 +148,19 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 - Scenario controls and aggregate impact summaries for selected planning areas.
 - CMIST categories: Communication, Medical, Independence, Safety/Support, and Transportation.
 - AI-assisted explanation and planning summaries grounded only in structured map context.
+- The collaborative-plan workspace contains one compact, lazy-loaded
+  “Planning assist — review required” surface. It supports only controlled
+  gap, action, and evidence-summary operations; displays citations,
+  uncertainty, and policy warnings separately from human decisions; and
+  requires explicit selection and application.
+- Provider generation never changes a plan. Rejected drafts leave no plan
+  version; applied selections create a normal human-attributed immutable
+  version with bounded AI-assistance provenance and remain subject to optimistic
+  concurrency.
+- Missing citations, unknown sources, legal-order or all-clear language,
+  partner activation or capacity claims, operational availability claims,
+  official approval, person-specific medical advice, invented numbers, and
+  unavailable-as-zero output fail closed.
 - AI does not generate or modify quantitative demand values; the Go calculator
   is deterministic, versioned, and auditable.
 - No personally identifiable information, stored addresses, individual registry, live tracking, dispatch, or autonomous resource allocation.
@@ -210,6 +223,10 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
     no incident, no outage, passable, contained, restored, or all clear.
 18. Identity is disabled unless explicitly and completely configured. Provider
     metadata without a cryptographic verifier never enables server writes.
+19. AI provider access is disabled unless identity, collaboration persistence,
+    exact endpoint/model allowlists, timeouts, output bounds, and an external
+    credential are all configured. A provider failure never blocks the local
+    planner or becomes a success-shaped draft.
 
 ## Accessibility & Inclusion
 

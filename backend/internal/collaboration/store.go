@@ -20,6 +20,7 @@ type Store interface {
 	Create(context.Context, CreateInput, string) (Plan, error)
 	Get(context.Context, string) (Plan, error)
 	Update(context.Context, string, UpdateInput, string) (Plan, error)
+	ApplyAIDraft(context.Context, string, AIApplyInput, string) (Plan, error)
 	AddComment(context.Context, string, CommentInput, string) (Plan, error)
 	AddAssignment(context.Context, string, AssignmentInput, string) (Plan, error)
 	AddApproval(context.Context, string, ApprovalInput, string) (Plan, error)
@@ -83,10 +84,33 @@ func (store *SQLiteStore) initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("collaboration: read migration version: %w", err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fmt.Errorf("collaboration: unsupported schema version %d", version)
 	}
+	if version == 2 {
+		return nil
+	}
 	if version == 1 {
+		tx, err := store.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("collaboration: begin migration: %w", err)
+		}
+		defer tx.Rollback()
+		for _, statement := range migrationV2 {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return fmt.Errorf("collaboration: migrate schema v2: %w", err)
+			}
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			"INSERT INTO schema_migrations(version, applied_at) VALUES(2, ?)",
+			time.Now().UTC().Format(time.RFC3339Nano),
+		); err != nil {
+			return fmt.Errorf("collaboration: record migration v2: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("collaboration: commit migration v2: %w", err)
+		}
 		return nil
 	}
 	tx, err := store.db.BeginTx(ctx, nil)
@@ -109,7 +133,7 @@ func (store *SQLiteStore) initialize(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("collaboration: commit migration: %w", err)
 	}
-	return nil
+	return store.initialize(ctx)
 }
 
 var migrationV1 = []string{
@@ -180,6 +204,11 @@ var migrationV1 = []string{
 	`CREATE INDEX plan_audit_plan_time ON plan_audit(plan_id, created_at)`,
 }
 
+var migrationV2 = []string{
+	`ALTER TABLE plan_versions ADD COLUMN ai_assistance_json TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE plan_audit ADD COLUMN metadata_json TEXT NOT NULL DEFAULT ''`,
+}
+
 func (store *SQLiteStore) Create(
 	ctx context.Context,
 	input CreateInput,
@@ -213,8 +242,9 @@ func (store *SQLiteStore) Create(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO plan_versions(
-			plan_id, version, title, summary, status, snapshot_json, actor_role, created_at
-		) VALUES(?, 1, ?, ?, ?, ?, ?, ?)`,
+			plan_id, version, title, summary, status, snapshot_json, actor_role,
+			ai_assistance_json, created_at
+		) VALUES(?, 1, ?, ?, ?, ?, ?, '', ?)`,
 		planID, strings.TrimSpace(input.Title), strings.TrimSpace(input.Summary),
 		input.Status, string(snapshotJSON), actorRole, formatTime(now),
 	)
@@ -326,8 +356,9 @@ func (store *SQLiteStore) Update(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO plan_versions(
-			plan_id, version, title, summary, status, snapshot_json, actor_role, created_at
-		) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+			plan_id, version, title, summary, status, snapshot_json, actor_role,
+			ai_assistance_json, created_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, '', ?)`,
 		planID, nextVersion, strings.TrimSpace(input.Title), strings.TrimSpace(input.Summary),
 		input.Status, string(snapshotJSON), actorRole, formatTime(now),
 	)
@@ -335,6 +366,97 @@ func (store *SQLiteStore) Update(
 		return Plan{}, err
 	}
 	if err := insertAudit(ctx, tx, planID, "version_created", "version", actorRole, now); err != nil {
+		return Plan{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Plan{}, err
+	}
+	return store.Get(ctx, planID)
+}
+
+func (store *SQLiteStore) ApplyAIDraft(
+	ctx context.Context,
+	planID string,
+	input AIApplyInput,
+	actorRole string,
+) (Plan, error) {
+	if err := ValidateAIApply(input); err != nil {
+		return Plan{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	snapshotJSON, err := json.Marshal(input.Snapshot)
+	if err != nil {
+		return Plan{}, err
+	}
+	assistanceJSON, err := json.Marshal(input.Assistance)
+	if err != nil {
+		return Plan{}, err
+	}
+	metadataJSON, err := json.Marshal(map[string]string{
+		"assistance":              "ai",
+		"provider_policy_version": input.Assistance.ProviderPolicyVersion,
+		"input_context_hash":      input.Assistance.InputContextHash,
+	})
+	if err != nil {
+		return Plan{}, err
+	}
+	now := time.Now().UTC()
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Plan{}, err
+	}
+	defer tx.Rollback()
+	var currentVersion, revision int
+	var title string
+	err = tx.QueryRowContext(
+		ctx,
+		"SELECT current_version, revision, title FROM plans WHERE id = ?",
+		planID,
+	).Scan(&currentVersion, &revision, &title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Plan{}, ErrNotFound
+	}
+	if err != nil {
+		return Plan{}, err
+	}
+	if revision != input.ExpectedRevision {
+		return Plan{}, ErrConflict
+	}
+	nextVersion := currentVersion + 1
+	result, err := tx.ExecContext(ctx, `
+		UPDATE plans SET summary = ?, status = ?, current_version = ?,
+			revision = revision + 1, updated_at = ?
+		WHERE id = ? AND revision = ?`,
+		strings.TrimSpace(input.Summary), StatusDraft, nextVersion,
+		formatTime(now), planID, input.ExpectedRevision,
+	)
+	if err != nil {
+		return Plan{}, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return Plan{}, ErrConflict
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO plan_versions(
+			plan_id, version, title, summary, status, snapshot_json, actor_role,
+			ai_assistance_json, created_at
+		) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		planID, nextVersion, title, strings.TrimSpace(input.Summary), StatusDraft,
+		string(snapshotJSON), actorRole, string(assistanceJSON), formatTime(now),
+	)
+	if err != nil {
+		return Plan{}, err
+	}
+	if err := insertAuditWithMetadata(
+		ctx,
+		tx,
+		planID,
+		"ai_draft_applied",
+		"version",
+		actorRole,
+		string(metadataJSON),
+		now,
+	); err != nil {
 		return Plan{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -516,7 +638,8 @@ func (store *SQLiteStore) Close() error {
 
 func (store *SQLiteStore) loadVersions(ctx context.Context, planID string) ([]Version, error) {
 	rows, err := store.db.QueryContext(ctx, `
-		SELECT version, title, summary, status, snapshot_json, actor_role, created_at
+		SELECT version, title, summary, status, snapshot_json, actor_role,
+			ai_assistance_json, created_at
 		FROM plan_versions WHERE plan_id = ? ORDER BY version`,
 		planID,
 	)
@@ -527,15 +650,24 @@ func (store *SQLiteStore) loadVersions(ctx context.Context, planID string) ([]Ve
 	versions := []Version{}
 	for rows.Next() {
 		var version Version
-		var snapshotJSON, createdAt string
+		var snapshotJSON, assistanceJSON, createdAt string
 		if err := rows.Scan(
 			&version.Version, &version.Title, &version.Summary, &version.Status,
-			&snapshotJSON, &version.ActorRole, &createdAt,
+			&snapshotJSON, &version.ActorRole, &assistanceJSON, &createdAt,
 		); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(snapshotJSON), &version.Snapshot); err != nil {
 			return nil, err
+		}
+		if assistanceJSON != "" {
+			version.AIAssistance = &AIAssistanceMetadata{}
+			if err := json.Unmarshal(
+				[]byte(assistanceJSON),
+				version.AIAssistance,
+			); err != nil {
+				return nil, err
+			}
 		}
 		version.CreatedAt, err = parseTime(createdAt)
 		if err != nil {
@@ -637,7 +769,7 @@ func (store *SQLiteStore) loadApprovals(ctx context.Context, planID string) ([]A
 
 func (store *SQLiteStore) loadAudit(ctx context.Context, planID string) ([]AuditEvent, error) {
 	rows, err := store.db.QueryContext(ctx, `
-		SELECT id, action, resource_type, actor_role, outcome, created_at
+		SELECT id, action, resource_type, actor_role, outcome, metadata_json, created_at
 		FROM plan_audit WHERE plan_id = ? ORDER BY created_at`,
 		planID,
 	)
@@ -648,12 +780,17 @@ func (store *SQLiteStore) loadAudit(ctx context.Context, planID string) ([]Audit
 	events := []AuditEvent{}
 	for rows.Next() {
 		var item AuditEvent
-		var createdAt string
+		var metadataJSON, createdAt string
 		if err := rows.Scan(
 			&item.ID, &item.Action, &item.ResourceType, &item.ActorRole,
-			&item.Outcome, &createdAt,
+			&item.Outcome, &metadataJSON, &createdAt,
 		); err != nil {
 			return nil, err
+		}
+		if metadataJSON != "" {
+			if err := json.Unmarshal([]byte(metadataJSON), &item.Metadata); err != nil {
+				return nil, err
+			}
 		}
 		item.CreatedAt, err = parseTime(createdAt)
 		if err != nil {
@@ -673,11 +810,35 @@ func insertAudit(
 	actorRole string,
 	now time.Time,
 ) error {
+	return insertAuditWithMetadata(
+		ctx,
+		tx,
+		planID,
+		action,
+		resourceType,
+		actorRole,
+		"",
+		now,
+	)
+}
+
+func insertAuditWithMetadata(
+	ctx context.Context,
+	tx *sql.Tx,
+	planID string,
+	action string,
+	resourceType string,
+	actorRole string,
+	metadataJSON string,
+	now time.Time,
+) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO plan_audit(
-			id, plan_id, action, resource_type, actor_role, outcome, created_at
-		) VALUES(?, ?, ?, ?, ?, 'success', ?)`,
-		newID("audit"), planID, action, resourceType, actorRole, formatTime(now),
+			id, plan_id, action, resource_type, actor_role, outcome, metadata_json,
+			created_at
+		) VALUES(?, ?, ?, ?, ?, 'success', ?, ?)`,
+		newID("audit"), planID, action, resourceType, actorRole, metadataJSON,
+		formatTime(now),
 	)
 	return err
 }

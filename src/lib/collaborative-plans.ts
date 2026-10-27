@@ -12,6 +12,18 @@ export type CollaborativePlanSnapshot = {
     reference: string
     summary: string
   }>
+  demand_lines?: Array<{
+    id: string
+    status: 'modeled' | 'unavailable'
+    gap_state: 'modeled_gap' | 'no_modeled_gap' | 'unavailable'
+  }>
+  partner_capabilities?: Array<{
+    capability: string
+    status: 'matched' | 'unmatched' | 'stale'
+    operational_status: 'not_validated'
+    capacity_status: 'not_reported'
+    activation_status: 'not_reported'
+  }>
 }
 
 export type CollaborativePlanVersion = {
@@ -21,6 +33,10 @@ export type CollaborativePlanVersion = {
   status: CollaborativePlanStatus
   snapshot: CollaborativePlanSnapshot
   actor_role: string
+  ai_assistance?: {
+    provider_policy_version: string
+    input_context_hash: string
+  }
   created_at: string
 }
 
@@ -69,6 +85,7 @@ export type CollaborativePlan = {
     resource_type: string
     actor_role: string
     outcome: string
+    metadata?: Record<string, string>
     created_at: string
   }>
 }

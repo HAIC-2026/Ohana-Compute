@@ -7,6 +7,15 @@
 {{- if and (eq .Values.collaboration.persistence "sqlite") (ne (int .Values.replicaCount) 1) }}
 {{- fail "SQLite collaboration persistence requires replicaCount=1" }}
 {{- end }}
+{{- if not (has .Values.groundedPlanning.mode (list "disabled" "openai-compatible")) }}
+{{- fail "groundedPlanning.mode must be disabled or openai-compatible" }}
+{{- end }}
+{{- if and (eq .Values.groundedPlanning.mode "openai-compatible") (ne .Values.identity.mode "oidc") }}
+{{- fail "groundedPlanning requires identity.mode=oidc" }}
+{{- end }}
+{{- if and (eq .Values.groundedPlanning.mode "openai-compatible") (ne .Values.collaboration.persistence "sqlite") }}
+{{- fail "groundedPlanning requires collaboration.persistence=sqlite" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,9 +48,27 @@ spec:
               value: {{ .Values.identity.mode | quote }}
             - name: COLLABORATION_PERSISTENCE
               value: {{ .Values.collaboration.persistence | quote }}
+            - name: GROUNDED_AI_MODE
+              value: {{ .Values.groundedPlanning.mode | quote }}
 {{- if eq .Values.collaboration.persistence "sqlite" }}
             - name: COLLABORATION_SQLITE_PATH
               value: {{ required "collaboration.sqlite.path is required when persistence=sqlite" .Values.collaboration.sqlite.path | quote }}
+{{- end }}
+{{- if eq .Values.groundedPlanning.mode "openai-compatible" }}
+            - name: GROUNDED_AI_ENDPOINT
+              value: {{ required "groundedPlanning.endpoint is required" .Values.groundedPlanning.endpoint | quote }}
+            - name: GROUNDED_AI_ALLOWED_ENDPOINTS
+              value: {{ required "groundedPlanning.allowedEndpoints is required" .Values.groundedPlanning.allowedEndpoints | quote }}
+            - name: GROUNDED_AI_MODEL
+              value: {{ required "groundedPlanning.model is required" .Values.groundedPlanning.model | quote }}
+            - name: GROUNDED_AI_ALLOWED_MODELS
+              value: {{ required "groundedPlanning.allowedModels is required" .Values.groundedPlanning.allowedModels | quote }}
+            - name: GROUNDED_AI_TIMEOUT
+              value: {{ .Values.groundedPlanning.timeout | quote }}
+            - name: GROUNDED_AI_MAX_OUTPUT_TOKENS
+              value: {{ .Values.groundedPlanning.maxOutputTokens | quote }}
+            - name: GROUNDED_AI_API_KEY_FILE
+              value: /mnt/secrets-store/{{ .Values.azure.groundedPlanningSecretName }}
 {{- end }}
 {{- if eq .Values.identity.mode "oidc" }}
             - name: OIDC_ISSUER_URL

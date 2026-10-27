@@ -19,6 +19,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/groundedplanning"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
@@ -103,6 +104,7 @@ type Config struct {
 	OperationalStatus OperationalStatusReader
 	Identity          identity.Authenticator
 	Collaboration     collaboration.Store
+	GroundedPlanning  *groundedplanning.Service
 	AllowedOrigins    []string
 	Logger            *slog.Logger
 	Registry          *prometheus.Registry
@@ -184,6 +186,18 @@ func NewServer(config Config) *Server {
 	registerCollaborationRoutes(
 		mux,
 		config.Collaboration,
+		config.Identity,
+		logger,
+		metrics,
+	)
+	if config.GroundedPlanning == nil {
+		config.GroundedPlanning = groundedplanning.NewService(
+			groundedplanning.Config{Store: config.Collaboration},
+		)
+	}
+	registerGroundedPlanningRoutes(
+		mux,
+		config.GroundedPlanning,
 		config.Identity,
 		logger,
 		metrics,
@@ -531,6 +545,57 @@ func resourceDemandHandler(
 		}
 		writeJSON(writer, http.StatusOK, response)
 	}
+}
+
+func decodeJSONWithLimit(
+	writer http.ResponseWriter,
+	request *http.Request,
+	target any,
+	maxBodyBytes int64,
+	requestName string,
+) bool {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeAPIError(
+			writer,
+			http.StatusUnsupportedMediaType,
+			"Content-Type must be application/json",
+			"",
+		)
+		return false
+	}
+	request.Body = http.MaxBytesReader(writer, request.Body, maxBodyBytes)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			writeAPIError(
+				writer,
+				http.StatusRequestEntityTooLarge,
+				requestName+" is too large",
+				"",
+			)
+			return false
+		}
+		writeAPIError(
+			writer,
+			http.StatusBadRequest,
+			"invalid "+requestName,
+			"",
+		)
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeAPIError(
+			writer,
+			http.StatusBadRequest,
+			requestName+" must contain one JSON object",
+			"",
+		)
+		return false
+	}
+	return true
 }
 
 func partnerMatchHandler(

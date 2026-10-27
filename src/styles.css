@@ -5992,6 +5992,267 @@ select:focus-visible {
   cursor: not-allowed;
 }
 
+.planning-assist {
+  display: grid;
+  margin: 0 14px 14px;
+  overflow: hidden;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--cp-accent) 42%, var(--cp-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cp-accent-soft) 42%, var(--cp-surface));
+}
+
+.planning-assist > header {
+  display: flex;
+  padding: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.planning-assist > header h4 {
+  display: inline-flex;
+  margin: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--cp-accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.planning-assist > header p {
+  max-width: 62ch;
+  margin: 4px 0 0;
+  color: var(--cp-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.planning-assist > header > strong {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border: 1px solid var(--cp-warning);
+  border-radius: 999px;
+  color: var(--cp-text);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.planning-assist-state {
+  display: flex;
+  margin: 0 12px;
+  padding: 10px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--cp-border);
+  border-radius: 9px;
+  color: var(--cp-text-muted);
+  background: var(--cp-surface);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.planning-assist-state > svg {
+  flex: 0 0 auto;
+  color: var(--cp-warning);
+}
+
+.planning-assist-controls {
+  display: grid;
+  padding: 0 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr);
+  gap: 8px;
+}
+
+.planning-assist-controls label {
+  display: grid;
+  gap: 5px;
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.planning-assist-controls select {
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 1px solid var(--cp-border);
+  border-radius: 8px;
+  color: var(--cp-text);
+  background: var(--cp-bg-elevated);
+  font-size: 10px;
+}
+
+.planning-assist-controls button,
+.planning-assist-actions button {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 0 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 9px;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.planning-assist-controls button {
+  grid-column: 1 / -1;
+}
+
+.planning-assist-controls button:disabled,
+.planning-assist-actions button:disabled {
+  color: var(--cp-text-muted);
+  cursor: not-allowed;
+}
+
+.planning-assist-draft {
+  display: grid;
+  padding: 0 12px;
+  gap: 9px;
+}
+
+.planning-assist-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--cp-text);
+  font-size: 10px;
+}
+
+.planning-assist-label span {
+  color: var(--cp-text-muted);
+  font-size: 9px;
+}
+
+.planning-assist-selection {
+  display: grid;
+  padding: 10px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid var(--cp-border);
+  border-radius: 9px;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  font-size: 9px;
+}
+
+.planning-assist-selection input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--cp-accent);
+}
+
+.planning-assist-selection p {
+  margin: 4px 0 0;
+  color: var(--cp-text-muted);
+  line-height: 1.45;
+}
+
+.planning-assist-selection small {
+  color: var(--cp-accent);
+  font-size: 9px;
+}
+
+.planning-assist-citations {
+  border: 1px solid var(--cp-border);
+  border-radius: 9px;
+  background: var(--cp-surface);
+}
+
+.planning-assist-citations summary {
+  display: flex;
+  min-height: 44px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.planning-assist-citations ul,
+.planning-assist-gaps ul {
+  display: grid;
+  margin: 0;
+  padding: 0 10px 10px 27px;
+  gap: 6px;
+}
+
+.planning-assist-citations li {
+  font-size: 9px;
+}
+
+.planning-assist-citations li span,
+.planning-assist-citations li small {
+  display: block;
+  margin-top: 2px;
+  color: var(--cp-text-muted);
+}
+
+.planning-assist-gaps {
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--cp-warning) 55%, var(--cp-border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cp-warning) 8%, var(--cp-surface));
+  font-size: 10px;
+}
+
+.planning-assist-gaps ul {
+  margin-top: 6px;
+  padding-bottom: 0;
+}
+
+.planning-assist-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.planning-assist-actions button:last-child {
+  border-color: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  background: var(--cp-accent);
+}
+
+.planning-assist-footnote {
+  padding: 0 12px 12px;
+  color: var(--cp-text-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .planning-assist > header {
+    display: grid;
+  }
+
+  .planning-assist > header > strong {
+    justify-self: start;
+  }
+
+  .planning-assist-controls,
+  .planning-assist-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planning-assist-label {
+    display: grid;
+  }
+
+  .planning-assist-label span {
+    overflow-wrap: anywhere;
+  }
+}
+
 .collaboration-workflows {
   border-top: 1px solid var(--cp-border);
 }

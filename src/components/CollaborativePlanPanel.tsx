@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -58,6 +58,12 @@ const assignmentCapabilityLabels = {
   publish_guidance: 'Publish guidance',
   support_accessibility: 'Support accessibility',
 } as const
+
+const GroundedPlanningAssist = lazy(() =>
+  import('./GroundedPlanningAssist').then((module) => ({
+    default: module.GroundedPlanningAssist,
+  })),
+)
 
 export function CollaborativePlanPanel(props: Props) {
   const [plan, setPlan] = useState<CollaborativePlan | null>(null)
@@ -301,6 +307,30 @@ export function CollaborativePlanPanel(props: Props) {
         )}
         {plan ? 'Save new version' : 'Save shared plan'}
       </button>
+
+      {plan && (
+        <Suspense
+          fallback={
+            <div className="planning-assist is-loading" role="status">
+              <LoaderCircle className="spin" size={17} />
+              Loading review-only planning assist
+            </div>
+          }
+        >
+          <GroundedPlanningAssist
+            plan={plan}
+            canWrite={canWrite}
+            onPlanApplied={(next) => {
+              setPlan(next)
+              setTitle(next.title)
+              setSummary(next.summary)
+              setStatus(next.status)
+              setFromVersion(Math.max(1, next.current_version - 1))
+              setToVersion(next.current_version)
+            }}
+          />
+        </Suspense>
+      )}
 
       {plan && (
         <div className="collaboration-workflows">
@@ -643,8 +673,12 @@ export function CollaborativePlanPanel(props: Props) {
               {newestVersion && (
                 <p className="collaboration-provenance">
                   Current snapshot created by{' '}
-                  {newestVersion.actor_role.replace('_', ' ')}. Audit entries
-                  contain controlled actions and roles only.
+                  {newestVersion.actor_role.replace('_', ' ')}
+                  {newestVersion.ai_assistance
+                    ? ' with reviewed AI-assisted content'
+                    : ''}
+                  . Audit entries contain controlled actions, roles, and bounded
+                  assistance provenance only.
                 </p>
               )}
             </div>

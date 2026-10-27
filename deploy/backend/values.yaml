@@ -38,11 +38,21 @@ collaboration:
     storageClassName: ''
     size: 2Gi
 
+groundedPlanning:
+  mode: disabled
+  endpoint: ''
+  allowedEndpoints: ''
+  model: ''
+  allowedModels: ''
+  timeout: 15s
+  maxOutputTokens: 1024
+
 azure:
   tenantId: ''
   workloadIdentityClientId: ''
   keyVaultName: ''
   censusSecretName: census-api-key
+  groundedPlanningSecretName: grounded-ai-api-key
 
 resources:
   requests:
