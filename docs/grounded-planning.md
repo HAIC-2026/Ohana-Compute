@@ -5,6 +5,12 @@ the authenticated collaborative-plan workflow. It is not a chatbot, decision
 maker, approval system, alerting channel, partner activation mechanism, or
 source of legal orders.
 
+The [Waiʻanae fictional assistance case](waianae-assistance-case.md) is a
+separate deterministic workflow. Its fictional persona, map snapshot and
+editable timing assumptions are not in this server-owned evidence contract
+and are not sent to a provider. The case does not demonstrate live AI
+inference; existing test-provider evaluations must not be presented as that.
+
 ## Data boundary
 
 The browser sends only the plan reference in the route plus the expected

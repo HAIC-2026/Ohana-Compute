@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
@@ -373,6 +373,9 @@ function Home() {
         </div>
 
         <div className="header-actions">
+          <Link className="case-entry-link" to="/waianae">
+            Kupuna A case
+          </Link>
           <span className="prototype-badge">Practice data</span>
           <button
             type="button"

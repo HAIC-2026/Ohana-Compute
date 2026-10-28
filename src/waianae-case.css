@@ -1,0 +1,622 @@
+.waianae-case {
+  height: 100dvh;
+  overflow: auto;
+  background: var(--cp-bg);
+}
+
+.case-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 64px;
+  padding: 14px 28px;
+  background: var(--cp-header);
+  color: var(--cp-header-text);
+}
+
+.case-header a,
+.case-entry-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cp-header-text);
+  text-underline-offset: 4px;
+  font-size: 13px;
+}
+
+.case-header > span {
+  margin-left: auto;
+  color: var(--cp-header-muted);
+  font-size: 13px;
+}
+
+.case-introduction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  max-width: 1680px;
+  margin: auto;
+}
+
+.case-introduction h1 {
+  margin: 0 0 10px;
+  font-size: clamp(24px, 2.4vw, 30px);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.case-introduction p {
+  margin: 0;
+  color: var(--cp-text-muted);
+  max-width: 70ch;
+  line-height: 1.5;
+}
+
+.case-introduction-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  max-width: 290px;
+}
+
+.waianae-case .maplibregl-ctrl button {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.case-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  padding: 0 28px 32px;
+  max-width: 1680px;
+  margin: auto;
+}
+
+.case-workflow,
+.case-geography {
+  min-width: 0;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+}
+
+.case-geography {
+  position: sticky;
+  top: 16px;
+}
+
+.case-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.waianae-case button {
+  cursor: pointer;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 0.625rem;
+  padding: 10px 12px;
+  background: var(--cp-surface);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.waianae-case button:hover:not(:disabled) {
+  background: var(--cp-surface-soft);
+}
+
+.waianae-case button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.waianae-case button.case-primary {
+  background: var(--cp-accent);
+  border-color: var(--cp-accent);
+  color: var(--cp-accent-fg);
+}
+
+.waianae-case button.case-primary:hover:not(:disabled) {
+  background: var(--cp-accent-hover);
+}
+
+.case-tabs button {
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  padding: 14px 5px;
+  color: var(--cp-text-muted);
+}
+
+.case-tabs button[aria-selected='true'] {
+  box-shadow: inset 0 -3px var(--cp-accent);
+  color: var(--cp-text);
+  background: var(--cp-accent-soft);
+}
+
+.case-tabs button > span {
+  font-size: 12px;
+}
+
+.case-step {
+  padding: 24px;
+}
+
+.case-step h2,
+.case-geography h2 {
+  font-size: 23px;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  margin: 0 0 12px;
+}
+
+.case-step h3,
+.case-geography h3 {
+  font-size: 16px;
+  margin: 24px 0 10px;
+}
+
+.case-step p,
+.case-geography p,
+.case-step li {
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 72ch;
+}
+
+.case-step p,
+.case-geography p {
+  color: var(--cp-text-muted);
+  margin: 0 0 16px;
+}
+
+.case-step a,
+.case-geography a {
+  color: var(--cp-link);
+  text-underline-offset: 3px;
+}
+
+.case-boundary {
+  padding: 16px;
+  margin: 20px 0;
+  border: 1px solid var(--cp-border-strong);
+  background: var(--cp-surface-soft);
+  border-radius: 0.625rem;
+  font-size: 14px;
+}
+
+.case-boundary p:last-child {
+  margin: 8px 0 0;
+}
+
+.case-evidence-list {
+  margin: 0 0 18px;
+  font-size: 14px;
+}
+
+.case-evidence-list > div {
+  padding: 12px 0;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.case-evidence-list dt {
+  font-weight: 700;
+}
+
+.case-evidence-list dd {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--cp-text-muted);
+}
+
+.case-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 22px 0;
+}
+
+.case-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.case-inputs input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 0.625rem;
+  color: var(--cp-text);
+  background: var(--cp-bg-elevated);
+  font-variant-numeric: tabular-nums;
+}
+
+.case-inputs input[aria-invalid='true'] {
+  border-color: var(--cp-danger);
+}
+
+.case-error {
+  color: var(--cp-danger) !important;
+  font-size: 13px;
+}
+
+.case-step table,
+.case-geography table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 16px 0;
+}
+
+.case-step caption,
+.case-geography caption {
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.case-step th,
+.case-step td,
+.case-geography th,
+.case-geography td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--cp-border);
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.case-step th,
+.case-geography th {
+  background: var(--cp-surface-soft);
+}
+
+.case-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.case-checklist {
+  margin: 20px 0;
+}
+
+.case-checklist label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--cp-border);
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.case-checklist input {
+  flex-shrink: 0;
+  width: 19px;
+  height: 19px;
+  margin: 2px 0 0;
+  accent-color: var(--cp-accent);
+}
+
+.case-checklist strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.case-checklist small,
+.case-disclosure small {
+  display: block;
+  margin-top: 6px;
+  color: var(--cp-text-muted);
+}
+
+.case-disclosure {
+  margin: 16px 0 24px;
+  font-size: 14px;
+}
+
+.case-disclosure summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 12px 0;
+}
+
+.case-disclosure ul,
+.case-publication-checks {
+  padding-left: 20px;
+}
+
+.case-disclosure li,
+.case-publication-checks li {
+  margin-bottom: 14px;
+}
+
+.case-resident-draft {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 18px;
+  background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-border);
+}
+
+.case-status {
+  display: grid;
+  gap: 6px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--cp-border);
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.case-status p {
+  margin: 0;
+}
+
+.case-map-heading,
+.case-map-body {
+  padding: 22px;
+}
+
+.case-map-heading p {
+  margin-bottom: 14px;
+}
+
+.case-map-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.case-map-controls button[aria-pressed='true'] {
+  background: var(--cp-accent-soft);
+  border-color: var(--cp-accent);
+}
+
+.case-map-figure {
+  margin: 0;
+  border-block: 1px solid var(--cp-border);
+}
+
+.case-map-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.case-map-figure figcaption {
+  padding: 12px 22px;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.case-map-notice {
+  padding: 22px;
+}
+
+.case-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+
+.case-map-legend > span,
+.case-map-legend label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+}
+
+.case-map-legend input {
+  accent-color: var(--cp-accent);
+}
+
+.case-map-legend i {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.case-flood-key {
+  border: 1px solid #8c382e;
+  background: #e1b5b0;
+}
+
+.case-assumption-key {
+  border: 2px dashed #7046a1;
+  border-radius: 50%;
+}
+
+.case-interactive-map {
+  height: 410px;
+  position: relative;
+  background: var(--cp-map-water);
+  border-block: 1px solid var(--cp-border);
+}
+
+.case-person-marker {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 5px;
+}
+
+.case-person-marker > strong {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  background: #075762;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 3px 8px #26343666;
+  font-size: 16px;
+}
+
+.case-person-marker > span {
+  background: #ffffff;
+  color: #263436;
+  padding: 5px 8px;
+  border: 1px solid #769194;
+  border-radius: 0.625rem;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.case-disruption-marker {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 3px dashed #7046a1;
+  background: #f0e9fa;
+  color: #502681;
+  border-radius: 50%;
+  font-size: 14px;
+}
+
+.case-timeline {
+  padding: 0;
+  list-style: none;
+  margin: 20px 0;
+}
+
+.case-timeline li {
+  display: grid;
+  grid-template-columns: 65px 1fr;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.case-window-exhausted {
+  border-color: var(--cp-danger);
+}
+
+.case-map-body h3:first-child {
+  margin-top: 0;
+}
+
+.case-geography th:first-child {
+  width: 46%;
+}
+
+.case-geography td {
+  font-variant-numeric: tabular-nums;
+}
+
+.case-map-body p[role='alert'] {
+  color: var(--cp-danger);
+}
+
+@media (max-width: 1000px) {
+  .case-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 800px;
+  }
+
+  .case-geography {
+    position: static;
+  }
+
+  .case-introduction {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .case-header {
+    flex-wrap: wrap;
+    gap: 10px 20px;
+  }
+}
+
+@media (max-width: 540px) {
+  .case-header {
+    padding: 16px;
+  }
+
+  .case-header > strong {
+    order: 2;
+    width: 100%;
+  }
+
+  .case-header > span {
+    font-size: 11px;
+  }
+
+  .case-introduction {
+    padding: 24px 16px;
+  }
+
+  .case-workspace {
+    padding: 0 12px 24px;
+    gap: 16px;
+  }
+
+  .case-step {
+    padding: 20px 16px;
+  }
+
+  .case-step h2 {
+    font-size: 22px;
+  }
+
+  .case-evidence-list > div {
+    grid-template-columns: 105px 1fr;
+    gap: 10px;
+  }
+
+  .case-inputs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .case-map-heading,
+  .case-map-body {
+    padding: 18px 16px;
+  }
+
+  .case-map-figure figcaption {
+    padding: 12px 16px;
+  }
+
+  .case-tabs button {
+    font-size: 12px;
+    padding: 12px 3px;
+  }
+
+  .case-status {
+    padding: 16px;
+  }
+}

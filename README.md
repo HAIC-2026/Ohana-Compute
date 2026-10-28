@@ -24,6 +24,13 @@ households.
 
 ## What works
 
+- **[Waiʻanae assisted-planning case](docs/waianae-assistance-case.md)**:
+  open **Kupuna A case** (`/waianae`) for one fictional before-storm story.
+  Real flood polygons, roads, waterways and bridge inventory are visibly
+  separated from hypothetical access failures and assumed individual needs.
+  Editable timing leads to five CMIST County checks, a specialist-assessment
+  request and an unsent downloadable review packet. No real person/address,
+  live closure, team availability, legal order or AI inference is claimed.
 - Island- and neighborhood-first planning for Oʻahu examples
 - Event-dependent resident guidance and official map layers
 - Official operational event-trigger snapshots from NWS, PTWC, and USGS
