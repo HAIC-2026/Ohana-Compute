@@ -354,6 +354,10 @@ test('Town neighborhood panels change shelter and route guidance', async ({
       .getByTestId('neighborhood-kakaako-ala-moana')
       .getByText('Move inland', { exact: true }),
   ).toBeVisible()
+  await page
+    .getByTestId('neighborhood-kakaako-ala-moana')
+    .getByText('Resources, routes and support', { exact: true })
+    .click()
   await expect(
     page.getByText(/Ala Moana Boulevard may flood or become gridlocked/),
   ).toBeVisible()
@@ -383,6 +387,51 @@ test('Town neighborhood panels change shelter and route guidance', async ({
   await expect(
     planningSheet.getByText('Aggregate and de-identified'),
   ).toBeVisible()
+})
+
+test('neighborhood support stays accessible without crowding the overview', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
+  const desktop = testInfo.project.name.startsWith('desktop')
+  if (!desktop) {
+    const dock = page.getByRole('navigation', {
+      name: 'Emergency planning tools',
+    })
+    for (const button of await dock.getByRole('button').all()) {
+      const bounds = await button.boundingBox()
+      expect(bounds?.height).toBeGreaterThanOrEqual(48)
+      expect(bounds?.width).toBeGreaterThanOrEqual(44)
+    }
+    await dock.getByRole('button', { name: 'Response plan' }).click()
+  }
+  const briefing = page.locator('.neighborhood-briefing:visible').first()
+  const support = briefing.locator('.neighborhood-support')
+  const summary = support.locator('summary')
+  await expect(support).toHaveJSProperty('open', !desktop)
+  await expect(
+    briefing.locator('.shelter-decision > div > strong'),
+  ).toBeVisible()
+  await expect(briefing.locator('.coordination-card strong')).toBeVisible()
+  await expect(briefing.locator('.neighborhood-evidence')).toBeVisible()
+
+  const initialHeight = (await briefing.boundingBox())!.height
+  await summary.focus()
+  await summary.press('Enter')
+  await expect(support).toHaveJSProperty('open', desktop)
+  if (desktop) {
+    await expect(support.getByText('Traffic hazards to expect')).toBeVisible()
+    await expect(
+      support.getByText('AFN and language-access actions'),
+    ).toBeVisible()
+    const expandedHeight = (await briefing.boundingBox())!.height
+    expect(expandedHeight - initialHeight).toBeGreaterThan(250)
+  } else {
+    await expect(support.locator('.neighborhood-detail-grid')).not.toBeVisible()
+    await summary.press('Space')
+    await expect(support.locator('.neighborhood-detail-grid')).toBeVisible()
+  }
 })
 
 test('island selector keeps one island visible and discloses coverage gaps', async ({
@@ -1366,6 +1415,7 @@ test('all four challenge events switch the resident risk answer', async ({
       { exact: true },
     ),
   ).toBeVisible()
+  await page.getByText('Resources, routes and support', { exact: true }).click()
   await expect(
     page.getByText(
       'Do not use a shoreline road to reach another destination inside the evacuation zone.',
@@ -1423,6 +1473,7 @@ test('all four challenge events switch the resident risk answer', async ({
       { exact: true },
     ),
   ).toBeVisible()
+  await page.getByText('Resources, routes and support', { exact: true }).click()
   await expect(
     page.getByText(
       'Smoke can hide hazards and make a route unsafe before flames are visible.',

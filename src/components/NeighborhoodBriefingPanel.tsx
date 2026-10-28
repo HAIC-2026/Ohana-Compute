@@ -210,69 +210,76 @@ export function NeighborhoodBriefingPanel({
           <p>{selected.coordination.communicationPath}</p>
         </div>
 
-        <div className="neighborhood-detail-grid">
-          <div className="neighborhood-detail">
-            <div className="neighborhood-detail-title">
-              <HousePlus size={15} />
-              <strong>Closest practice resources</strong>
+        <details
+          key={`${selected.id}-${hazard}`}
+          className="neighborhood-support"
+          open={!compact}
+        >
+          <summary>Resources, routes and support</summary>
+          <div className="neighborhood-detail-grid">
+            <div className="neighborhood-detail">
+              <div className="neighborhood-detail-title">
+                <HousePlus size={15} />
+                <strong>Closest practice resources</strong>
+              </div>
+              <ul>
+                {selected.closestResources.map((resource) => (
+                  <li key={resource.name}>
+                    <strong>{resource.name}</strong>
+                    <span>
+                      {resource.kind} · {resource.distance}
+                    </span>
+                    <small>{resource.note}</small>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul>
-              {selected.closestResources.map((resource) => (
-                <li key={resource.name}>
-                  <strong>{resource.name}</strong>
-                  <span>
-                    {resource.kind} · {resource.distance}
-                  </span>
-                  <small>{resource.note}</small>
-                </li>
-              ))}
-            </ul>
-          </div>
 
-          <div className="neighborhood-detail">
-            <div className="neighborhood-detail-title">
-              <RouteIcon size={15} />
-              <strong>Evacuation and access paths</strong>
+            <div className="neighborhood-detail">
+              <div className="neighborhood-detail-title">
+                <RouteIcon size={15} />
+                <strong>Evacuation and access paths</strong>
+              </div>
+              <ul>
+                {selected.routes.map((route) => (
+                  <li key={route.name}>
+                    <strong>{route.name}</strong>
+                    <span>{route.purpose}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul>
-              {selected.routes.map((route) => (
-                <li key={route.name}>
-                  <strong>{route.name}</strong>
-                  <span>{route.purpose}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
 
-          <div className="neighborhood-detail is-traffic">
-            <div className="neighborhood-detail-title">
-              <AlertTriangle size={15} />
-              <strong>Traffic hazards to expect</strong>
+            <div className="neighborhood-detail is-traffic">
+              <div className="neighborhood-detail-title">
+                <AlertTriangle size={15} />
+                <strong>Traffic hazards to expect</strong>
+              </div>
+              <ul>
+                {trafficHazards.map((hazardText) => (
+                  <li key={hazardText}>
+                    <BusFront size={13} />
+                    <span>{hazardText}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul>
-              {trafficHazards.map((hazardText) => (
-                <li key={hazardText}>
-                  <BusFront size={13} />
-                  <span>{hazardText}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
 
-          <div className="neighborhood-detail is-afn">
-            <div className="neighborhood-detail-title">
-              <Languages size={15} />
-              <strong>AFN and language-access actions</strong>
+            <div className="neighborhood-detail is-afn">
+              <div className="neighborhood-detail-title">
+                <Languages size={15} />
+                <strong>AFN and language-access actions</strong>
+              </div>
+              <ul>
+                {afnActions.map((action) => (
+                  <li key={action}>
+                    <span>{action}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul>
-              {afnActions.map((action) => (
-                <li key={action}>
-                  <span>{action}</span>
-                </li>
-              ))}
-            </ul>
           </div>
-        </div>
+        </details>
 
         <div className="neighborhood-evidence">
           <Database size={15} />

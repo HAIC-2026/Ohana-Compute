@@ -61,6 +61,12 @@ households.
   comparison, optimistic concurrency, and append-only audit history
 - Desktop and mobile Playwright coverage
 
+The map overview keeps the neighborhood decision, coordination owner, and
+validation limits visible. “Resources, routes and support” expands the supporting
+resource, access, traffic, and AFN detail without burying the Map → Model → Match
+summary. The full response workspace starts with that detail expanded. Mobile
+navigation uses 48px-high touch targets and honors the device's bottom safe area.
+
 ## Stack
 
 - TanStack Start, React 19, and TypeScript
