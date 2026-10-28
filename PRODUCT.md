@@ -16,6 +16,34 @@ The product turns fragmented public hazard, population, shelter, transportation,
 
 Success means a first-time planner can move from an island-wide event picture to a defensible planning priority, human-reviewable response checklist, and offline field briefing in a few minutes, with every metric tied to visible evidence and no implication that the system identifies individual residents.
 
+## Insight Direction
+
+Each iteration should make **evidence → insight → action** easier for a County
+planner. More layers, generated prose, or dashboard cards are not progress
+unless they help answer where to investigate, why it matters, and what to check
+or coordinate next.
+
+- Use data to establish the finding; use grounded AI to explain supported
+  implications and suggest reviewable options, never to manufacture missing
+  evidence or quantitative estimates.
+- Visualize the decision: connect a geographic finding to the same selectable
+  map location, comparable measure, or explicit evidence gap. Preserve a
+  keyboard-accessible non-map path.
+- Keep public source facts, deterministic screening, AI-generated suggestions,
+  and practice scenarios distinguishable. Show source age and uncertainty
+  beside the decision, with detailed methodology in disclosures.
+- A useful suggestion names the County-owned next check and supporting
+  evidence. Unknown coverage is a verification task, not low priority; a
+  directory match is not available operational capacity.
+- Preserve a useful local workflow when AI is disabled or unavailable.
+  Generation remains opt-in and human-reviewed; it never activates partners,
+  approves plans, issues orders, or allocates resources.
+
+Geographic comparison currently screens representative area centers, not
+whole-area exposure. Full hazard/population intersections and operational
+shortage analysis remain separate evidence requirements, not claims to infer
+from the map's appearance.
+
 ## Base Use Case
 
 The minimum complete planner journey is:
