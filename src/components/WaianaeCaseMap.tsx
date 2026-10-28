@@ -9,7 +9,7 @@ import {
   Source,
 } from 'react-map-gl/maplibre'
 
-import { practiceLocation } from '../lib/waianae-case'
+import { accessConcerns, practiceLocation } from '../lib/waianae-case'
 import {
   floodEvidenceText,
   floodFillColor,
@@ -63,25 +63,14 @@ const mapStyle = {
   ],
 }
 
-const disruptions = [
-  {
-    id: 'H1',
-    longitude: -158.1900636120798,
-    latitude: 21.448965580650423,
-    label: 'Assumed bridge / pinch-point disruption',
-  },
-  {
-    id: 'H2',
-    longitude: -158.181,
-    latitude: 21.432,
-    label: 'Assumed flooded-road access disruption',
-  },
-]
-
 export function WaianaeCaseMap({
   onEvidence,
+  localClaims,
+  focusedAnchor,
 }: {
   onEvidence: (text: string) => void
+  localClaims: Array<{ anchor: string; basis: 'assumption' | 'reported' }>
+  focusedAnchor: string
 }) {
   const [client, setClient] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -168,6 +157,21 @@ export function WaianaeCaseMap({
             not an all-clear
           </span>
         </div>
+        {localClaims.length > 0 && (
+          <p data-testid="case-local-map-evidence">
+            Local access claims:{' '}
+            {accessConcerns
+              .map(
+                (item) =>
+                  `${item.id}: ${localClaims.filter((claim) => claim.anchor === item.id && claim.basis === 'reported').length} reported, ${localClaims.filter((claim) => claim.anchor === item.id && claim.basis === 'assumption').length} assumed`,
+              )
+              .join(' · ')}
+            . Unverified browser entries, not official conditions. Stale and
+            set-aside claims are excluded.
+            {!showAssumptions &&
+              ' Map concern markers are hidden by your layer selection.'}
+          </p>
+        )}
       </div>
       <div
         className="case-interactive-map"
@@ -265,18 +269,32 @@ export function WaianaeCaseMap({
               </div>
             </Marker>
             {showAssumptions &&
-              disruptions.map((item) => (
+              accessConcerns.map((item) => (
                 <Marker
                   key={item.id}
                   longitude={item.longitude}
                   latitude={item.latitude}
                 >
                   <div
-                    className="case-disruption-marker"
+                    className={`case-disruption-marker ${focusedAnchor === item.id ? 'case-disruption-focused' : ''}`}
+                    data-local-claims={
+                      localClaims.filter((claim) => claim.anchor === item.id)
+                        .length
+                    }
                     title={`${item.id}: ${item.label}. Exercise-only, not a condition report or closure.`}
                     aria-label={`${item.id}: hypothetical access concern`}
                   >
                     <strong>{item.id}</strong>
+                    {localClaims.some((claim) => claim.anchor === item.id) && (
+                      <small>
+                        {
+                          localClaims.filter(
+                            (claim) => claim.anchor === item.id,
+                          ).length
+                        }{' '}
+                        local
+                      </small>
+                    )}
                   </div>
                 </Marker>
               ))}

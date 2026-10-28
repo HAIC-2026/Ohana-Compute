@@ -12,23 +12,88 @@ Waikīkī tsunami example; no tsunami case is shipped.
 2. Select **Build the assistance request**. Review the editable hours from
    exercise now: storm arrival, assumed access-loss lead time, coordination,
    transfer/travel and buffer.
-3. Prepare the five CMIST questions for Honolulu County. These are agenda
+3. Open **Planning evidence**. Add controlled, local claims about candidate
+   transport, equipment power, receiving support or H1/H2 access concerns.
+   Missing evidence becomes a specific County question; a reported one-place
+   vehicle exposes a gap against two required passenger places. A second,
+   conflicting capacity report exposes a conflict, not a summed fleet.
+4. Prepare the five CMIST questions for Honolulu County. These are agenda
    questions, not confirmed answers or approved assignments. The requirement
    is one fictional assisted transfer, two passenger places for Kupuna A and
    one caregiver, accessible boarding/mobility-device space, equipment-specific
-   continuity and receiving-site acceptance. No capacity is entered or promised.
-4. Review the fixed resident-message draft and publication checks. Download
+   continuity and receiving-site acceptance. Entered capacity is an unverified
+   local claim, never promised availability.
+5. Review the fixed resident-message draft and publication checks. Download
    the unsent Markdown assistance request for human County review.
 
 The County assesses whether firefighter or other specialist assistance is
 appropriate and routes any real request through authorized incident-command
 channels. State ESF6 supports. There is no dispatch, tasking, autonomous resource
 allocation, clinical assessment, public alert or actual approval in this case.
-Questions marked prepared are local working state only. Changing timing resets
-them; valid assumptions/questions persist only in this browser under the
-versioned `waianae-assisted-planning.v1` key. No personal data can be entered.
+Questions marked prepared are local working state only. Changing timing or
+claims, setting a claim aside, removing it or crossing a freshness boundary
+resets them. Valid assumptions/questions and claims persist only in this browser
+under the versioned `waianae-assisted-planning.v1` key. Older timing/check-only
+records restore without inventing contributions. No personal data can be entered.
 Invalid inputs block calculation/export. Browser-storage failure is disclosed;
-the downloadable packet remains the portable handoff.
+the downloadable packet remains the portable handoff. Unreadable state is not
+silently overwritten: **Save current exercise instead of unreadable state** is
+an explicit replacement action.
+
+## Extensible evidence-to-question slice
+
+`src/lib/planning-evidence.ts` owns the shared controlled field model,
+validation, freshness, per-subject comparison and export. The Waiʻanae module
+provides example targets and requirements, not person-specific analysis rules.
+A different exercise can supply different subject IDs and numeric requirements
+using the same evaluator; no demographics-to-individual inference is involved.
+
+| Subject                          | Controlled claims                                                                    | Deterministic question                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Fictional candidate vehicle A    | Passenger places 0–20 or unknown, assisted step-free boarding, mobility-device space | Are there at least two places and both accessibility capabilities?                                    |
+| Fictional equipment continuity A | Runtime 0–72 whole hours or unknown, equipment-specific compatibility assessed       | Does the report span assumed transfer/travel plus buffer? This is not a clinical runtime requirement. |
+| Fictional receiving site A       | Acceptance, step-free access, caregiver accompaniment, equipment power support       | Are all four criteria reported for this candidate? Site A is unmapped, not an actual shelter.         |
+| H1 and H2 separately             | Concern / no concern reported / unknown                                              | Which access concern needs County review? No concern reported never establishes road clearance.       |
+
+Claims have an exercise-assumption or reported basis, controlled source category
+(author-entered, not an authenticated identity), observation time and an
+author-selected 1/6/12/24-hour review interval. There are no free-text names,
+addresses, contacts, medical descriptions, arbitrary source URLs, uploads or
+coordinates. Numeric fields reject negative, fractional or out-of-range values;
+blank means unknown, while an explicit zero is a claim of zero. Missing
+provenance and future observation times block saving. At most 32 claims are kept.
+Source category is provenance about the local entry, not proof that an agency
+provided it.
+
+Freshness is based on actual browser time, not the hypothetical storm clock.
+At the interval boundary a claim is stale and excluded; it remains visible in
+the register and packet. Timers, returning focus, restoration and download
+recheck freshness. Stale, future-dated, mismatched and set-aside claims never
+satisfy a requirement. The self-selected interval is not a source-authority
+validity guarantee.
+
+Only current claims for the same scenario and subject are compared. Current
+reported claims take precedence over exercise assumptions; assumptions cannot
+fill unknown fields in a report or create an operational contradiction.
+Distinct non-unknown values in current reports expose a conflict, including
+different numeric capacities even when both exceed the requirement. Counts are
+never added and the newest report never silently wins. Operators can edit,
+explicitly set aside/reinstate, or remove a local claim; this is not an immutable
+audit history. Reasons, supporting IDs, excluded counts and the next County
+question are visible and included in the unsent packet.
+
+Access claims annotate only the existing H1/H2 exercise markers and retain
+source flood colors and boundaries. They do not create closure geometry,
+certify road passability, or map invented vehicles/receiving sites. A hidden
+assumption layer stays hidden and the local-claim notice discloses it.
+
+Even when every reported criterion is covered, the result remains a review
+checklist. County verification of current conditions, resource suitability,
+authority, agreement, receiving-site acceptance and all five CMIST questions
+(including communication, medication, clinical needs, safeguarding and
+service-animal/pet arrangements) is still required. Nothing is sent, shared,
+verified, approved, assigned or activated. Optional collaboration/identity and
+the guarded AI API are not changed.
 
 ## Geography and source truth
 

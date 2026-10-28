@@ -95,7 +95,7 @@
 
 .case-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--cp-border);
 }
 
@@ -240,7 +240,8 @@
   font-weight: 600;
 }
 
-.case-inputs input {
+.case-inputs input,
+.case-inputs select {
   width: 100%;
   min-height: 42px;
   padding: 8px 10px;
@@ -249,10 +250,108 @@
   color: var(--cp-text);
   background: var(--cp-bg-elevated);
   font-variant-numeric: tabular-nums;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.case-inputs input[aria-invalid='true'] {
+.case-inputs input[aria-invalid='true'],
+.case-inputs select[aria-invalid='true'] {
   border-color: var(--cp-danger);
+}
+
+.evidence-editor fieldset {
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 0.625rem;
+  min-width: 0;
+  padding: 12px;
+}
+
+.evidence-editor legend {
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+.evidence-editor fieldset .case-inputs {
+  margin: 8px 0;
+}
+
+.evidence-insights,
+.evidence-register {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+}
+
+.evidence-insights > li,
+.evidence-register > li {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--cp-border);
+  overflow-wrap: anywhere;
+}
+
+.evidence-insights > li:first-child {
+  padding-top: 0;
+}
+
+.evidence-insights > li > strong,
+.evidence-register > li > strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.evidence-state {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cp-text-muted);
+}
+
+.evidence-state-gap,
+.evidence-state-conflict {
+  color: var(--cp-danger);
+}
+
+.evidence-insights details {
+  margin-bottom: 12px;
+}
+
+.evidence-insights summary {
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.evidence-register dl {
+  margin: 0 0 16px;
+}
+
+.evidence-register dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.evidence-register dd {
+  margin: 0;
+}
+
+.evidence-register-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.case-disruption-marker small {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.case-disruption-focused {
+  outline: 3px solid currentColor;
+  outline-offset: 4px;
 }
 
 .case-error {
@@ -468,6 +567,19 @@
   position: relative;
   background: var(--cp-map-water);
   border-block: 1px solid var(--cp-border);
+}
+
+/* The case has no statewide bottom panels to reserve space for. */
+.case-interactive-map .maplibregl-ctrl-bottom-left,
+.case-interactive-map .maplibregl-ctrl-bottom-right {
+  left: 0;
+  right: auto;
+  bottom: 0;
+}
+
+.case-interactive-map .maplibregl-ctrl-attrib {
+  box-sizing: border-box;
+  max-width: 210px;
 }
 
 .case-person-marker {

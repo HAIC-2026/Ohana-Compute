@@ -1,7 +1,148 @@
 import type { PartnerCapability } from './partner-matching'
+import {
+  evidenceFreshnessKey,
+  parseContributions,
+  planningEvidencePacket,
+} from './planning-evidence'
+import type {
+  EvidenceScenario,
+  PlanningContribution,
+} from './planning-evidence'
 
 export const caseStorageKey = 'waianae-assisted-planning.v1'
 export const practiceLocation: [number, number] = [-158.193546, 21.450442]
+export const accessConcerns = [
+  {
+    id: 'H1',
+    longitude: -158.1900636120798,
+    latitude: 21.448965580650423,
+    label: 'Assumed bridge / pinch-point disruption',
+  },
+  {
+    id: 'H2',
+    longitude: -158.181,
+    latitude: 21.432,
+    label: 'Assumed flooded-road access disruption',
+  },
+]
+
+export function waianaeEvidenceScenario(runtime = 3): EvidenceScenario {
+  return {
+    id: 'waianae-practice',
+    targets: [
+      {
+        id: 'vehicle-a',
+        kind: 'transport',
+        label: 'Candidate vehicle A (fictional)',
+      },
+      {
+        id: 'equipment-a',
+        kind: 'power',
+        label: 'Equipment continuity A (fictional)',
+      },
+      {
+        id: 'site-a',
+        kind: 'receiving',
+        label: 'Candidate receiving site A (fictional, unmapped)',
+      },
+      ...accessConcerns.map((item) => ({
+        id: item.id,
+        kind: 'access' as const,
+        label: `${item.id} · ${item.label}`,
+        mapAnchor: item.id,
+      })),
+    ],
+    requirements: [
+      {
+        id: 'assisted-transfer',
+        targetId: 'vehicle-a',
+        label: 'Can the candidate carry both passengers and equipment?',
+        criteria: [
+          {
+            field: 'places',
+            expected: 2,
+            description: 'At least 2 passenger places, including caregiver',
+          },
+          {
+            field: 'boarding',
+            expected: 'yes',
+            description: 'Assisted step-free boarding',
+          },
+          {
+            field: 'mobility',
+            expected: 'yes',
+            description: 'Mobility-device space',
+          },
+        ],
+        action:
+          'Transportation coordinator: verify this vehicle, crew, transfer method, operating window and agreement. Do not combine counts from different reports.',
+      },
+      {
+        id: 'power-continuity',
+        targetId: 'equipment-a',
+        label: 'Does the reported power plan span the exercise transfer?',
+        criteria: [
+          {
+            field: 'hours',
+            expected: runtime,
+            description: `At least ${runtime}h backup for assumed transfer/travel plus buffer; not a clinical runtime requirement`,
+          },
+          {
+            field: 'compatible',
+            expected: 'yes',
+            description: 'Equipment-specific compatibility assessed',
+          },
+        ],
+        action:
+          'Health / medical coordinator: confirm actual equipment, load, runtime, medication continuity and clinical needs across pickup, travel and reception. This arithmetic is not medical advice.',
+      },
+      {
+        id: 'receiving-support',
+        targetId: 'site-a',
+        label: 'Is the receiving candidate a supported option for review?',
+        criteria: [
+          {
+            field: 'acceptance',
+            expected: 'yes',
+            description: 'Acceptance reported for this exercise candidate',
+          },
+          {
+            field: 'stepFree',
+            expected: 'yes',
+            description: 'Step-free access',
+          },
+          {
+            field: 'caregiver',
+            expected: 'yes',
+            description: 'Caregiver accompaniment',
+          },
+          {
+            field: 'power',
+            expected: 'yes',
+            description: 'Equipment power support',
+          },
+        ],
+        action:
+          'Mass-care coordinator: directly confirm opening, acceptance, accessibility, equipment support, safeguarding and service-animal/pet arrangements. This fictional site has no certified location.',
+      },
+      ...accessConcerns.map((item) => ({
+        id: `access-${item.id}`,
+        targetId: item.id,
+        label: `${item.id}: what access uncertainty needs County review?`,
+        criteria: [
+          {
+            field: 'condition',
+            expected: 'no-concern',
+            description:
+              'No concern reported is only an observation, never road clearance',
+          },
+        ],
+        action:
+          'County operations: obtain current official road and crossing conditions, pickup access and instructions. Do not infer a closure, safe route, bridge failure or dispatch from a local claim.',
+      })),
+    ],
+  }
+}
 
 export const timingFields = [
   {
@@ -158,7 +299,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function restoreCase(
   value: unknown,
-): { timing: TimingInputs; checks: PreparedChecks } | null {
+  now = Date.now(),
+): {
+  timing: TimingInputs
+  checks: PreparedChecks
+  contributions: PlanningContribution[]
+} | null {
   if (!isRecord(value) || !isRecord(value.timing) || !isRecord(value.checks))
     return null
   const timing = { ...defaultTiming }
@@ -173,7 +319,26 @@ export function restoreCase(
     if (typeof prepared !== 'boolean') return null
     checks[id] = prepared
   }
-  return evaluateTiming(timing).result ? { timing, checks } : null
+  const contributions =
+    value.contributions === undefined
+      ? []
+      : parseContributions(value.contributions, waianaeEvidenceScenario())
+  if (!evaluateTiming(timing).result || !contributions) return null
+  const assessedAt =
+    typeof value.assessedAt === 'string' ? Date.parse(value.assessedAt) : NaN
+  const changedFreshness =
+    contributions.length > 0 &&
+    (!Number.isFinite(assessedAt) ||
+      evidenceFreshnessKey(
+        waianaeEvidenceScenario(),
+        contributions,
+        assessedAt,
+      ) !== evidenceFreshnessKey(waianaeEvidenceScenario(), contributions, now))
+  return {
+    timing,
+    checks: changedFreshness ? { ...emptyChecks } : checks,
+    contributions,
+  }
 }
 
 export const residentDraft = `FICTIONAL EXERCISE DRAFT - County and community review required. Not a current alert, evacuation order, pickup confirmation or instruction to travel.
@@ -191,6 +356,8 @@ export function createAssistancePacket(input: {
   checks: PreparedChecks
   evidence: string
   partners: string
+  contributions?: PlanningContribution[]
+  now?: number
 }) {
   const { result } = evaluateTiming(input.timing)
   if (!result)
@@ -211,6 +378,8 @@ Assumed storm arrival: ${result.arrival}h. Assumed access loss: ${result.accessL
 Preparation allowance: ${result.mobilise}h coordination/mobilisation + ${result.travel}h transfer/travel + ${result.buffer}h buffer = ${result.preparation}h.
 Planning margin: ${result.accessWindow} - ${result.preparation} = ${result.margin}h. ${result.margin > 0 ? 'Positive exercise margin does not establish a safe departure time.' : 'Exercise window exhausted: escalate County review; do not assume travel is safe.'}
 No actual forecast, route, throughput or rescue-time claim.
+
+${planningEvidencePacket(waianaeEvidenceScenario(result.travel + result.buffer), input.contributions ?? [], input.now ?? Date.now())}
 
 ## Five CMIST requirements and County questions
 ${caseChecks.map((check) => `### ${check.name}\nAssumption: ${check.assumption}\nRequirement: ${check.requirement}. Capacity and acceptance unverified.\nQuestion: ${check.question}\nAgenda question: ${input.checks[check.id] ? 'prepared; answer unresolved' : 'not prepared'}.`).join('\n\n')}

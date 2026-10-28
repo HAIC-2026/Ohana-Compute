@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, Download, RotateCcw } from 'lucide-react'
 
 import { useRovingTabs } from '../components/RovingTabs'
+import { PlanningEvidencePanel } from '../components/PlanningEvidencePanel'
 import { usePartnerMatches } from '../lib/partner-matching'
 import type { PartnerCapability } from '../lib/partner-matching'
 import {
@@ -15,8 +16,16 @@ import {
   residentDraft,
   restoreCase,
   timingFields,
+  waianaeEvidenceScenario,
 } from '../lib/waianae-case'
 import type { PreparedChecks, TimingInputs } from '../lib/waianae-case'
+import {
+  contributionState,
+  evidenceFreshnessKey,
+  evaluatePlanningEvidence,
+  evidenceStateLabels,
+} from '../lib/planning-evidence'
+import type { PlanningContribution } from '../lib/planning-evidence'
 import caseCss from '../waianae-case.css?url'
 
 export const Route = createFileRoute('/waianae')({
@@ -35,6 +44,7 @@ const CaseMap = lazy(() =>
 const steps = [
   'Story & risk',
   'Before arrival',
+  'Planning evidence',
   'County request',
   'Resident message',
 ] as const
@@ -51,11 +61,27 @@ function WaianaeCase() {
   const [timing, setTiming] = useState<TimingInputs>(defaultTiming)
   const [checks, setChecks] = useState<PreparedChecks>(emptyChecks)
   const [restored, setRestored] = useState(false)
+  const [contributions, setContributions] = useState<PlanningContribution[]>([])
+  const [now, setNow] = useState(() => Date.now())
+  const [focusedAnchor, setFocusedAnchor] = useState('')
+  const [contributionMessage, setContributionMessage] = useState('')
+  const [storageBlocked, setStorageBlocked] = useState(false)
   const [storageMessage, setStorageMessage] = useState('')
   const [downloadMessage, setDownloadMessage] = useState('')
   const [evidence, setEvidence] = useState<string | null>(null)
   const partnerState = usePartnerMatches('honolulu', capabilities)
   const { result, errors } = evaluateTiming(timing)
+  const scenario = waianaeEvidenceScenario(
+    result ? result.travel + result.buffer : undefined,
+  )
+  const insights = evaluatePlanningEvidence(scenario, contributions, now)
+  const mapClaims = contributions
+    .filter(
+      (item) =>
+        item.kind === 'access' &&
+        contributionState(item, scenario, now) === 'current',
+    )
+    .map((item) => ({ anchor: item.targetId, basis: item.basis }))
   const tabs = useRovingTabs({
     label: 'Assistance planning workflow',
     values: steps,
@@ -72,13 +98,16 @@ function WaianaeCase() {
         if (state) {
           setTiming(state.timing)
           setChecks(state.checks)
+          setContributions(state.contributions)
         } else {
+          setStorageBlocked(true)
           setStorageMessage(
             'Saved exercise could not be restored. Default assumptions are shown; review before use.',
           )
         }
       }
     } catch {
+      setStorageBlocked(true)
       setStorageMessage(
         'Browser storage is unavailable or unreadable. Download a request packet to keep your work.',
       )
@@ -87,15 +116,58 @@ function WaianaeCase() {
   }, [])
 
   useEffect(() => {
-    if (!restored || !evaluateTiming(timing).result) return
+    if (!restored || storageBlocked || !evaluateTiming(timing).result) return
     try {
-      localStorage.setItem(caseStorageKey, JSON.stringify({ timing, checks }))
+      localStorage.setItem(
+        caseStorageKey,
+        JSON.stringify({
+          timing,
+          checks,
+          contributions,
+          assessedAt: new Date().toISOString(),
+        }),
+      )
     } catch {
       setStorageMessage(
         'Changes could not be saved in this browser. Download the request packet to keep them.',
       )
     }
-  }, [timing, checks, restored])
+  }, [timing, checks, contributions, restored, storageBlocked])
+
+  useEffect(() => {
+    function refresh() {
+      const next = Date.now()
+      const template = waianaeEvidenceScenario()
+      if (
+        evidenceFreshnessKey(template, contributions, now) !==
+        evidenceFreshnessKey(template, contributions, next)
+      ) {
+        setChecks(emptyChecks)
+        setDownloadMessage('')
+        setContributionMessage(
+          'Evidence freshness changed. Agenda preparation cleared; review the current claims again.',
+        )
+      }
+      setNow(next)
+    }
+    const boundaries = contributions
+      .flatMap((item) => {
+        if (item.suppressed) return []
+        const observedAt = Date.parse(item.observedAt)
+        return [observedAt, observedAt + item.validForHours * 3_600_000]
+      })
+      .filter((time) => time > Date.now())
+    const delay = Math.min(
+      30_000,
+      ...boundaries.map((time) => Math.max(1, time - Date.now() + 1)),
+    )
+    const timer = window.setTimeout(refresh, delay)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [contributions, now])
 
   const partners =
     partnerState.response?.matches
@@ -108,7 +180,25 @@ function WaianaeCase() {
 
   function download() {
     if (!result || !evidence) return
-    const text = createAssistancePacket({ timing, checks, evidence, partners })
+    const evaluatedAt = Date.now()
+    const changed =
+      evidenceFreshnessKey(scenario, contributions, now) !==
+      evidenceFreshnessKey(scenario, contributions, evaluatedAt)
+    if (changed) {
+      setChecks(emptyChecks)
+      setContributionMessage(
+        'Evidence freshness changed. Agenda preparation cleared; review the current claims again.',
+      )
+    }
+    setNow(evaluatedAt)
+    const text = createAssistancePacket({
+      timing,
+      checks: changed ? emptyChecks : checks,
+      evidence,
+      partners,
+      contributions,
+      now: evaluatedAt,
+    })
     const url = URL.createObjectURL(
       new Blob([text], { type: 'text/markdown;charset=utf-8' }),
     )
@@ -126,6 +216,14 @@ function WaianaeCase() {
     setTiming(next)
     setChecks(emptyChecks)
     setDownloadMessage('')
+  }
+
+  function updateContributions(items: PlanningContribution[], message: string) {
+    setContributions(items)
+    setChecks(emptyChecks)
+    setNow(Date.now())
+    setDownloadMessage('')
+    setContributionMessage(message)
   }
 
   return (
@@ -177,7 +275,11 @@ function WaianaeCase() {
             </section>
           }
         >
-          <CaseMap onEvidence={setEvidence} />
+          <CaseMap
+            onEvidence={setEvidence}
+            localClaims={mapClaims}
+            focusedAnchor={focusedAnchor}
+          />
         </Suspense>
         <section
           id="case-workflow"
@@ -361,11 +463,31 @@ function WaianaeCase() {
                     type="button"
                     className="case-primary"
                     disabled={!result}
-                    onClick={() => setStep('County request')}
+                    onClick={() => setStep('Planning evidence')}
                   >
-                    Prepare the support request <ArrowRight size={16} />
+                    Add planning evidence <ArrowRight size={16} />
                   </button>
                 </div>
+              </>
+            )}
+            {step === 'Planning evidence' && (
+              <>
+                <PlanningEvidencePanel
+                  scenario={scenario}
+                  contributions={contributions}
+                  now={now}
+                  timingValid={Boolean(result)}
+                  onChange={updateContributions}
+                  onMapAnchor={setFocusedAnchor}
+                />
+                <button
+                  type="button"
+                  className="case-primary"
+                  disabled={!result}
+                  onClick={() => setStep('County request')}
+                >
+                  Prepare County review questions <ArrowRight size={16} />
+                </button>
               </>
             )}
             {step === 'County request' && (
@@ -379,6 +501,32 @@ function WaianaeCase() {
                   mobility-device space. Capacity, team suitability and
                   destination acceptance are unverified.
                 </p>
+                <div className="case-boundary">
+                  <strong>
+                    Current evidence review · not operational approval
+                  </strong>
+                  {result ? (
+                    <ul>
+                      {insights.map((insight) => (
+                        <li key={insight.id}>
+                          {insight.label}{' '}
+                          <strong>{evidenceStateLabels[insight.state]}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p role="alert">
+                      Timing is invalid. Evidence analysis is withheld until
+                      corrected.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setStep('Planning evidence')}
+                  >
+                    Review or add planning evidence
+                  </button>
+                </div>
                 <div className="case-checklist">
                   {caseChecks.map((check) => (
                     <label key={check.id}>
@@ -538,10 +686,38 @@ function WaianaeCase() {
               sent
             </span>
             <span>
-              Valid assumptions and agenda saved only in this browser. No
-              personal data.
+              Valid changes save only in this browser when storage is available.
+              No personal data. Local claims are unverified and not shared.
             </span>
             {storageMessage && <p role="alert">{storageMessage}</p>}
+            {storageBlocked && (
+              <button
+                type="button"
+                disabled={!result}
+                onClick={() => {
+                  try {
+                    localStorage.setItem(
+                      caseStorageKey,
+                      JSON.stringify({
+                        timing,
+                        checks,
+                        contributions,
+                        assessedAt: new Date().toISOString(),
+                      }),
+                    )
+                    setStorageBlocked(false)
+                    setStorageMessage('')
+                  } catch {
+                    setStorageMessage(
+                      'Changes could not be saved in this browser. Download the request packet to keep them.',
+                    )
+                  }
+                }}
+              >
+                Save current exercise instead of unreadable state
+              </button>
+            )}
+            {contributionMessage && <p role="status">{contributionMessage}</p>}
             {downloadMessage && <p role="status">{downloadMessage}</p>}
           </footer>
         </section>

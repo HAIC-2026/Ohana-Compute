@@ -58,13 +58,14 @@ test('restoration accepts only controlled timing and question-prepared flags, no
   expect(restoreCase({ timing: defaultTiming, checks: emptyChecks })).toEqual({
     timing: defaultTiming,
     checks: emptyChecks,
+    contributions: [],
   })
   expect(
     restoreCase({
       timing: { ...defaultTiming, address: 'must not be persisted' },
       checks: emptyChecks,
     }),
-  ).toEqual({ timing: defaultTiming, checks: emptyChecks })
+  ).toEqual({ timing: defaultTiming, checks: emptyChecks, contributions: [] })
   expect(restoreCase({ timing: defaultTiming, checks: {} })).toBeNull()
   expect(
     restoreCase({
@@ -292,7 +293,7 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     await page.getByRole('tab', { name: 'Before arrival' }).focus()
     await page.keyboard.press('ArrowRight')
     await expect(
-      page.getByRole('tab', { name: 'County request' }),
+      page.getByRole('tab', { name: 'Planning evidence' }),
     ).toBeFocused()
   })
 

@@ -10,6 +10,12 @@ separate deterministic workflow. Its fictional persona, map snapshot and
 editable timing assumptions are not in this server-owned evidence contract
 and are not sent to a provider. The case does not demonstrate live AI
 inference; existing test-provider evaluations must not be presented as that.
+The case's local structured planning claims and evidence-to-question comparisons
+are also deterministic and excluded from provider requests. They are browser-only,
+unverified exercise contributions, not authorized shared-plan records or new
+server-owned citations. Reusing these controls in a provider request requires a
+separate bounded contract and citation/policy evaluations; no generic prompt
+field or provider is enabled by this feature.
 
 ## Data boundary
 
