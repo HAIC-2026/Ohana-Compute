@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { EvidenceExchange } from './EvidenceExchange'
 import {
   contributionState,
   evaluatePlanningEvidence,
@@ -170,7 +171,8 @@ export function PlanningEvidencePanel({
       <p>
         Structured claims for this fictional transfer—not a person registry. No
         names, addresses, contacts, medical records, links or coordinates. These
-        entries stay in this browser; they are not synchronized team records.
+        entries stay in this browser unless you explicitly export a bundle; they
+        are not synchronized team records.
       </p>
       <div className="case-boundary">
         <strong>Deterministic review · never automatic clearance</strong>
@@ -378,6 +380,13 @@ export function PlanningEvidencePanel({
           </div>
         </form>
       </details>
+      <EvidenceExchange
+        scenario={scenario}
+        contributions={contributions}
+        now={now}
+        timingValid={timingValid}
+        onChange={onChange}
+      />
       <h3>Evidence → next County question</h3>
       {!timingValid ? (
         <p role="alert" className="case-error">

@@ -86,6 +86,7 @@ export type EvidenceRequirement = {
 }
 export type EvidenceScenario = {
   id: string
+  modelRevision: string
   targets: EvidenceTarget[]
   requirements: EvidenceRequirement[]
 }

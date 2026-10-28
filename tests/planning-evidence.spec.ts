@@ -124,6 +124,7 @@ test('stale, future, suppressed and mismatched claims cannot satisfy criteria', 
 test('the model is scenario-driven and scoped to a subject, not a hard-coded person story', () => {
   const otherScenario = {
     id: 'another-exercise',
+    modelRevision: 'v1',
     targets: [
       { id: 'vehicle-b', kind: 'transport' as const, label: 'Vehicle B' },
     ],

@@ -29,6 +29,7 @@ export const accessConcerns = [
 export function waianaeEvidenceScenario(runtime = 3): EvidenceScenario {
   return {
     id: 'waianae-practice',
+    modelRevision: `afn-v1-transfer-${runtime}h`,
     targets: [
       {
         id: 'vehicle-a',

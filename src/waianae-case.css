@@ -338,6 +338,15 @@
   margin: 0;
 }
 
+.evidence-exchange input[type='file'] {
+  white-space: normal;
+}
+
+.evidence-exchange section {
+  margin-top: 20px;
+  overflow-wrap: anywhere;
+}
+
 .evidence-register-actions {
   display: flex;
   flex-wrap: wrap;

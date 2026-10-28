@@ -17,13 +17,17 @@ Waikīkī tsunami example; no tsunami case is shipped.
    Missing evidence becomes a specific County question; a reported one-place
    vehicle exposes a gap against two required passenger places. A second,
    conflicting capacity report exposes a conflict, not a summed fleet.
-4. Prepare the five CMIST questions for Honolulu County. These are agenda
+4. Optionally open **Exchange local evidence bundles**, export controlled JSON
+   or choose a bundle from another planner. Review each claim and the projected
+   County questions, then explicitly confirm or cancel. Selection alone changes
+   nothing; imports merge rather than replace the register.
+5. Prepare the five CMIST questions for Honolulu County. These are agenda
    questions, not confirmed answers or approved assignments. The requirement
    is one fictional assisted transfer, two passenger places for Kupuna A and
    one caregiver, accessible boarding/mobility-device space, equipment-specific
    continuity and receiving-site acceptance. Entered capacity is an unverified
    local claim, never promised availability.
-5. Review the fixed resident-message draft and publication checks. Download
+6. Review the fixed resident-message draft and publication checks. Download
    the unsent Markdown assistance request for human County review.
 
 The County assesses whether firefighter or other specialist assistance is
@@ -36,7 +40,7 @@ resets them. Valid assumptions/questions and claims persist only in this browser
 under the versioned `waianae-assisted-planning.v1` key. Older timing/check-only
 records restore without inventing contributions. No personal data can be entered.
 Invalid inputs block calculation/export. Browser-storage failure is disclosed;
-the downloadable packet remains the portable handoff. Unreadable state is not
+the downloadable packet and bounded evidence bundle remain portable handoffs. Unreadable state is not
 silently overwritten: **Save current exercise instead of unreadable state** is
 an explicit replacement action.
 
@@ -58,7 +62,7 @@ using the same evaluator; no demographics-to-individual inference is involved.
 Claims have an exercise-assumption or reported basis, controlled source category
 (author-entered, not an authenticated identity), observation time and an
 author-selected 1/6/12/24-hour review interval. There are no free-text names,
-addresses, contacts, medical descriptions, arbitrary source URLs, uploads or
+addresses, contacts, medical descriptions, arbitrary source URLs, attachments or
 coordinates. Numeric fields reject negative, fractional or out-of-range values;
 blank means unknown, while an explicit zero is a claim of zero. Missing
 provenance and future observation times block saving. At most 32 claims are kept.
@@ -92,8 +96,56 @@ checklist. County verification of current conditions, resource suitability,
 authority, agreement, receiving-site acceptance and all five CMIST questions
 (including communication, medication, clinical needs, safeguarding and
 service-animal/pet arrangements) is still required. Nothing is sent, shared,
-verified, approved, assigned or activated. Optional collaboration/identity and
+automatically synchronized, verified, approved, assigned or activated. Optional collaboration/identity and
 the guarded AI API are not changed.
+
+## Portable local evidence exchange
+
+The exchange is a file handoff, not shared storage or authenticated team sync.
+`src/lib/evidence-bundle.ts` defines the reviewable JSON envelope:
+`schema: "local-planning-evidence.v1"`, `scenarioId`, `modelRevision` and
+`contributions` only. It never imports raw browser workspace storage, timing,
+prepared questions, map payloads or attachments. Share only through approved
+channels. Source roles are controlled, author-entered categories, not proof of
+agency authorship or verified identities.
+
+The Waiʻanae definition is `waianae-practice` with model revision
+`afn-v1-transfer-<hours>h`. The revision binds the static subject/criteria model
+and the active transfer/travel-plus-buffer requirement. Definition changes must
+bump the static revision; changed transfer windows require a new export.
+Mismatched scenario/revision bundles are rejected, never translated.
+Every row is bound to an allowlisted scenario subject. Claim IDs are the
+app-generated `E-` plus eight lowercase hexadecimal characters, not user IDs
+or free-text attribution.
+
+Both export and import enforce 128 KiB serialized UTF-8 and 1–32 rows per
+bundle; the merged local register cannot exceed 32. Import checks file size
+before reading and decoded byte size before parsing, and rejects invalid UTF-8,
+malformed/trailing JSON, duplicate JSON keys, unknown/missing envelope or claim
+fields, invalid IDs, unknown subjects, enums, dates, numeric fields and extra
+payload. There is no supported free-text or arbitrary-URL field. Empty bundles
+cannot clear the working set. MIME/extension hints are not trusted as validation.
+
+Preview shows new/exact-duplicate counts, the controlled values and provenance,
+current/stale/future/set-aside status and projected deterministic questions.
+Only **Confirm bundle import** applies the entire validated merge. Exact
+canonical repeats are skipped; a same-ID/different-content collision rejects
+the entire bundle, including otherwise valid new rows. Distinct report IDs
+retain genuine disagreements for the existing conflict analyzer.
+The working set and scenario revision are rechecked on confirmation; changes
+require a fresh preview. File-read/export errors are surfaced without echoing
+untrusted filenames or payloads. Selection, cancellation and failed validation
+do not write claims or reset prepared questions. A duplicate-only confirmation
+also leaves preparation unchanged.
+
+Newly applied claims use the same local update, preparation invalidation,
+freshness, map annotations, deterministic review and current Markdown packet
+path as manually entered claims. No observation time is refreshed on import;
+old/future/set-aside claims remain excluded, visible and unverified. Imported
+claims can be edited locally, but an edited ID will collide with the original
+on reimport rather than silently overwrite it. There is no automatic conflict
+resolution, version history, identity verification, backend, connector or AI
+call in this exchange.
 
 ## Geography and source truth
 

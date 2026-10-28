@@ -16,6 +16,10 @@ unverified exercise contributions, not authorized shared-plan records or new
 server-owned citations. Reusing these controls in a provider request requires a
 separate bounded contract and citation/policy evaluations; no generic prompt
 field or provider is enabled by this feature.
+The bounded local JSON evidence exchange does not change this boundary:
+explicitly imported claims remain author-entered, unverified local working
+evidence. Bundles are scenario/model-bound and require preview and confirmation;
+they never become authenticated collaborative records or AI citations.
 
 ## Data boundary
 
