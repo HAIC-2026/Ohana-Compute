@@ -77,6 +77,8 @@ households.
   hazard forecast. Missing or incompatible evidence has no percentile marker.
   This deterministic analysis is labeled rule-based, not generated AI; the
   existing opt-in, authenticated grounded planning assist remains separate.
+  Locations without sufficient evidence use plain map pins, not question-mark
+  badges; the comparison panel explains the gap and required next check.
 - Disabled-by-default grounded planning assist with an injectable provider,
   server-built structured evidence, mandatory source citations, hard policy
   validation, explicit human review, and no arbitrary browser prompt

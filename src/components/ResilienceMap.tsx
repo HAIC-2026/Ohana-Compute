@@ -1046,6 +1046,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
                 <button
                   className={`area-marker ${selected ? 'is-selected' : ''} ${focus ? `focus-marker is-${focus.tier}` : ''}`}
                   aria-label={`Select ${area.name}`}
+                  aria-description={focus?.label}
                   aria-pressed={selected}
                   title={
                     focus
@@ -1057,15 +1058,9 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
                 >
                   {selected ? <ShieldCheck size={18} /> : <MapPin size={17} />}
                   <span>{area.name}</span>
-                  {focus && (
+                  {focus && focus.tier !== 'verify' && (
                     <small>
-                      {focus.label === 'Loading evidence'
-                        ? '…'
-                        : focus.tier === 'review-first'
-                          ? 'Review'
-                          : focus.tier === 'verify'
-                            ? '?'
-                            : 'Check'}
+                      {focus.tier === 'review-first' ? 'Review' : 'Check'}
                     </small>
                   )}
                 </button>

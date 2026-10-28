@@ -3117,10 +3117,6 @@ html[data-theme='dark'] .focus-distribution .is-review-first {
   font-size: 11px;
 }
 
-.focus-marker.is-verify {
-  border-style: dashed;
-}
-
 .focus-toggle:focus-visible,
 .geographic-focus button:focus-visible,
 .geographic-focus summary:focus-visible {

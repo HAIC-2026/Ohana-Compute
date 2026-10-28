@@ -439,6 +439,13 @@ test('source failures remain unknown; comparison is bounded and privacy-safe', a
   ).toContainText('No locations')
   await expect(panel).toContainText('Priority is unknown, not low')
   await expect(panel.locator('.focus-percentile')).toHaveCount(0)
+  const unknownMarkers = page.locator('.area-marker.focus-marker.is-verify')
+  await expect(unknownMarkers.first()).toBeVisible()
+  await expect(unknownMarkers.locator('small')).toHaveCount(0)
+  await expect(page.getByTestId('response-zone-oahu-town')).toHaveAttribute(
+    'aria-description',
+    'Verify evidence',
+  )
   const islandCount = areas.filter(
     (area) => area.island === 'Oʻahu' && area.showOnStatewideMap !== false,
   ).length
