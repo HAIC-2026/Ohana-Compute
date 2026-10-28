@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -30,6 +30,13 @@ import { EventTriggerPanel } from '../components/EventTriggerPanel'
 import { CommunityAfnSummary } from '../components/CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from '../components/NeighborhoodBriefingPanel'
 import { ResidentRoutePanel } from '../components/ResidentRoutePanel'
+import { GeographicFocusPanel } from '../components/GeographicFocusPanel'
+import {
+  buildGeographicFocus,
+  useGeographicEvidenceExpiry,
+  useGeographicHazards,
+  useGeographicProfiles,
+} from '../lib/geographic-focus'
 import {
   areas,
   activeEvents,
@@ -105,10 +112,13 @@ function Home() {
   const [hydrated, setHydrated] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [mobileSetupOpen, setMobileSetupOpen] = useState(false)
+  const [focusOpen, setFocusOpen] = useState(false)
+  const focusToggleRef = useRef<HTMLButtonElement>(null)
   const headerRef = useRef<HTMLElement>(null)
   const stageRef = useRef<HTMLElement>(null)
   const sheetRef = useRef<HTMLElement>(null)
   const restoreFocusRef = useRef<HTMLElement | null>(null)
+  const returnToComparisonRef = useRef(false)
   const reduceMotion = useReducedMotion()
   const {
     hazard,
@@ -220,9 +230,33 @@ function Home() {
     ),
   )
   const selectedIsland = area.island
-  const islandAreas = areas.filter(
-    (item) =>
-      item.island === selectedIsland && item.showOnStatewideMap !== false,
+  const islandAreas = useMemo(
+    () =>
+      areas.filter(
+        (item) =>
+          item.island === selectedIsland && item.showOnStatewideMap !== false,
+      ),
+    [selectedIsland],
+  )
+  const focusProfiles = useGeographicProfiles(
+    islandAreas,
+    focusOpen && !mobilePanel,
+  )
+  const focusHazards = useGeographicHazards(
+    islandAreas,
+    hazard,
+    focusOpen && !mobilePanel,
+  )
+  useGeographicEvidenceExpiry(
+    focusProfiles,
+    focusHazards,
+    focusOpen && !mobilePanel,
+  )
+  const focusEntries = buildGeographicFocus(
+    islandAreas,
+    focusProfiles,
+    hazard,
+    focusHazards,
   )
   const displayPlace = catalogBriefing
     ? area.name
@@ -304,7 +338,12 @@ function Home() {
       if (header) header.inert = false
       if (stage) stage.inert = false
       document.body.style.overflow = previousBodyOverflow
-      restoreFocusRef.current?.focus()
+      if (returnToComparisonRef.current) {
+        focusToggleRef.current?.focus()
+        returnToComparisonRef.current = false
+      } else {
+        restoreFocusRef.current?.focus()
+      }
       restoreFocusRef.current = null
     }
   }, [mobilePanel, setMobilePanel])
@@ -345,14 +384,57 @@ function Home() {
         </div>
       </header>
 
-      <section className="atlas-stage" ref={stageRef}>
+      <section
+        className={`atlas-stage ${focusOpen && !mobilePanel ? 'has-geographic-focus' : ''}`}
+        ref={stageRef}
+      >
         <div className="map-stage">
           <Suspense
             fallback={<div className="map-loading">Loading the map…</div>}
           >
-            <ResilienceMap />
+            <ResilienceMap
+              focusEntries={
+                focusOpen && !mobilePanel ? focusEntries : undefined
+              }
+            />
           </Suspense>
         </div>
+
+        {!mobilePanel && (
+          <button
+            type="button"
+            className="focus-toggle"
+            ref={focusToggleRef}
+            aria-expanded={focusOpen}
+            aria-controls="location-comparison"
+            onClick={() => {
+              setMobileSetupOpen(false)
+              setFocusOpen((open) => !open)
+            }}
+          >
+            <MapPin size={17} /> Compare locations
+          </button>
+        )}
+        {focusOpen && !mobilePanel && (
+          <div id="location-comparison">
+            <GeographicFocusPanel
+              island={selectedIsland}
+              hazard={hazard}
+              entries={focusEntries}
+              selectedAreaId={selectedAreaId}
+              onSelect={setSelectedAreaId}
+              onClose={() => {
+                setFocusOpen(false)
+                focusToggleRef.current?.focus()
+              }}
+              onOpenPlan={() => {
+                returnToComparisonRef.current = true
+                setFocusOpen(false)
+                setMobilePanel('insights')
+              }}
+            />
+          </div>
+        )}
 
         <section
           className={`map-story ${mobileSetupOpen ? 'is-open-mobile' : 'is-collapsed-mobile'}`}
@@ -360,7 +442,10 @@ function Home() {
           <button
             type="button"
             className="mobile-setup-summary"
-            onClick={() => setMobileSetupOpen(true)}
+            onClick={() => {
+              setFocusOpen(false)
+              setMobileSetupOpen(true)
+            }}
           >
             <MapPin size={18} />
             <span>

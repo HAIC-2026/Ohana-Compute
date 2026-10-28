@@ -126,6 +126,15 @@ function loadCommunityProfile(
   return request
 }
 
+export function getCommunityProfile(coordinates: [number, number]) {
+  const [longitude, latitude] = coordinates
+  const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`
+  const cached = profileCache.get(cacheKey)
+  return cached
+    ? Promise.resolve(cached)
+    : loadCommunityProfile(cacheKey, latitude, longitude)
+}
+
 export function useCommunityProfile(coordinates: [number, number]) {
   const [longitude, latitude] = coordinates
   const cacheKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`

@@ -36,6 +36,7 @@ import {
   vulnerabilityGeometry,
 } from '../lib/mock-data'
 import type { LayerId } from '../lib/mock-data'
+import type { GeographicFocus } from '../lib/geographic-focus'
 import {
   fetchOfficialEvacuationZone,
   fetchOfficialFloodRisk,
@@ -144,7 +145,13 @@ const selectPlanningMapState = (
 
 type PlanningMapState = ReturnType<typeof selectPlanningMapState>
 
-export function ResilienceMap() {
+type FocusEntry = { area: { id: string }; focus: GeographicFocus }
+
+export function ResilienceMap({
+  focusEntries,
+}: {
+  focusEntries?: FocusEntry[]
+}) {
   const planningState = usePlanningStore(useShallow(selectPlanningMapState))
   const deferredPlanningState = useDeferredValue(planningState)
 
@@ -153,6 +160,7 @@ export function ResilienceMap() {
       planningState={deferredPlanningState}
       displayEventId={planningState.selectedEventId}
       displayHazard={planningState.hazard}
+      focusEntries={focusEntries}
     />
   )
 }
@@ -161,10 +169,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   planningState,
   displayEventId,
   displayHazard,
+  focusEntries,
 }: {
   planningState: PlanningMapState
   displayEventId: string | null
   displayHazard: PlanningMapState['hazard']
+  focusEntries?: FocusEntry[]
 }) {
   const {
     activeLayers,
@@ -215,6 +225,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   const displaySelectedHazard =
     hazards.find((item) => item.id === displayHazard) ?? hazards[0]
   const currentHazard = activeEvent?.hazard ?? hazard
+  const comparingLocations = Boolean(focusEntries)
   const residentPlan =
     residentRoutePlans.find((item) => item.id === selectedResidentPlanId) ??
     residentRoutePlans[0]
@@ -376,14 +387,59 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   }, [locationFocus, mapLoaded, selectedPlanningZone])
 
   useEffect(() => {
-    if (!mapLoaded || locationFocus || mobilePanel === 'resident') return
+    if (
+      !mapLoaded ||
+      locationFocus ||
+      mobilePanel === 'resident' ||
+      comparingLocations
+    )
+      return
     mapRef.current?.flyTo({
       center: selectedArea.coordinates,
       zoom: selectedArea.island === 'Oʻahu' ? 9.15 : 9.3,
       duration: 900,
       essential: true,
     })
-  }, [locationFocus, mapLoaded, mobilePanel, selectedArea])
+  }, [locationFocus, mapLoaded, mobilePanel, selectedArea, comparingLocations])
+
+  useEffect(() => {
+    if (!mapLoaded || !comparingLocations) return
+    const points = areas
+      .filter(
+        (area) =>
+          area.island === selectedArea.island &&
+          area.showOnStatewideMap !== false,
+      )
+      .map((area) => area.coordinates)
+    if (!points.length) return
+    const narrow = window.innerWidth <= 900
+    const frameHeight =
+      mapRef.current?.getContainer().clientHeight ?? window.innerHeight
+    mapRef.current?.fitBounds(
+      [
+        [
+          Math.min(...points.map(([lon]) => lon)) - 0.02,
+          Math.min(...points.map(([, lat]) => lat)) - 0.02,
+        ],
+        [
+          Math.max(...points.map(([lon]) => lon)) + 0.02,
+          Math.max(...points.map(([, lat]) => lat)) + 0.02,
+        ],
+      ],
+      {
+        padding: narrow
+          ? {
+              top: 100,
+              bottom: Math.round(frameHeight * 0.65),
+              left: 50,
+              right: 50,
+            }
+          : { top: 80, bottom: 80, left: 470, right: 530 },
+        duration: 700,
+        maxZoom: 10,
+      },
+    )
+  }, [mapLoaded, comparingLocations, selectedArea.island])
 
   useEffect(() => {
     if (!mapLoaded || !showResidentRoute || mobilePanel !== 'resident') return
@@ -972,6 +1028,9 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           )
           .map((area) => {
             const selected = area.id === selectedAreaId
+            const focus = focusEntries?.find(
+              (entry) => entry.area.id === area.id,
+            )?.focus
             return (
               <Marker
                 key={area.id}
@@ -981,17 +1040,34 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
                 onClick={(event) => {
                   event.originalEvent.stopPropagation()
                   setSelectedAreaId(area.id)
-                  setMobilePanel('insights')
+                  if (!focusEntries) setMobilePanel('insights')
                 }}
               >
                 <button
-                  className={`area-marker ${selected ? 'is-selected' : ''}`}
+                  className={`area-marker ${selected ? 'is-selected' : ''} ${focus ? `focus-marker is-${focus.tier}` : ''}`}
                   aria-label={`Select ${area.name}`}
+                  aria-pressed={selected}
+                  title={
+                    focus
+                      ? `${area.name}: ${focus.label}. Area-center indicator, not hazard overlap.`
+                      : undefined
+                  }
                   data-testid={`response-zone-${area.id}`}
                   type="button"
                 >
                   {selected ? <ShieldCheck size={18} /> : <MapPin size={17} />}
                   <span>{area.name}</span>
+                  {focus && (
+                    <small>
+                      {focus.label === 'Loading evidence'
+                        ? '…'
+                        : focus.tier === 'review-first'
+                          ? 'Review'
+                          : focus.tier === 'verify'
+                            ? '?'
+                            : 'Check'}
+                    </small>
+                  )}
                 </button>
               </Marker>
             )
