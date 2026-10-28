@@ -29,6 +29,11 @@ export type GeographicFocus = {
   reason: string
   action: string
   evidence: string
+  signals: {
+    sviPercentile: number | null
+    hazard: PointHazardScreen['status']
+    hazardReason: string
+  }
 }
 
 export type PointHazardScreen = {
@@ -142,9 +147,19 @@ export function analyzeGeographicFocus(
   const evidence = svi
     ? `${svi.source.authority} · ${sviVintage(profile) || 'vintage unavailable'} release · ${svi.location} · ${svi.source.status}`
     : 'SVI tract evidence unavailable'
+  const currentHazard =
+    pointHazard && pointHazard.freshUntil > now ? pointHazard : undefined
+  const signals: GeographicFocus['signals'] = {
+    sviPercentile: usable ? percentile : null,
+    hazard: currentHazard?.status ?? 'unknown',
+    hazardReason:
+      currentHazard?.reason ??
+      'Hazard evidence unavailable, unmapped or stale at the area center.',
+  }
 
   if (!usable) {
     return {
+      signals,
       tier: 'verify',
       label:
         state?.status === 'loading' || !state
@@ -164,6 +179,7 @@ export function analyzeGeographicFocus(
     pointHazard.freshUntil <= now
   ) {
     return {
+      signals,
       tier: 'verify',
       label: 'Verify hazard evidence',
       reason:
@@ -174,6 +190,7 @@ export function analyzeGeographicFocus(
   }
   const elevated = percentile >= 0.75 && pointHazard.status === 'elevated'
   return {
+    signals,
     tier: elevated ? 'review-first' : 'review-locally',
     label: elevated
       ? 'Review first · provisional'
@@ -206,6 +223,30 @@ export function orderGeographicFocus<
   )
 }
 
+export function summarizeGeographicFocus(
+  entries: Array<{ focus: GeographicFocus }>,
+) {
+  const counts: Record<FocusTier, number> = {
+    'review-first': 0,
+    'review-locally': 0,
+    verify: 0,
+  }
+  for (const { focus } of entries) counts[focus.tier]++
+  return {
+    counts,
+    total: entries.length,
+    finding: !entries.length
+      ? 'No area centers in this scope.'
+      : counts['review-first'] > 0
+        ? counts.verify > 0
+          ? 'Review centers with both screening signals; verify unknowns in parallel.'
+          : 'Start with centers where both screening signals support local review.'
+        : counts.verify > 0
+          ? 'Resolve evidence gaps before drawing an island-wide conclusion.'
+          : 'No center meets both review-first signals. This is not an all-clear.',
+  }
+}
+
 export function buildGeographicFocus(
   areas: PlanningArea[],
   profiles: Partial<Record<string, CommunityProfileState>>,
@@ -233,7 +274,7 @@ export function buildGeographicFocus(
             : 'Maui'
     const location = state?.profile?.svi?.location.replace(/[ʻ’']/g, '') ?? ''
     if (
-      focus.tier !== 'verify' &&
+      focus.signals.sviPercentile !== null &&
       (vintages.size > 1 ||
         !location.toLowerCase().includes(`${county.toLowerCase()} county`))
     ) {
@@ -241,6 +282,7 @@ export function buildGeographicFocus(
         area,
         focus: {
           ...focus,
+          signals: { ...focus.signals, sviPercentile: null },
           tier: 'verify' as const,
           label: 'Verify evidence',
           reason:

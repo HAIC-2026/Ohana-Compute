@@ -70,6 +70,13 @@ households.
   all-clear for the surrounding area. Population/hazard polygon intersections
   and operational resource shortages are not calculated by this screen.
   Open comparisons revalidate their displayed cues when source evidence expires.
+  The screening snapshot counts center-level review cues (never people or
+  independent tracts). A selected-location decision brief keeps the mapped
+  hazard signal, national SVI percentile and County-led next check together;
+  its 75th-percentile reference is the existing provisional rule, not a local
+  hazard forecast. Missing or incompatible evidence has no percentile marker.
+  This deterministic analysis is labeled rule-based, not generated AI; the
+  existing opt-in, authenticated grounded planning assist remains separate.
 - Disabled-by-default grounded planning assist with an injectable provider,
   server-built structured evidence, mandatory source citations, hard policy
   validation, explicit human review, and no arbitrary browser prompt
