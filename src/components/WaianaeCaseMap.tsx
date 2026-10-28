@@ -10,7 +10,12 @@ import {
 } from 'react-map-gl/maplibre'
 
 import { practiceLocation } from '../lib/waianae-case'
-import { floodEvidenceText, parseFloodEvidence } from '../lib/waianae-geography'
+import {
+  floodEvidenceText,
+  floodFillColor,
+  floodOutlineColor,
+  parseFloodEvidence,
+} from '../lib/waianae-geography'
 import type { FloodEvidence } from '../lib/waianae-geography'
 
 const mapStyle = {
@@ -143,7 +148,7 @@ export function WaianaeCaseMap({
               checked={showFlood}
               onChange={(event) => setShowFlood(event.target.checked)}
             />
-            <i className="case-flood-key" /> Source flood polygons
+            Source flood polygons
           </label>
           <label>
             <input
@@ -153,6 +158,15 @@ export function WaianaeCaseMap({
             />
             <i className="case-assumption-key" /> Hypothetical access concerns
           </label>
+        </div>
+        <div className="case-map-legend" aria-label="Flood classification key">
+          <span>
+            <i className="case-flood-key" /> A / AE / VE · special flood hazard
+          </span>
+          <span>
+            <i className="case-other-flood-key" /> X · other mapped coverage,
+            not an all-clear
+          </span>
         </div>
       </div>
       <div
@@ -197,13 +211,7 @@ export function WaianaeCaseMap({
                     ['==', ['geometry-type'], 'Polygon'],
                   ]}
                   paint={{
-                    'fill-color': [
-                      'match',
-                      ['get', 'case_zone'],
-                      ['A', 'AE', 'AH', 'AO', 'V', 'VE'],
-                      '#b04b40',
-                      '#527b83',
-                    ],
+                    'fill-color': floodFillColor,
                     'fill-opacity': 0.3,
                   }}
                 />
@@ -212,7 +220,7 @@ export function WaianaeCaseMap({
                   type="line"
                   layout={{ visibility: showFlood ? 'visible' : 'none' }}
                   filter={['==', ['get', 'context_kind'], 'flood-zone']}
-                  paint={{ 'line-color': '#8c382e', 'line-width': 1.4 }}
+                  paint={{ 'line-color': floodOutlineColor, 'line-width': 1.4 }}
                 />
                 <Layer
                   id="case-source-waterways"

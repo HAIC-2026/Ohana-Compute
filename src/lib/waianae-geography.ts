@@ -1,3 +1,20 @@
+import type { ExpressionSpecification } from 'maplibre-gl'
+
+export const floodFillColor: ExpressionSpecification = [
+  'match',
+  ['get', 'case_zone'],
+  ['A', 'AE', 'AH', 'AO', 'V', 'VE'],
+  '#b04b40',
+  '#527b83',
+]
+export const floodOutlineColor: ExpressionSpecification = [
+  'match',
+  ['get', 'case_zone'],
+  ['A', 'AE', 'AH', 'AO', 'V', 'VE'],
+  '#8c382e',
+  '#527b83',
+]
+
 type Shape =
   | GeoJSON.Point
   | GeoJSON.Polygon

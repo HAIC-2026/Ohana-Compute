@@ -64,7 +64,8 @@ bounded mixed-context snapshot is about 1.7 MB. Road/waterway coordinates are
 rounded to six decimals. Never use these display geometries for engineering
 measurement, route clearance or evacuation-zone determination.
 
-The map uses semantic red flood areas, blue waterways, gray road lines, white
+The map uses red special-flood-hazard fills/outlines (A/AE/VE), muted blue-gray
+X other-coverage fills/outlines (not an all-clear), blue waterways, gray road lines, white
 inventory points, a teal fictional-person marker and dashed purple assumptions.
 These fixed geospatial roles intentionally differ from ordinary UI accents;
 color is reinforced by shape, labels, checkboxes and source/assumption text.

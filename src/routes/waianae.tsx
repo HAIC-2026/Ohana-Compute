@@ -233,8 +233,8 @@ function WaianaeCase() {
                     <dt>Assistance</dt>
                     <dd>
                       County assesses whether firefighters or another specialist
-                      team are appropriate. No team is available, assigned or
-                      activated by this example.
+                      team are appropriate. Team availability, assignment and
+                      activation are unconfirmed.
                     </dd>
                   </div>
                   <div>

@@ -11,6 +11,8 @@ import {
 } from '../src/lib/waianae-case'
 import {
   floodEvidenceText,
+  floodFillColor,
+  floodOutlineColor,
   parseFloodEvidence,
 } from '../src/lib/waianae-geography'
 
@@ -90,6 +92,10 @@ test('request packet preserves all five CMIST assumptions, unknowns, County owne
   expect(packet).toContain('18 - 5 = 13h')
   expect(packet).toContain('2 passenger places')
   expect(packet).toContain('NOT SENT')
+  expect(packet).toContain(
+    'Team availability, assignment and activation are unconfirmed',
+  )
+  expect(packet).not.toMatch(/No team (?:is )?available/)
   expect(packet).toContain('not a home, resident address or registry')
   expect(packet).toContain('hypothetical')
   expect(packet).toContain('prepared; answer unresolved')
@@ -148,6 +154,22 @@ test('saved official polygon evidence retains provenance and never becomes a per
   ).toThrow()
 })
 
+test('flood fill and outline both distinguish special flood hazard from X coverage', () => {
+  for (const [expression, special, other] of [
+    [floodFillColor, '#b04b40', '#527b83'],
+    [floodOutlineColor, '#8c382e', '#527b83'],
+  ] as const) {
+    expect(expression).toEqual([
+      'match',
+      ['get', 'case_zone'],
+      ['A', 'AE', 'AH', 'AO', 'V', 'VE'],
+      special,
+      other,
+    ])
+    expect(expression[2]).not.toContain('X')
+  }
+})
+
 test.describe('Waiʻanae fictional assistance workflow', () => {
   test('map story → pre-arrival window → County request → resident communication → persistent packet', async ({
     page,
@@ -155,6 +177,26 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     await page.goto('/waianae')
     await expect(page.locator('main')).toHaveAttribute('data-hydrated', 'true')
     await expect(page.getByTestId('case-flood-summary')).toBeVisible()
+    await expect(
+      page.getByText('A / AE / VE · special flood hazard', { exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('X · other mapped coverage, not an all-clear', {
+        exact: true,
+      }),
+    ).toBeVisible()
+    await expect(
+      page.getByText(
+        'Team availability, assignment and activation are unconfirmed.',
+        { exact: false },
+      ),
+    ).toBeVisible()
+    const keyColors = await page
+      .locator('.case-flood-key, .case-other-flood-key')
+      .evaluateAll((keys) =>
+        keys.map((key) => getComputedStyle(key).borderColor),
+      )
+    expect(keyColors).toEqual(['rgb(140, 56, 46)', 'rgb(82, 123, 131)'])
     await expect(page.getByTestId('case-map')).toHaveAttribute(
       'data-map-ready',
       'true',
@@ -192,7 +234,7 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     ).toBeVisible()
     await page.getByRole('tab', { name: 'Resident message' }).click()
     await expect(page.locator('.case-resident-draft')).toContainText(
-      'No firefighter, vehicle or specialist team is assigned or promised',
+      'Firefighter, vehicle and specialist-team availability, assignment and activation are unconfirmed',
     )
     const downloading = page.waitForEvent('download')
     await page

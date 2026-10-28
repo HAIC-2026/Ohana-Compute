@@ -180,7 +180,7 @@ export const residentDraft = `FICTIONAL EXERCISE DRAFT - County and community re
 
 Kupuna A is a fictional person at an illustrative map point, not a real home or address. In this exercise a storm may interrupt access. The goal is to arrange support before the assumed access-loss window, subject to official advice and safe conditions.
 
-Before any movement, the County must confirm a receiving location, safe access, appropriate transport, qualified assistance and a way to stay in contact. No firefighter, vehicle or specialist team is assigned or promised. Do not travel or attempt a rescue based on this example.
+Before any movement, the County must confirm a receiving location, safe access, appropriate transport, qualified assistance and a way to stay in contact. Firefighter, vehicle and specialist-team availability, assignment and activation are unconfirmed. This example makes no commitment. Do not travel or attempt a rescue based on this example.
 
 Discuss preferred language, plain-language/large-print/audio options, a trusted contact and a phone-free backup. Include medicines, equipment power, mobility support, a caregiver and service animals or pets as applicable. A service animal and a pet may need different arrangements.
 
@@ -197,7 +197,7 @@ export function createAssistancePacket(input: {
     throw new Error('Resolve timing errors before preparing a request.')
   return `# Waiʻanae pre-arrival assistance request - FICTIONAL EXERCISE
 
-County review required. NOT SENT. No team available, selected, assigned, activated or dispatched. County leads; State ESF6 supports. Public deidentified context only.
+County review required. NOT SENT. Team availability, assignment and activation are unconfirmed. This example does not select or dispatch a team. County leads; State ESF6 supports. Public deidentified context only.
 
 ## Person-story boundary
 Kupuna A is fictional. Marker ${practiceLocation.join(', ')} is illustrative, not a home, resident address or registry. All individual needs below are exercise assumptions, never inferred from demographics or flood geography.

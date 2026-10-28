@@ -453,6 +453,11 @@
   background: #e1b5b0;
 }
 
+.case-other-flood-key {
+  border: 1px solid #527b83;
+  background: #cad8da;
+}
+
 .case-assumption-key {
   border: 2px dashed #7046a1;
   border-radius: 50%;
