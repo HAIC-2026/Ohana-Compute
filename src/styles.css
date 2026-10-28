@@ -2985,6 +2985,107 @@ summary:focus-visible,
   font-weight: 650;
 }
 
+.focus-snapshot {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.focus-snapshot h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.focus-distribution {
+  display: flex;
+  height: 12px;
+  gap: 3px;
+}
+
+.focus-distribution span {
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.focus-distribution .is-review-first {
+  background: #9c5e08;
+}
+
+html[data-theme='dark'] .focus-distribution .is-review-first {
+  background: #efb75b;
+}
+
+.focus-distribution .is-review-locally {
+  background: var(--cp-accent);
+}
+
+.focus-distribution .is-verify {
+  background: var(--cp-surface-soft);
+  border: 1px dashed var(--cp-text-muted);
+}
+
+.focus-counts {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.focus-counts dt,
+.focus-signals dt,
+.focus-snapshot small,
+.focus-signals small {
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.focus-counts dd,
+.focus-signals dd {
+  margin: 0;
+  font-weight: 650;
+}
+
+.focus-counts dd {
+  font-size: 18px;
+}
+
+.focus-snapshot p {
+  margin: 8px 0;
+}
+
+.focus-signals {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.focus-percentile {
+  position: relative;
+  height: 8px;
+  margin: 10px 6px 6px;
+  background: var(--cp-border);
+}
+
+.focus-percentile::after {
+  position: absolute;
+  left: 75%;
+  top: -3px;
+  bottom: -3px;
+  border-left: 2px solid var(--cp-text-muted);
+  content: '';
+}
+
+.focus-percentile span {
+  position: absolute;
+  z-index: 1;
+  top: -2px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--cp-bg-elevated);
+  border-radius: 50%;
+  background: var(--cp-accent);
+  transform: translateX(-50%);
+}
+
 .focus-plan {
   min-height: 44px;
   width: 100%;
