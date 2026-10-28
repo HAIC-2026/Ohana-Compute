@@ -51,6 +51,25 @@ households.
   limited-connectivity coordination
 - Data-derived AFN planning hotspots across communication, medical,
   independence, safety, and transportation domains
+- **Compare locations**: map-linked, island-scoped geographic planning focus.
+  Complete fresh center profiles with a dated SVI tract indicator form a
+  provisional review queue. “Review first” requires both the highest national
+  SVI quarter and an elevated official mapped hazard at the representative
+  center (high flood/wildfire class or inside a tsunami evacuation zone).
+  Hurricane uses flood screening only, not wind or surge exposure. This is a
+  transparent screening cue, not a validated hazard-priority threshold. Source gaps,
+  stale data, mismatched counties and incompatible vintages remain explicitly
+  unknown. Area-center markers are not hotspot polygons or hazard intersections.
+  Select a location from the map or list, review its hazard-specific next check,
+  then continue to Model needs and match partners. Public indicators are kept
+  separate from labeled practice-area context and synthetic readiness/exposure.
+  Requests reuse the shared profile cache with a shared three-request limit
+  across comparison scopes and hazard screens. Hazard responses are coalesced, cached until
+  their source freshness expires, and rejected for stale, unmapped, undetermined,
+  missing, or expired evidence. Outside/lower-mapped center points are not an
+  all-clear for the surrounding area. Population/hazard polygon intersections
+  and operational resource shortages are not calculated by this screen.
+  Open comparisons revalidate their displayed cues when source evidence expires.
 - Disabled-by-default grounded planning assist with an injectable provider,
   server-built structured evidence, mandatory source citations, hard policy
   validation, explicit human review, and no arbitrary browser prompt
