@@ -292,6 +292,9 @@ test.describe('Local evidence workflow', () => {
     page,
   }) => {
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Before arrival', exact: true }).focus()
     await page.keyboard.press('ArrowRight')
     await expect(
@@ -401,6 +404,9 @@ test.describe('Local evidence workflow', () => {
     page,
   }, testInfo) => {
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Planning evidence' }).click()
     const insight = page.getByTestId('insight-assisted-transfer')
     await expect(insight).toHaveAttribute('data-state', 'missing')
@@ -432,6 +438,9 @@ test.describe('Local evidence workflow', () => {
       .first()
       .textContent()
     await page.reload()
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Planning evidence' }).click()
     await expect(insight).toHaveAttribute('data-state', 'reported')
     await expect(page.getByTestId('case-map')).toHaveAttribute(
@@ -470,6 +479,9 @@ test.describe('Local evidence workflow', () => {
     page,
   }, testInfo) => {
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Planning evidence' }).click()
     await openEditor(page)
     await page
@@ -602,6 +614,9 @@ test.describe('Local evidence workflow', () => {
       },
     )
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Planning evidence' }).click()
     await expect(page.getByTestId('insight-assisted-transfer')).toHaveAttribute(
       'data-state',
@@ -620,6 +635,9 @@ test.describe('Local evidence workflow', () => {
     ).toBeVisible()
     await expect(page.getByRole('status')).toContainText('freshness changed')
     await page.reload()
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'County request' }).click()
     await expect(
       page.getByRole('checkbox', { name: /^Medical/ }),
@@ -656,6 +674,9 @@ test.describe('Local evidence workflow', () => {
       caseStorageKey,
     )
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await expect(page.getByRole('alert')).toContainText('could not be restored')
     expect(
       await page.evaluate(

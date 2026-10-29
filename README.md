@@ -24,8 +24,30 @@ households.
 
 ## What works
 
+- **Statewide conversation-first entry**: the default map shows Hawaiʻi's
+  islands, not a fictional person. Choose a supported island/community in
+  the local guide, inspect source-backed screening and prepare five CMIST
+  County questions. The same selection drives the map, geographic comparison
+  and detailed workspace. Unknown coverage is not low risk, and no statewide
+  totals or available-team counts are invented. The guide is deterministic,
+  not live AI; typed input is bounded and not saved or sent.
+  Selectable community screening currently covers Oʻahu, Maui, Hawaiʻi and
+  Kauaʻi; gaps for other islands are disclosed rather than filled with
+  another island's evidence.
+  **Recommend next step** adds explainable decision support: choose a community,
+  resolve evidence gaps, bring combined screening signals to County review,
+  or compare local evidence. It shows the evidence and versioned rule behind
+  the suggestion. Navigation requires a planner click; no plan, resource or
+  approval is changed by a recommendation. This is a rule-based decision model,
+  not trained AI or a live provider.
 - **[Waiʻanae assisted-planning case](docs/waianae-assistance-case.md)**:
-  open **Kupuna A case** (`/waianae`) for one fictional before-storm story.
+  open **Examples → Fictional Waiʻanae case** (`/waianae`) for one fictional
+  before-storm story, useful as the video walkthrough rather than app scope.
+  A conversation-first local guide asks one evidence question at a time,
+  explains gaps and previews timing or claim changes before explicit apply.
+  The original full editor remains under **Detailed workspace**; both views
+  share the map, structured evidence, County questions and unsent exports.
+  This is a bounded rule-based prototype, not a live AI chatbot.
   Real flood polygons, roads, waterways and bridge inventory are visibly
   separated from hypothetical access failures and assumed individual needs.
   Editable timing leads to five CMIST County checks, a specialist-assessment

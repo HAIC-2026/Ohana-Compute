@@ -21,6 +21,45 @@ explicitly imported claims remain author-entered, unverified local working
 evidence. Bundles are scenario/model-bound and require preview and confirmation;
 they never become authenticated collaborative records or AI citations.
 
+The case now opens with a **conversation-first local guide**. Its suggested
+questions, narrow typed intents and one-answer-at-a-time evidence collection
+are deterministic. Proposed changes require explicit confirmation and share
+the existing analyzer, map and packet; the detailed editor remains available.
+The guide visibly says it is not live AI. Arbitrary unsupported text is not
+echoed, saved or sent; canonical supported turns are transient and bounded.
+This UI does not enable this server-side assist, a provider, new citations,
+identity or shared-plan synchronization.
+
+The main `/` route separately starts with a statewide map and local planning
+conversation. It selects existing catalog areas and evaluates public evidence
+through the existing geographic screening helpers. Island selection is a
+navigation step, not a statewide risk ranking or operational resource count.
+The fictional case is accessible under Examples only; its personal-story
+assumptions and local contributions do not enter statewide screening. Both
+conversational surfaces are visibly deterministic and do not call a provider.
+
+### Local next-step decision model
+
+The statewide conversation also supports **Recommend next step**. Its
+`afn-next-step.v1` decision table consumes the existing geographic screening
+result; it does not introduce a second risk score or change screening thresholds.
+
+| Condition                                                       | Suggested planning task                 | Alternative                          |
+| --------------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
+| Statewide scope                                                 | Choose a supported community            | Prepare County questions             |
+| Missing, loading, stale, incompatible or unknown local evidence | Review evidence and gaps                | Prepare County questions in parallel |
+| Existing provisional review-first result                        | Bring combined signals to County review | Compare locations on the same island |
+| Existing provisional local-review result                        | Compare local evidence                  | Prepare County questions             |
+
+The current response shows its rule, rationale and evidence. Scope and hazard
+changes reset the response; freshness changes withdraw unsupported suggestions.
+No probability, optimized allocation, statewide ranking, individual need or
+operational availability is inferred. Viewing a suggestion makes no planning
+mutation. Its buttons navigate to existing read-only evidence, comparison or
+County-question surfaces; they do not assign resources, approve movement or
+apply a shared-plan draft. This local decision table does not enable the
+provider or expand its evidence contract.
+
 ## Data boundary
 
 The browser sends only the plan reference in the route plus the expected

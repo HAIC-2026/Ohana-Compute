@@ -31,6 +31,7 @@ import { CommunityAfnSummary } from '../components/CommunityAfnSummary'
 import { NeighborhoodBriefingPanel } from '../components/NeighborhoodBriefingPanel'
 import { ResidentRoutePanel } from '../components/ResidentRoutePanel'
 import { GeographicFocusPanel } from '../components/GeographicFocusPanel'
+import { StatewidePlanningConversation } from '../components/StatewidePlanningConversation'
 import {
   buildGeographicFocus,
   useGeographicEvidenceExpiry,
@@ -110,9 +111,11 @@ const residentRouteSummary: Record<HazardId, string> = {
 
 function Home() {
   const [hydrated, setHydrated] = useState(false)
+  const [wideScreen, setWideScreen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [mobileSetupOpen, setMobileSetupOpen] = useState(false)
   const [focusOpen, setFocusOpen] = useState(false)
+  const [detailedOverview, setDetailedOverview] = useState(false)
   const focusToggleRef = useRef<HTMLButtonElement>(null)
   const headerRef = useRef<HTMLElement>(null)
   const stageRef = useRef<HTMLElement>(null)
@@ -121,6 +124,8 @@ function Home() {
   const returnToComparisonRef = useRef(false)
   const reduceMotion = useReducedMotion()
   const {
+    statewideOverview,
+    showStatewideOverview,
     hazard,
     severity,
     selectedEventId,
@@ -139,6 +144,8 @@ function Home() {
     setMobilePanel,
   } = usePlanningStore(
     useShallow((state) => ({
+      statewideOverview: state.statewideOverview,
+      showStatewideOverview: state.showStatewideOverview,
       hazard: state.hazard,
       severity: state.severity,
       selectedEventId: state.selectedEventId,
@@ -276,11 +283,16 @@ function Home() {
 
   useEffect(() => {
     setHydrated(true)
+    const media = window.matchMedia('(min-width: 901px)')
+    const resize = () => setWideScreen(media.matches)
+    resize()
+    media.addEventListener('change', resize)
     setTheme(
       document.documentElement.getAttribute('data-theme') === 'dark'
         ? 'dark'
         : 'light',
     )
+    return () => media.removeEventListener('change', resize)
   }, [])
 
   useEffect(() => {
@@ -356,7 +368,7 @@ function Home() {
 
   return (
     <main
-      className={`app ${mobilePanel === 'resident' ? 'has-resident-route' : ''}`}
+      className={`app ${statewideOverview ? 'is-statewide' : ''} ${mobilePanel === 'resident' ? 'has-resident-route' : ''}`}
       data-hydrated={hydrated}
     >
       <header className="atlas-header" ref={headerRef}>
@@ -373,9 +385,35 @@ function Home() {
         </div>
 
         <div className="header-actions">
-          <Link className="case-entry-link" to="/waianae">
-            Kupuna A case
-          </Link>
+          {!statewideOverview && (
+            <button
+              type="button"
+              className="statewide-home statewide-detail-toggle"
+              aria-pressed={detailedOverview}
+              onClick={() => setDetailedOverview((value) => !value)}
+            >
+              {detailedOverview
+                ? 'Show conversation'
+                : 'Show detailed overview'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="statewide-home"
+            onClick={() => {
+              showStatewideOverview()
+              setFocusOpen(false)
+              setDetailedOverview(false)
+            }}
+          >
+            All islands
+          </button>
+          <details className="planning-examples">
+            <summary>Examples</summary>
+            <Link className="case-entry-link" to="/waianae">
+              Fictional Waiʻanae case
+            </Link>
+          </details>
           <span className="prototype-badge">Practice data</span>
           <button
             type="button"
@@ -411,11 +449,16 @@ function Home() {
             aria-expanded={focusOpen}
             aria-controls="location-comparison"
             onClick={() => {
+              if (statewideOverview) {
+                setMobilePanel('conversation')
+                return
+              }
               setMobileSetupOpen(false)
               setFocusOpen((open) => !open)
             }}
           >
-            <MapPin size={17} /> Compare locations
+            <MapPin size={17} />{' '}
+            {statewideOverview ? 'Choose a community' : 'Compare locations'}
           </button>
         )}
         {focusOpen && !mobilePanel && (
@@ -453,7 +496,7 @@ function Home() {
             <MapPin size={18} />
             <span>
               <small>
-                {displayPlace} ·{' '}
+                {statewideOverview ? 'All Hawaiʻi islands' : displayPlace} ·{' '}
                 {activeEvent?.name ?? selectedHazard.shortLabel}
               </small>
               <strong>Change planning area or active event</strong>
@@ -470,7 +513,11 @@ function Home() {
             >
               <X size={18} />
             </button>
-            <h1>Mass care planner</h1>
+            <h1>
+              {statewideOverview
+                ? 'Statewide AFN planning'
+                : 'Mass care planner'}
+            </h1>
 
             <div className="place-flow">
               <div className="island-choice">
@@ -479,8 +526,12 @@ function Home() {
                   <small>Island</small>
                   <select
                     aria-label="Choose island"
-                    value={selectedIsland}
+                    value={statewideOverview ? 'statewide' : selectedIsland}
                     onChange={(event) => {
+                      if (event.target.value === 'statewide') {
+                        showStatewideOverview()
+                        return
+                      }
                       const nextArea = areas.find(
                         (item) =>
                           item.island === event.target.value &&
@@ -489,6 +540,7 @@ function Home() {
                       if (nextArea) setSelectedAreaId(nextArea.id)
                     }}
                   >
+                    <option value="statewide">All Hawaiʻi islands</option>
                     {islands.map((island) => (
                       <option key={island} value={island}>
                         {island}
@@ -498,74 +550,110 @@ function Home() {
                 </span>
               </div>
 
-              <label className="response-zone-choice">
-                <span>Which part of {selectedIsland}?</span>
-                <select
-                  aria-label={`Which part of ${selectedIsland}?`}
-                  value={selectedAreaId}
-                  onChange={(event) => {
-                    setSelectedAreaId(event.target.value)
-                    setMobileSetupOpen(false)
-                  }}
-                >
-                  {islandAreas.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {!statewideOverview && (
+                <label className="response-zone-choice">
+                  <span>Which part of {selectedIsland}?</span>
+                  <select
+                    aria-label={`Which part of ${selectedIsland}?`}
+                    value={selectedAreaId}
+                    onChange={(event) => {
+                      setSelectedAreaId(event.target.value)
+                      setMobileSetupOpen(false)
+                    }}
+                  >
+                    {islandAreas.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
-              {area.communities && (
+              {!statewideOverview && area.communities && (
                 <div className="zone-communities">
                   <p>{area.communities.join(' · ')}</p>
                 </div>
               )}
             </div>
 
-            <EventTriggerPanel compact />
+            <details
+              className="statewide-event-settings"
+              open={!statewideOverview || undefined}
+            >
+              <summary>Official triggers &amp; practice scenarios</summary>
+              <EventTriggerPanel compact />
 
-            <div className="emergency-choice">
-              <div className="active-event-heading">
-                <strong>Scenario</strong>
-                <span>Practice only</span>
+              <div className="emergency-choice">
+                <div className="active-event-heading">
+                  <strong>Scenario</strong>
+                  <span>Practice only</span>
+                </div>
+                <nav
+                  className="active-event-list"
+                  aria-label="Choose active event"
+                >
+                  {activeEvents.map((item) => {
+                    const Icon = hazardIcons[item.hazard]
+                    const active = selectedEventId === item.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={active ? 'is-active' : ''}
+                        aria-pressed={active}
+                        onClick={() => {
+                          selectActiveEvent(item.id)
+                          setMobileSetupOpen(false)
+                        }}
+                      >
+                        <Icon size={18} />
+                        <span>
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.status} · {item.trend} · severity{' '}
+                            {item.severity}/5
+                          </small>
+                        </span>
+                        <ChevronRight size={16} />
+                      </button>
+                    )
+                  })}
+                </nav>
               </div>
-              <nav
-                className="active-event-list"
-                aria-label="Choose active event"
-              >
-                {activeEvents.map((item) => {
-                  const Icon = hazardIcons[item.hazard]
-                  const active = selectedEventId === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={active ? 'is-active' : ''}
-                      aria-pressed={active}
-                      onClick={() => {
-                        selectActiveEvent(item.id)
-                        setMobileSetupOpen(false)
-                      }}
-                    >
-                      <Icon size={18} />
-                      <span>
-                        <strong>{item.name}</strong>
-                        <small>
-                          {item.status} · {item.trend} · severity{' '}
-                          {item.severity}/5
-                        </small>
-                      </span>
-                      <ChevronRight size={16} />
-                    </button>
-                  )
-                })}
-              </nav>
-            </div>
+            </details>
           </div>
         </section>
 
-        <aside className="relief-panel">
+        <aside
+          className="statewide-conversation-desktop"
+          hidden={detailedOverview || focusOpen}
+        >
+          <StatewidePlanningConversation
+            active={
+              wideScreen && !mobilePanel && !detailedOverview && !focusOpen
+            }
+            onCompare={() => {
+              setMobilePanel(null)
+              setFocusOpen(true)
+            }}
+            onDetails={() => {
+              setDetailedOverview(true)
+              setMobilePanel('insights')
+            }}
+          />
+        </aside>
+        <aside
+          className="relief-panel"
+          hidden={!detailedOverview || statewideOverview}
+        >
+          <button
+            type="button"
+            className="return-to-conversation"
+            onClick={() => setDetailedOverview(false)}
+          >
+            Back to conversation
+          </button>
           <div className="relief-heading">
             <span className="relief-icon">
               <CheckCircle2 size={21} />
@@ -756,7 +844,10 @@ function Home() {
             className="relief-primary"
             onFocus={preloadResponseWorkspace}
             onPointerEnter={preloadResponseWorkspace}
-            onClick={() => setMobilePanel('insights')}
+            onClick={() => {
+              if (statewideOverview) setMobilePanel('conversation')
+              else setMobilePanel('insights')
+            }}
           >
             <Sparkles size={18} />
             {briefReady
@@ -789,7 +880,12 @@ function Home() {
                 <span>No Oʻahu route or resource was substituted.</span>
               </div>
             )}
-            <button type="button" onClick={() => setMobilePanel('resident')}>
+            <button
+              type="button"
+              onClick={() =>
+                setMobilePanel(statewideOverview ? 'conversation' : 'resident')
+              }
+            >
               Open public guidance preview
               <ChevronRight size={17} />
             </button>
@@ -815,14 +911,16 @@ function Home() {
           className="mobile-result"
           onFocus={preloadResponseWorkspace}
           onPointerEnter={preloadResponseWorkspace}
-          onClick={() => setMobilePanel('insights')}
+          onClick={() => setMobilePanel('conversation')}
         >
           <span>
-            <small>Response priority · {displayPlace}</small>
-            <strong>{localSteps[0].title}</strong>
-            <em>
-              {localSteps[0].owner} · {localSteps[0].timing}
-            </em>
+            <small>
+              {statewideOverview
+                ? 'Statewide AFN planning'
+                : `Planning · ${displayPlace}`}
+            </small>
+            <strong>Plan in conversation</strong>
+            <em>Evidence gaps · County questions · all islands</em>
           </span>
           <ChevronRight size={20} />
         </button>
@@ -830,9 +928,19 @@ function Home() {
         <nav className="mobile-dock" aria-label="Emergency planning tools">
           <button
             type="button"
+            onClick={() => setMobilePanel('conversation')}
+            className={mobilePanel === 'conversation' ? 'is-active' : ''}
+          >
+            <Sparkles size={19} />
+            Conversation
+          </button>
+          <button
+            type="button"
             onFocus={preloadResponseWorkspace}
             onPointerEnter={preloadResponseWorkspace}
-            onClick={() => setMobilePanel('insights')}
+            onClick={() =>
+              setMobilePanel(statewideOverview ? 'conversation' : 'insights')
+            }
             className={mobilePanel === 'insights' ? 'is-active' : ''}
           >
             <Sparkles size={19} />
@@ -840,7 +948,9 @@ function Home() {
           </button>
           <button
             type="button"
-            onClick={() => setMobilePanel('resident')}
+            onClick={() =>
+              setMobilePanel(statewideOverview ? 'conversation' : 'resident')
+            }
             className={mobilePanel === 'resident' ? 'is-active' : ''}
           >
             <Navigation size={19} />
@@ -888,18 +998,22 @@ function Home() {
               <div className="planning-sheet-header">
                 <div>
                   <h2 id="planning-sheet-title">
-                    {mobilePanel === 'scenario'
-                      ? 'Change map details'
-                      : mobilePanel === 'resident'
-                        ? 'Public guidance preview'
-                        : `Mass care plan for ${displayPlace}`}
+                    {mobilePanel === 'conversation'
+                      ? 'Statewide AFN planning'
+                      : mobilePanel === 'scenario'
+                        ? 'Change map details'
+                        : mobilePanel === 'resident'
+                          ? 'Public guidance preview'
+                          : `Mass care plan for ${displayPlace}`}
                   </h2>
                   <span>
-                    {mobilePanel === 'scenario'
-                      ? 'Optional settings'
-                      : mobilePanel === 'resident'
-                        ? 'How an approved plan becomes accessible resident action'
-                        : 'Confirm needs, resources, routes, and first actions'}
+                    {mobilePanel === 'conversation'
+                      ? 'Choose a community, review evidence, coordinate support'
+                      : mobilePanel === 'scenario'
+                        ? 'Optional settings'
+                        : mobilePanel === 'resident'
+                          ? 'How an approved plan becomes accessible resident action'
+                          : 'Confirm needs, resources, routes, and first actions'}
                   </span>
                 </div>
                 <button
@@ -912,7 +1026,18 @@ function Home() {
                 </button>
               </div>
               <div className="planning-sheet-body">
-                {mobilePanel === 'scenario' ? (
+                {mobilePanel === 'conversation' ? (
+                  <StatewidePlanningConversation
+                    onCompare={() => {
+                      setMobilePanel(null)
+                      setFocusOpen(true)
+                    }}
+                    onDetails={() => {
+                      setDetailedOverview(true)
+                      setMobilePanel('insights')
+                    }}
+                  />
+                ) : mobilePanel === 'scenario' ? (
                   <ScenarioControls compact />
                 ) : mobilePanel === 'resident' ? (
                   <ResidentRoutePanel compact />

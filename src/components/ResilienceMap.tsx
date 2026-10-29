@@ -125,6 +125,7 @@ function readColor(name: string, fallback: string) {
 const selectPlanningMapState = (
   state: ReturnType<typeof usePlanningStore.getState>,
 ) => ({
+  statewideOverview: state.statewideOverview,
   activeLayers: state.activeLayers,
   hazard: state.hazard,
   selectedEventId: state.selectedEventId,
@@ -177,6 +178,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   focusEntries?: FocusEntry[]
 }) {
   const {
+    statewideOverview,
     activeLayers,
     hazard,
     selectedEventId,
@@ -236,7 +238,8 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   const residentTravel = residentNoCar
     ? residentResource.noCar
     : residentResource.drive
-  const showResidentRoute = selectedArea.id === residentPlan.areaId
+  const showResidentRoute =
+    !statewideOverview && selectedArea.id === residentPlan.areaId
   const showTsunamiZone = showResidentRoute && currentHazard === 'tsunami'
   const showFloodRisk =
     showResidentRoute && ['hurricane', 'flood'].includes(currentHazard)
@@ -389,6 +392,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   useEffect(() => {
     if (
       !mapLoaded ||
+      statewideOverview ||
       locationFocus ||
       mobilePanel === 'resident' ||
       comparingLocations
@@ -400,7 +404,31 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       duration: 900,
       essential: true,
     })
-  }, [locationFocus, mapLoaded, mobilePanel, selectedArea, comparingLocations])
+  }, [
+    locationFocus,
+    mapLoaded,
+    mobilePanel,
+    selectedArea,
+    comparingLocations,
+    statewideOverview,
+  ])
+
+  useEffect(() => {
+    if (!mapLoaded || !statewideOverview) return
+    const narrow = window.innerWidth <= 900
+    mapRef.current?.fitBounds(
+      [
+        [-160.35, 18.8],
+        [-154.7, 22.35],
+      ],
+      {
+        padding: narrow
+          ? { top: 100, bottom: 160, left: 25, right: 70 }
+          : { top: 90, bottom: 80, left: 340, right: 500 },
+        duration: 0,
+      },
+    )
+  }, [mapLoaded, statewideOverview])
 
   useEffect(() => {
     if (!mapLoaded || !comparingLocations) return
@@ -496,6 +524,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       className="map-frame"
       data-map-loaded={mapLoaded}
       data-map-geography-visible={geographyVisible}
+      data-map-scope={statewideOverview ? 'statewide' : selectedArea.id}
       data-telemetry-category="map"
     >
       {(streetMapUnavailable || geographyUnavailable) && (
@@ -505,57 +534,63 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
             : 'Street map interrupted · Coastline view'}
         </div>
       )}
-      <nav className="map-story-chips" aria-label="Quick map layers">
-        <button
-          type="button"
-          className={activeLayers.includes('mobility') ? 'is-active' : ''}
-          aria-pressed={activeLayers.includes('mobility')}
-          onClick={() => toggleLayer('mobility')}
+      {!statewideOverview && (
+        <nav className="map-story-chips" aria-label="Quick map layers">
+          <button
+            type="button"
+            className={activeLayers.includes('mobility') ? 'is-active' : ''}
+            aria-pressed={activeLayers.includes('mobility')}
+            onClick={() => toggleLayer('mobility')}
+          >
+            <Users size={15} />
+            People
+          </button>
+          <button
+            type="button"
+            className={activeLayers.includes('shelters') ? 'is-active' : ''}
+            aria-pressed={activeLayers.includes('shelters')}
+            onClick={() => toggleLayer('shelters')}
+          >
+            <HousePlus size={15} />
+            Resources
+          </button>
+          <button
+            type="button"
+            className={
+              activeLayers.includes('transportation') ? 'is-active' : ''
+            }
+            aria-pressed={activeLayers.includes('transportation')}
+            onClick={() => toggleLayer('transportation')}
+          >
+            <RouteIcon size={15} />
+            Transport needs
+          </button>
+        </nav>
+      )}
+      {!statewideOverview && (
+        <div
+          className="hazard-legend"
+          aria-label={
+            selectedArea.island === 'Oʻahu'
+              ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} synthetic scenario footprint; not an official forecast`
+              : `${selectedArea.island} regional scenario footprint; validation pending`
+          }
         >
-          <Users size={15} />
-          People
-        </button>
-        <button
-          type="button"
-          className={activeLayers.includes('shelters') ? 'is-active' : ''}
-          aria-pressed={activeLayers.includes('shelters')}
-          onClick={() => toggleLayer('shelters')}
-        >
-          <HousePlus size={15} />
-          Resources
-        </button>
-        <button
-          type="button"
-          className={activeLayers.includes('transportation') ? 'is-active' : ''}
-          aria-pressed={activeLayers.includes('transportation')}
-          onClick={() => toggleLayer('transportation')}
-        >
-          <RouteIcon size={15} />
-          Transport needs
-        </button>
-      </nav>
-      <div
-        className="hazard-legend"
-        aria-label={
-          selectedArea.island === 'Oʻahu'
-            ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} synthetic scenario footprint; not an official forecast`
-            : `${selectedArea.island} regional scenario footprint; validation pending`
-        }
-      >
-        <span className="hazard-legend-swatch" aria-hidden="true" />
-        <span className="hazard-legend-copy">
-          <strong>
-            {selectedArea.island === 'Oʻahu'
-              ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} scenario footprint`
-              : `${selectedArea.island} regional scenario footprint`}
-          </strong>
-          <small>
-            {selectedArea.island === 'Oʻahu'
-              ? 'Synthetic practice data · not an official forecast'
-              : 'Synthetic practice data · validation pending'}
-          </small>
-        </span>
-      </div>
+          <span className="hazard-legend-swatch" aria-hidden="true" />
+          <span className="hazard-legend-copy">
+            <strong>
+              {selectedArea.island === 'Oʻahu'
+                ? `${displayEvent?.name ?? displaySelectedHazard.shortLabel} scenario footprint`
+                : `${selectedArea.island} regional scenario footprint`}
+            </strong>
+            <small>
+              {selectedArea.island === 'Oʻahu'
+                ? 'Synthetic practice data · not an official forecast'
+                : 'Synthetic practice data · validation pending'}
+            </small>
+          </span>
+        </div>
+      )}
       {showTsunamiZone &&
         officialEvacuationZone &&
         officialEvacuationZone.geometry.features.length > 0 && (
@@ -611,12 +646,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           )
         }}
         initialViewState={{
-          longitude: -157.97,
-          latitude: isMobile ? 21.39 : 21.45,
-          zoom: isMobile ? 8.85 : 9.15,
+          longitude: statewideOverview ? -157.5 : -157.97,
+          latitude: statewideOverview ? 20.6 : isMobile ? 21.39 : 21.45,
+          zoom: statewideOverview ? 6 : isMobile ? 8.85 : 9.15,
         }}
         mapStyle={mapStyle}
-        minZoom={8.6}
+        minZoom={5}
         maxZoom={16}
         fadeDuration={0}
         attributionControl={{}}
@@ -627,7 +662,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           id="hazard-exposure"
           type="geojson"
           data={
-            selectedArea.island === 'Oʻahu'
+            !statewideOverview && selectedArea.island === 'Oʻahu'
               ? hazardGeometry[hazard]
               : emptyHazardGeometry
           }
@@ -918,6 +953,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           ] as Array<[Exclude<LayerId, 'shelters'>, string]>
         ).map(
           ([layerId, color]) =>
+            !statewideOverview &&
             activeLayers.includes(layerId) && (
               <Source
                 key={layerId}
@@ -946,7 +982,8 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
             ),
         )}
 
-        {activeLayers.includes('shelters') &&
+        {!statewideOverview &&
+          activeLayers.includes('shelters') &&
           resourceGroups.map((group) => (
             <Marker
               key={group.kind}
@@ -1020,53 +1057,89 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           )
         })}
 
-        {areas
-          .filter(
-            (area) =>
-              area.showOnStatewideMap !== false &&
-              area.island === selectedArea.island,
-          )
-          .map((area) => {
-            const selected = area.id === selectedAreaId
-            const focus = focusEntries?.find(
-              (entry) => entry.area.id === area.id,
-            )?.focus
+        {statewideOverview &&
+          Array.from(
+            new Set(
+              areas
+                .filter((area) => area.showOnStatewideMap !== false)
+                .map((area) => area.island),
+            ),
+          ).map((island) => {
+            const first = areas.find(
+              (area) =>
+                area.island === island && area.showOnStatewideMap !== false,
+            )!
             return (
               <Marker
-                key={area.id}
-                longitude={area.coordinates[0]}
-                latitude={area.coordinates[1]}
+                key={island}
+                longitude={first.coordinates[0]}
+                latitude={first.coordinates[1]}
                 anchor="bottom"
-                onClick={(event) => {
-                  event.originalEvent.stopPropagation()
-                  setSelectedAreaId(area.id)
-                  if (!focusEntries) setMobilePanel('insights')
-                }}
               >
                 <button
-                  className={`area-marker ${selected ? 'is-selected' : ''} ${focus ? `focus-marker is-${focus.tier}` : ''}`}
-                  aria-label={`Select ${area.name}`}
-                  aria-description={focus?.label}
-                  aria-pressed={selected}
-                  title={
-                    focus
-                      ? `${area.name}: ${focus.label}. Area-center indicator, not hazard overlap.`
-                      : undefined
-                  }
-                  data-testid={`response-zone-${area.id}`}
                   type="button"
+                  className="area-marker"
+                  aria-label={`Explore ${island}`}
+                  onClick={() => setSelectedAreaId(first.id)}
                 >
-                  {selected ? <ShieldCheck size={18} /> : <MapPin size={17} />}
-                  <span>{area.name}</span>
-                  {focus && focus.tier !== 'verify' && (
-                    <small>
-                      {focus.tier === 'review-first' ? 'Review' : 'Check'}
-                    </small>
-                  )}
+                  <MapPin size={17} />
+                  <span>{island}</span>
                 </button>
               </Marker>
             )
           })}
+        {!statewideOverview &&
+          areas
+            .filter(
+              (area) =>
+                area.showOnStatewideMap !== false &&
+                area.island === selectedArea.island,
+            )
+            .map((area) => {
+              const selected = area.id === selectedAreaId
+              const focus = focusEntries?.find(
+                (entry) => entry.area.id === area.id,
+              )?.focus
+              return (
+                <Marker
+                  key={area.id}
+                  longitude={area.coordinates[0]}
+                  latitude={area.coordinates[1]}
+                  anchor="bottom"
+                  onClick={(event) => {
+                    event.originalEvent.stopPropagation()
+                    setSelectedAreaId(area.id)
+                    if (!focusEntries) setMobilePanel('insights')
+                  }}
+                >
+                  <button
+                    className={`area-marker ${selected ? 'is-selected' : ''} ${focus ? `focus-marker is-${focus.tier}` : ''}`}
+                    aria-label={`Select ${area.name}`}
+                    aria-description={focus?.label}
+                    aria-pressed={selected}
+                    title={
+                      focus
+                        ? `${area.name}: ${focus.label}. Area-center indicator, not hazard overlap.`
+                        : undefined
+                    }
+                    data-testid={`response-zone-${area.id}`}
+                    type="button"
+                  >
+                    {selected ? (
+                      <ShieldCheck size={18} />
+                    ) : (
+                      <MapPin size={17} />
+                    )}
+                    <span>{area.name}</span>
+                    {focus && focus.tier !== 'verify' && (
+                      <small>
+                        {focus.tier === 'review-first' ? 'Review' : 'Check'}
+                      </small>
+                    )}
+                  </button>
+                </Marker>
+              )
+            })}
       </MapLibre>
     </div>
   )

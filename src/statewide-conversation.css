@@ -1,0 +1,370 @@
+.statewide-conversation-desktop {
+  position: absolute;
+  z-index: 20;
+  top: 22px;
+  right: 22px;
+  bottom: 22px;
+  width: 430px;
+}
+
+.header-actions > .statewide-home {
+  width: auto;
+  height: auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.header-actions .planning-examples > a {
+  color: var(--cp-text);
+}
+
+.is-statewide .map-story {
+  width: 300px;
+}
+
+.map-story {
+  max-height: calc(100% - 130px);
+  overflow-y: auto;
+}
+
+.statewide-event-settings > summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding-block: 12px;
+}
+
+.planning-sheet.is-conversation {
+  right: 18px;
+  left: auto;
+  width: min(430px, calc(100vw - 36px));
+}
+
+.statewide-conversation-desktop[hidden],
+.relief-panel[hidden] {
+  display: none;
+}
+
+.statewide-conversation {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.statewide-conversation header {
+  flex-shrink: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.statewide-conversation header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.statewide-conversation h2 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+
+.statewide-conversation h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+
+.statewide-conversation p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.statewide-conversation header > p {
+  margin: 8px 0 14px;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.statewide-chat-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+}
+
+.statewide-chat-scope span,
+.statewide-conversation small {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cp-text-muted);
+}
+
+.statewide-conversation .statewide-coverage-note {
+  font-size: 12px;
+  color: var(--cp-text-muted);
+}
+
+.statewide-chat-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 20px;
+}
+
+.statewide-chat-welcome {
+  margin-bottom: 26px;
+}
+
+.statewide-chat-welcome h3 {
+  font-size: 23px;
+  letter-spacing: -0.025em;
+}
+
+.statewide-conversation button,
+.statewide-home,
+.return-to-conversation {
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 9px 12px;
+}
+
+.statewide-conversation button:hover,
+.statewide-conversation button[aria-pressed='true'] {
+  background: var(--cp-accent-soft);
+  border-color: var(--cp-accent);
+}
+
+.statewide-conversation button:focus-visible,
+.statewide-conversation textarea:focus-visible,
+.statewide-conversation summary:focus-visible,
+.statewide-home:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: 3px;
+}
+
+.statewide-conversation button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.statewide-chat-choices,
+.statewide-chat-area-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.statewide-chat-area-list {
+  flex-direction: column;
+}
+
+.statewide-chat-area-list button {
+  text-align: left;
+}
+
+.statewide-chat-prompts {
+  margin-top: 24px;
+}
+
+.statewide-chat-turn {
+  margin: 0 0 18px auto !important;
+  width: fit-content;
+  max-width: 90%;
+  border-radius: 16px 16px 10px 16px;
+  padding: 10px 14px;
+  background: var(--cp-accent-soft);
+}
+
+.statewide-chat-turn small {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.statewide-conversation summary {
+  cursor: pointer;
+  font-size: 13px;
+  padding-block: 10px;
+}
+
+.statewide-chat-questions {
+  margin: 0;
+}
+
+.statewide-chat-questions > div {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.statewide-chat-questions dt {
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+
+.statewide-chat-questions dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.statewide-chat-example {
+  margin-top: 20px;
+  color: var(--cp-text-muted);
+}
+
+.statewide-chat-example a {
+  font-size: 13px;
+  color: var(--cp-link);
+}
+
+.statewide-chat-composer {
+  flex-shrink: 0;
+  padding: 16px;
+  border-top: 1px solid var(--cp-border);
+}
+
+.statewide-chat-composer label {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+
+.statewide-chat-composer > div {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 10px;
+  align-items: flex-end;
+}
+
+.statewide-chat-composer textarea {
+  width: 100%;
+  min-width: 0;
+  max-height: 120px;
+  padding: 4px;
+  border: 0;
+  color: var(--cp-text);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.statewide-chat-composer textarea::placeholder {
+  color: var(--cp-text-muted);
+}
+
+.statewide-chat-composer button {
+  color: var(--cp-accent-foreground);
+  background: var(--cp-accent);
+  border-color: var(--cp-accent);
+}
+
+.statewide-chat-composer > small {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.statewide-chat-composer [role='alert'] {
+  color: var(--cp-danger);
+}
+
+.planning-examples {
+  position: relative;
+  font-size: 12px;
+}
+
+.planning-examples summary {
+  cursor: pointer;
+}
+
+.planning-examples[open] > a {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  z-index: 50;
+  width: 190px;
+  padding: 14px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 10px;
+}
+
+.planning-sheet.is-conversation .planning-sheet-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+.planning-sheet.is-conversation .statewide-conversation {
+  flex: 1;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+@media (max-width: 900px) {
+  .planning-sheet.is-conversation {
+    height: 88dvh;
+    width: 100%;
+    right: 0;
+  }
+
+  .header-actions > .statewide-detail-toggle {
+    display: none;
+  }
+
+  .is-statewide .map-story {
+    width: auto;
+  }
+  .statewide-conversation-desktop {
+    display: none;
+  }
+
+  .statewide-home {
+    padding: 7px;
+    font-size: 11px;
+  }
+
+  .statewide-conversation header,
+  .statewide-chat-scroll {
+    padding: 16px;
+  }
+
+  .statewide-chat-composer {
+    padding: 12px;
+  }
+
+  .mobile-dock button {
+    font-size: 10px;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mobile-dock {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

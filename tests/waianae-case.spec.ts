@@ -176,6 +176,9 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     page,
   }, testInfo) => {
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await expect(page.locator('main')).toHaveAttribute('data-hydrated', 'true')
     await expect(page.getByTestId('case-flood-summary')).toBeVisible()
     await expect(
@@ -187,10 +190,12 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
       }),
     ).toBeVisible()
     await expect(
-      page.getByText(
-        'Team availability, assignment and activation are unconfirmed.',
-        { exact: false },
-      ),
+      page
+        .locator('.case-step')
+        .getByText(
+          'Team availability, assignment and activation are unconfirmed.',
+          { exact: false },
+        ),
     ).toBeVisible()
     const keyColors = await page
       .locator('.case-flood-key, .case-other-flood-key')
@@ -249,6 +254,9 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
       'Saved official flood geometry: 290 source polygons',
     )
     await page.reload()
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'Before arrival' }).click()
     await expect(
       page.getByLabel('Assumed storm arrival (hours from now)'),
@@ -268,6 +276,9 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     page,
   }) => {
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page.getByRole('tab', { name: 'County request' }).click()
     await page.getByRole('checkbox', { name: /^Medical/ }).check()
     await page.getByRole('tab', { name: 'Before arrival' }).click()
@@ -308,6 +319,9 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
     )
     await page.route('**/World_Street_Map/**', (route) => route.abort())
     await page.goto('/waianae')
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await expect(
       page.getByText('No replacement flood polygons are shown', {
         exact: false,
@@ -347,8 +361,14 @@ test.describe('Waiʻanae fictional assistance workflow', () => {
       localStorage.setItem('waianae-assisted-planning.v1', '{bad'),
     )
     await page.goto('/')
-    await page.getByRole('link', { name: 'Kupuna A case', exact: true }).click()
+    await page.locator('.planning-examples summary').click()
+    await page
+      .getByRole('link', { name: 'Fictional Waiʻanae case', exact: true })
+      .click()
     await expect(page).toHaveURL(/\/waianae$/)
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await expect(page.getByRole('alert')).toContainText(
       'storage is unavailable or unreadable',
     )

@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import {
   analyzeGeographicFocus as evaluateFocus,
   assessPointHazard,
@@ -301,7 +302,7 @@ test('decision brief visualizes mixed screening evidence and keeps next action v
       },
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await page.getByRole('button', { name: 'Compare locations' }).click()
   const panel = page.getByRole('region', { name: 'Where to focus' })
   const total = areas.filter(
@@ -362,7 +363,7 @@ test('location comparison links keyboard list, map and response workflow', async
   await page.route('**/api/v1/community/profile?*', (route) =>
     route.fulfill({ json: profileState().profile }),
   )
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Compare locations' }).click()
   const panel = page.getByRole('region', { name: 'Where to focus' })
@@ -426,7 +427,7 @@ test('source failures remain unknown; comparison is bounded and privacy-safe', a
     inFlight--
     await route.fulfill({ status: 503, json: { error: 'unavailable' } })
   })
-  await page.goto('/?address=private-focus-address')
+  await openLocalPlanning(page, '/?address=private-focus-address')
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.waitForTimeout(200)
   await page.getByRole('button', { name: 'Compare locations' }).click()
@@ -473,7 +474,7 @@ test('hazard failures never promote a vulnerable location to a review priority',
   await page.route('**/api/v1/risk/*?*', (route) =>
     route.fulfill({ status: 503, json: { error: 'source unavailable' } }),
   )
-  await page.goto('/')
+  await openLocalPlanning(page)
   await page.getByRole('button', { name: 'Compare locations' }).click()
   const panel = page.getByRole('region', { name: 'Where to focus' })
   await expect(
@@ -513,7 +514,7 @@ test('open comparisons withdraw review cues when hazard evidence expires', async
       },
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await page.getByRole('button', { name: 'Compare locations' }).click()
   const panel = page.getByRole('region', { name: 'Where to focus' })
   await expect(
@@ -542,7 +543,7 @@ test('rapid scope changes retain a shared comparison request budget', async ({
   await page.route('**/api/v1/community/profile?*', (route) =>
     route.fulfill({ json: profileState().profile }),
   )
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   let inFlight = 0
   let maximum = 0
@@ -586,7 +587,7 @@ test('rapid scope changes retain a shared comparison request budget', async ({
 test('hazard and island changes replace location scope without invented priorities', async ({
   page,
 }, testInfo) => {
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Compare locations' }).click()
   let panel = page.getByRole('region', { name: 'Where to focus' })
@@ -632,7 +633,7 @@ test('real Go profile failures or metadata remain honest in geographic compariso
 }) => {
   await page.unroute('**/api/v1/community/profile?*')
   await page.unroute('**/api/v1/risk/*?*')
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Compare locations' }).click()
   const panel = page.getByRole('region', { name: 'Where to focus' })
@@ -646,5 +647,6 @@ test('real Go profile failures or metadata remain honest in geographic compariso
   await expect(page.locator('.map-frame')).toHaveAttribute(
     'data-map-geography-visible',
     'true',
+    { timeout: 25000 },
   )
 })

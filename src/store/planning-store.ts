@@ -3,9 +3,11 @@ import { create } from 'zustand'
 import { activeEvents, residentRoutePlans } from '../lib/mock-data'
 import type { HazardId, LayerId, PostalLocation } from '../lib/mock-data'
 
-type MobilePanel = 'scenario' | 'insights' | 'resident' | null
+type MobilePanel = 'scenario' | 'insights' | 'resident' | 'conversation' | null
 
 type PlanningState = {
+  statewideOverview: boolean
+  showStatewideOverview: () => void
   hazard: HazardId
   severity: number
   selectedEventId: string | null
@@ -54,6 +56,16 @@ function residentSelectionForArea(areaId: string) {
 }
 
 export const usePlanningStore = create<PlanningState>((set) => ({
+  statewideOverview: true,
+  showStatewideOverview: () =>
+    set({
+      statewideOverview: true,
+      locationFocus: null,
+      selectedPlanningZoneId: null,
+      selectedNeighborhoodId: null,
+      selectedResourceId: null,
+      briefReady: false,
+    }),
   hazard: 'hurricane',
   severity: 4,
   selectedEventId: 'hurricane-lala',
@@ -88,6 +100,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
   },
   setSelectedAreaId: (selectedAreaId) =>
     set({
+      statewideOverview: false,
       selectedAreaId,
       ...residentSelectionForArea(selectedAreaId),
       locationFocus: null,
@@ -98,6 +111,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
     }),
   setLocationFocus: (locationFocus) =>
     set({
+      statewideOverview: false,
       locationFocus,
       selectedPlanningZoneId: null,
       selectedNeighborhoodId: null,
@@ -105,6 +119,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
     }),
   selectPlanningZone: (selectedPlanningZoneId, selectedAreaId) =>
     set({
+      statewideOverview: false,
       selectedPlanningZoneId,
       selectedAreaId,
       ...residentSelectionForArea(selectedAreaId),
@@ -112,13 +127,18 @@ export const usePlanningStore = create<PlanningState>((set) => ({
       briefReady: false,
     }),
   selectNeighborhood: (selectedNeighborhoodId) =>
-    set({ selectedNeighborhoodId, briefReady: false }),
+    set({
+      statewideOverview: false,
+      selectedNeighborhoodId,
+      briefReady: false,
+    }),
   selectResidentPlan: (selectedResidentPlanId) => {
     const plan = residentRoutePlans.find(
       (item) => item.id === selectedResidentPlanId,
     )
     if (!plan) return
     set({
+      statewideOverview: false,
       selectedResidentPlanId,
       selectedResidentResourceId: plan.resources[0].id,
       selectedNeighborhoodId: plan.neighborhoodId,
@@ -138,6 +158,7 @@ export const usePlanningStore = create<PlanningState>((set) => ({
   setPreferredLanguage: (preferredLanguage) => set({ preferredLanguage }),
   showPostalOverview: (selectedAreaId) =>
     set({
+      statewideOverview: false,
       selectedPlanningZoneId: null,
       selectedNeighborhoodId: null,
       selectedAreaId,

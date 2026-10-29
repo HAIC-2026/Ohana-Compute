@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import { expect, test } from '@playwright/test'
 
 const backendURL = 'http://127.0.0.1:18080'
@@ -17,7 +18,7 @@ test('collaborative plans preserve versions and reject stale writes', async ({
       accessToken,
     )
   }, token)
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page
     .getByRole('button', { name: 'Open response workspace', exact: true })

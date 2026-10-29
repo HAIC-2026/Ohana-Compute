@@ -86,7 +86,7 @@ export function assessPointHazard(
       return unknown
     return {
       status: classification === 'high' ? 'elevated' : 'other-mapped',
-      reason: `${classification} mapped flood classification at the area center.${hazard === 'hurricane' ? ' Flood screening only; wind and surge are not assessed.' : ''} Not a current flood forecast.`,
+      reason: `${classification === 'lower-mapped' ? 'Lower' : classification === 'high' ? 'High' : 'Moderate'} mapped flood classification at the area center.${hazard === 'hurricane' ? ' Flood screening only; wind and surge are not assessed.' : ''} Not a current flood forecast.`,
       evidence,
       freshUntil,
     }

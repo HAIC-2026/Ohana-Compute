@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import { readFile } from 'node:fs/promises'
 
 import { expect, test } from '@playwright/test'
@@ -38,7 +39,7 @@ test('anonymous planning stays local while server writes require identity', asyn
   expect(authorizationResponse.status()).toBe(401)
   expect(authorizationResponse.headers()['cache-control']).toBe('no-store')
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page
     .getByRole('button', { name: 'Open response workspace', exact: true })
@@ -128,7 +129,7 @@ test('live status never substitutes unsupported operational domains', async ({
     'planned roadwork, not emergency passability',
   )
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page
     .getByRole('button', { name: 'Open response workspace', exact: true })
@@ -231,7 +232,7 @@ test('official advisory context never becomes an evacuation order and missing Co
     legal_order_status: 'unavailable',
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   const panel = page.getByTestId('event-trigger-panel').first()
   await expect(panel).toContainText('Not an evacuation order')
   await expect(panel).toContainText('Fixture Flood Advisory')
@@ -250,7 +251,7 @@ test('planner completes the Map Model Match journey through the Go API', async (
   request,
 }) => {
   const privateAddress = 'integration-private-address'
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   const afnContext = page.getByTestId('afn-context')
@@ -474,7 +475,7 @@ test('statewide County planning depth stays distinct', async ({
     'Kalawao',
   ])
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByLabel('Choose island').selectOption('Maui')
   await expect(
@@ -676,7 +677,7 @@ test('resource demand stays bounded and reproducible', async ({
     ),
   ).toBe(true)
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const planningSheet = page.locator('.planning-sheet:visible')
@@ -760,7 +761,7 @@ test('partner matches remain sourced and non-operational', async ({
       browserRequests.push(browserRequest.url())
     }
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const planningSheet = page.locator('.planning-sheet:visible')

@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import {
   communityProfile,
   countyShelterPlans,
@@ -14,7 +15,7 @@ test('desktop selects an island response zone and creates local steps', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await expect(
@@ -139,7 +140,7 @@ test('County shelter plans preserve provenance and unavailable coverage', async 
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
 
@@ -189,7 +190,7 @@ test('County shelter plans expose stale and fail-closed states', async ({
       body: JSON.stringify(staleSnapshot),
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   await expect(page.getByTestId('county-shelter-plans')).toContainText(
@@ -207,7 +208,7 @@ test('County shelter plans expose stale and fail-closed states', async ({
       }),
     })
   })
-  await page.reload()
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const unavailablePanel = page.getByTestId('county-shelter-plans')
@@ -226,7 +227,7 @@ test('planner consumes official aggregate AFN context', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   const afnContext = page.getByTestId('afn-context')
@@ -270,7 +271,7 @@ test('planner identifies missing AFN sources without exposing raw errors', async
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   const afnContext = page.getByTestId('afn-context')
   await expect(afnContext).toContainText(
     'Partial official source coverage · 3 of 4',
@@ -285,7 +286,7 @@ test('Waiʻanae AFN request uses an on-tract planning coordinate', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await expect(page.getByTestId('afn-context')).toContainText('4 of 4')
 
@@ -315,7 +316,7 @@ test('planner fails closed when official AFN sources are unavailable', async ({
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   const afnContext = page.getByTestId('afn-context')
   await expect(
     afnContext.getByText('Official sources unavailable'),
@@ -329,7 +330,7 @@ test('Town neighborhood panels change shelter and route guidance', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await expect(page.getByTestId('neighborhood-manoa-makiki')).toBeVisible()
@@ -392,7 +393,7 @@ test('Town neighborhood panels change shelter and route guidance', async ({
 test('neighborhood support stays accessible without crowding the overview', async ({
   page,
 }, testInfo) => {
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   const desktop = testInfo.project.name.startsWith('desktop')
   if (!desktop) {
@@ -438,7 +439,7 @@ test('island selector keeps one island visible and discloses coverage gaps', asy
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await page.getByLabel('Choose island').selectOption('Maui')
@@ -464,7 +465,7 @@ test('statewide County planning depth stays distinct in the frontend', async ({
     }
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByLabel('Choose island').selectOption('Maui')
   await page.getByRole('button', { name: 'Open response workspace' }).click()
@@ -545,7 +546,7 @@ test('statewide planning catalog failure does not substitute Oahu content', asyn
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByLabel('Choose island').selectOption('Maui')
   await page.getByRole('button', { name: 'Open response workspace' }).click()
@@ -596,7 +597,7 @@ test('resource demand uses bounded aggregate inputs and explicit unavailable lin
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
 
@@ -649,7 +650,7 @@ test('resource demand endpoint failure stays unavailable until retry succeeds', 
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
 
@@ -684,7 +685,7 @@ test('partner matches stay sourced, scoped, and non-operational', async ({
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
 
@@ -752,7 +753,7 @@ test('partner matching failure assumes no organization until retry', async ({
     })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const panel = page
@@ -772,7 +773,7 @@ test('mobile controls preserve the selected response zone', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('mobile'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await page.getByRole('button', { name: 'Map', exact: true }).click()
@@ -876,7 +877,7 @@ test('resident route adapts for address, no car, language, and resource need', a
       },
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await expect(
@@ -998,7 +999,7 @@ test('planner sheets, tabs, and resident lookup are keyboard-safe', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   const neighborhoodTab = page
@@ -1095,7 +1096,7 @@ test('resident geolocation exposes pending and bounded errors', async ({
       },
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page
     .getByRole('button', { name: 'Open public guidance preview' })
@@ -1130,7 +1131,7 @@ test('official source failures never become a reassuring status', async ({
     await route.fulfill({ status: 503, body: 'Unavailable' })
   })
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
   await page
     .getByRole('button', { name: 'Open public guidance preview' })
@@ -1161,7 +1162,7 @@ test('road-level route requests street-detail tiles', async ({
     request.url().includes('World_Street_Map/MapServer/tile/'),
   )
 
-  await page.goto('/')
+  await openLocalPlanning(page)
   await initialBasemapRequest
   await page
     .getByRole('button', { name: 'Open public guidance preview' })
@@ -1189,7 +1190,7 @@ test('real coastlines render and pan when street tiles fail', async ({
     route.abort('failed'),
   )
   const coastlineResponse = page.waitForResponse('**/hawaii-coastline.geojson')
-  await page.goto('/')
+  await openLocalPlanning(page)
   const geometry = await (await coastlineResponse).json()
   expect(geometry.features[0].properties.STATE).toBe('15')
   expect(geometry.features[0].geometry.type).toBe('MultiPolygon')
@@ -1243,7 +1244,7 @@ test('partial street tile success does not hide a tile failure', async ({
       body: Buffer.from(tileImage, 'base64'),
     })
   })
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('.map-frame')).toHaveAttribute(
     'data-map-geography-visible',
     'true',
@@ -1260,7 +1261,7 @@ test('mobile resident route exposes no-car and language controls', async ({
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('mobile'))
   await mockOfficialHawaiiKaiStatus(page)
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await page.getByRole('button', { name: 'Map', exact: true }).click()
@@ -1309,7 +1310,7 @@ test('all four challenge events switch the resident risk answer', async ({
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
   await mockOfficialHawaiiKaiStatus(page)
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await expect(
@@ -1506,7 +1507,7 @@ test('Waiʻanae route status names stay consistent', async ({
   page,
 }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith('desktop'))
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
   await page.getByLabel('Which part of Oʻahu?').selectOption('oahu-leeward')

@@ -28,12 +28,14 @@ export function EvidenceExchange({
   now,
   timingValid,
   onChange,
+  initiallyOpen = false,
 }: {
   scenario: EvidenceScenario
   contributions: PlanningContribution[]
   now: number
   timingValid: boolean
   onChange: (items: PlanningContribution[], message: string) => void
+  initiallyOpen?: boolean
 }) {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [reading, setReading] = useState(false)
@@ -163,7 +165,10 @@ export function EvidenceExchange({
     ? evaluatePlanningEvidence(scenario, preview.result.merged, now)
     : []
   return (
-    <details className="case-disclosure evidence-exchange">
+    <details
+      className="case-disclosure evidence-exchange"
+      open={initiallyOpen || undefined}
+    >
       <summary>Exchange local evidence bundles</summary>
       <p id="evidence-exchange-limits">
         JSON only · 128 KiB · 1–32 claims per bundle and 32 combined. Bound to

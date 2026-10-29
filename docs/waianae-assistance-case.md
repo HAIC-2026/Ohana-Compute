@@ -1,34 +1,67 @@
 # Waiʻanae pre-arrival assistance case
 
-Open **Kupuna A case** in the planner header, or `/waianae`. This is the single
-challenge-focused exemplar: a fictional kupuna may need support before a
+Open **Examples → Fictional Waiʻanae case** in the planner header, or
+`/waianae`. The main planner starts statewide; this is a secondary
+challenge-focused exemplar for a video walkthrough: a fictional kupuna may need support before a
 hypothetical storm interrupts access. It replaces the initially investigated
 Waikīkī tsunami example; no tsunami case is shipped.
 
 ## Execute the case
 
-1. Compare the fictional person-story marker, sourced geography and purple
-   hypothetical access concerns. None is a live incident observation.
-2. Select **Build the assistance request**. Review the editable hours from
-   exercise now: storm arrival, assumed access-loss lead time, coordination,
-   transfer/travel and buffer.
-3. Open **Planning evidence**. Add controlled, local claims about candidate
-   transport, equipment power, receiving support or H1/H2 access concerns.
+1. The default **Conversation** pairs the existing map with a local planning
+   guide. Select or type **What does the plan still need?** to see evidence
+   gaps, explainable criteria and the next County question. Compare the
+   fictional marker, sourced geography and purple hypothetical access
+   concerns; none is a live incident observation. On narrow screens the
+   conversation comes first and the full map follows below.
+2. Try **What if the storm arrives in 12 hours?**, or select **Change the
+   planning window**. Review all assumptions and the recalculated margin,
+   then explicitly apply or cancel. Selection and typing never apply a change.
+3. Type **Add transport evidence** (or power, receiving, H1 or H2). Answer one
+   controlled question at a time, including unknown values, basis, source
+   category, observation time and review interval. Review the proposed claim
+   and projected result before applying it.
    Missing evidence becomes a specific County question; a reported one-place
    vehicle exposes a gap against two required passenger places. A second,
    conflicting capacity report exposes a conflict, not a summed fleet.
-4. Optionally open **Exchange local evidence bundles**, export controlled JSON
+4. Type **Review local claims** to inspect reports and explicitly confirm
+   set-aside, reinstate or remove operations. **Detailed workspace** retains
+   the original five steps and full claim editor, using the same state and
+   analyzer. Switching views preserves the conversation; stale proposals
+   cannot overwrite changes made in the detailed workspace.
+5. Optionally type **Exchange evidence**, export controlled JSON
    or choose a bundle from another planner. Review each claim and the projected
    County questions, then explicitly confirm or cancel. Selection alone changes
    nothing; imports merge rather than replace the register.
-5. Prepare the five CMIST questions for Honolulu County. These are agenda
+6. Type **Prepare County review** for the five CMIST questions. These are agenda
    questions, not confirmed answers or approved assignments. The requirement
    is one fictional assisted transfer, two passenger places for Kupuna A and
    one caregiver, accessible boarding/mobility-device space, equipment-specific
    continuity and receiving-site acceptance. Entered capacity is an unverified
    local claim, never promised availability.
-6. Review the fixed resident-message draft and publication checks. Download
+7. Type **Draft a resident message** for the fixed draft and review the
+   publication checks in the detailed workspace. Download
    the unsent Markdown assistance request for human County review.
+
+### Conversational prototype boundary
+
+This is a **local, rule-based guide, not a live AI model or general chatbot**.
+Suggested questions list the supported intents; typed input supports those
+same questions, bounded arrival-time phrases and the current guided answer.
+Unsupported text is discarded without echo, persistence or transmission; no
+names, addresses, narrative medical details or arbitrary attribution are
+accepted into the evidence model. The composer explicitly warns against
+personal data. Supported replies are shown canonically, not as raw input.
+The transient transcript holds at most 24 turns and is not saved or exported.
+**Clear conversation** removes conversation/proposals, not saved evidence.
+Browser session replay, text logging and provider calls are not introduced.
+
+Claim and timing mutations require separate confirmation. Working-set/model
+or timing changes invalidate pending proposals, while source age and excluded
+claims remain visible. Applied changes use the same validated local working
+set as the map, County questions, JSON exchange and unsent Markdown packet.
+This tests the conversational interaction pattern without claiming language
+model understanding, authenticated collaboration or operational authority.
 
 The County assesses whether firefighter or other specialist assistance is
 appropriate and routes any real request through authorized incident-command
@@ -38,7 +71,8 @@ Questions marked prepared are local working state only. Changing timing or
 claims, setting a claim aside, removing it or crossing a freshness boundary
 resets them. Valid assumptions/questions and claims persist only in this browser
 under the versioned `waianae-assisted-planning.v1` key. Older timing/check-only
-records restore without inventing contributions. No personal data can be entered.
+records restore without inventing contributions. No personal data is accepted
+into the saved evidence model.
 Invalid inputs block calculation/export. Browser-storage failure is disclosed;
 the downloadable packet and bounded evidence bundle remain portable handoffs. Unreadable state is not
 silently overwritten: **Save current exercise instead of unreadable state** is

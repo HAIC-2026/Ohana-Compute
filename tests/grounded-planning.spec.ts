@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
@@ -12,7 +13,7 @@ test('grounded planning drafts require citations and human approval', async ({
   test.setTimeout(90_000)
   const privateTitle = 'PRIVATE TITLE MUST NOT REACH PROVIDER'
   await configureIdentity(page)
-  await page.goto('/')
+  await openLocalPlanning(page)
   const { collaboration, createdPlan } = await createSharedPlan(
     page,
     privateTitle,
@@ -155,7 +156,7 @@ test('disabled planning provider remains explicit and non-blocking', async ({
   page,
 }) => {
   await configureIdentity(page)
-  await page.goto(disabledFrontendURL)
+  await openLocalPlanning(page, disabledFrontendURL)
   const { collaboration } = await createSharedPlan(
     page,
     'Provider disabled shared plan',

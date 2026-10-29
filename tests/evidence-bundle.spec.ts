@@ -294,6 +294,9 @@ async function workingSet(page: Page) {
 async function openExchange(page: Page) {
   await page.goto('/waianae')
   await page
+    .getByRole('button', { name: 'Detailed workspace', exact: true })
+    .click()
+  await page
     .getByRole('tab', { name: 'Planning evidence', exact: true })
     .click()
   await page
@@ -449,6 +452,9 @@ test.describe('Portable evidence workflow', () => {
     const persisted = await workingSet(page)
     await page.reload()
     await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
+    await page
       .getByRole('tab', { name: 'Planning evidence', exact: true })
       .click()
     await expect(page.getByTestId('insight-assisted-transfer')).toHaveAttribute(
@@ -503,6 +509,9 @@ test.describe('Portable evidence workflow', () => {
       page.getByLabel('Import evidence bundle for review'),
     ).toBeFocused()
     await page.reload()
+    await page
+      .getByRole('button', { name: 'Detailed workspace', exact: true })
+      .click()
     await page
       .getByRole('tab', { name: 'Planning evidence', exact: true })
       .click()

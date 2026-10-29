@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -139,7 +140,7 @@ async function attachMetrics(
 }
 
 async function openApp(page: Page) {
-  await page.goto('/')
+  await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 }
 

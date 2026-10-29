@@ -44,6 +44,20 @@ whole-area exposure. Full hazard/population intersections and operational
 shortage analysis remain separate evidence requirements, not claims to infer
 from the map's appearance.
 
+The product starts statewide, with an all-islands map and conversational
+planning entry. Planners choose an island and community, review current
+source-backed screening and prepare County-owned AFN questions. Statewide
+scope is not a claim of complete coverage or available resources. Detailed
+tools remain accessible after a community is chosen. The local guide uses
+bounded typed intents and deterministic rules, visibly not live AI.
+
+The fictional Waiʻanae / Kupuna A case is a secondary illustrative walkthrough,
+not the default product scope or the statewide evidence model. The video may
+start with that story, then widen to statewide planning and additional data.
+Its controlled claim interviews, reviewable timing changes, confirmations
+and unsent packets remain a separate practice workflow; individual needs and
+local reports are never generalized across Hawaiʻi.
+
 ## Base Use Case
 
 The minimum complete planner journey is:

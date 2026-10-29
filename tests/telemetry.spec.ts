@@ -1,3 +1,4 @@
+import { openLocalPlanning } from './support/local-planning'
 import { expect, test } from './fixtures'
 
 type TelemetryEvent = {
@@ -29,10 +30,12 @@ test('browser telemetry is batched and excludes private values', async ({
   })
 
   const privateValue = 'private-address-123'
-  await page.goto(`/?scoutTheme=dark&address=${privateValue}`)
+  await openLocalPlanning(page, `/?scoutTheme=dark&address=${privateValue}`)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
-  const themeButton = page.locator('.header-actions button')
+  const themeButton = page.getByRole('button', {
+    name: /Use (light|dark) theme/,
+  })
   await themeButton.click()
   await themeButton.focus()
   await page.keyboard.press('Tab')
