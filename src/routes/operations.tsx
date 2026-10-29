@@ -20,7 +20,13 @@ import '../staff-operations.css'
 
 export const Route = createFileRoute('/operations')({ component: Operations })
 
-function Operations() {
+export function Operations({
+  embedded = false,
+  county,
+}: {
+  embedded?: boolean
+  county?: string
+}) {
   const [session, setSession] = useState<StaffSession | null>(null)
   const [board, setBoard] = useState<OperationsBoard | null>(null)
   const [error, setError] = useState('')
@@ -115,7 +121,10 @@ function Operations() {
   const serverNow = board ? Date.parse(board.server_time) : Date.now()
   const requests =
     board?.requests
-      .filter((request) => request.mode === mode)
+      .filter(
+        (request) =>
+          request.mode === mode && (!county || request.county === county),
+      )
       .sort((a, b) => {
         const priority = (value: AssistanceRequest) =>
           ['closed', 'cancelled'].includes(value.status)
@@ -130,15 +139,22 @@ function Operations() {
           Date.parse(a.due_at) - Date.parse(b.due_at)
         )
       }) ?? []
-  const tasks = board?.tasks.filter((task) => task.mode === mode) ?? []
+  const tasks =
+    board?.tasks.filter(
+      (task) => task.mode === mode && (!county || task.county === county),
+    ) ?? []
   const request = requests.find((entry) => entry.id === selected)
   const orgName = (id: string) =>
     board?.organizations.find((org) => org.id === id)?.name ?? id
 
   return (
-    <main className="staff-ops" data-hydrated={session !== null}>
+    <section
+      className="staff-ops"
+      data-hydrated={session !== null}
+      aria-label="Staff response coordination"
+    >
       <header className="ops-masthead">
-        <Link to="/">Planning map</Link>
+        {!embedded && <Link to="/">Planning map</Link>}
         <Link to="/coordination">Evidence &amp; plan annex</Link>
         {member && (
           <span>
@@ -166,9 +182,25 @@ function Operations() {
         )}
       </header>
       <div className="ops-heading">
-        <h1>Response coordination</h1>
+        {embedded ? (
+          <h2>Response coordination</h2>
+        ) : (
+          <h1>Response coordination</h1>
+        )}
         <p>One request. Named owners. Acknowledged handoffs.</p>
       </div>
+      {embedded && (
+        <p className="ops-boundary">
+          Map scope:{' '}
+          {county
+            ? (countyNames[county] ?? 'Kalawao') + ' County'
+            : 'All islands'}
+          . Requests and preparedness tasks below follow this County scope.
+          Requests have County geography only—not pickup locations. Map
+          indicators are aggregate planning evidence, never individual
+          assistance requests.
+        </p>
+      )}
       <p className="ops-boundary">
         Staff pilot · No dispatch or paging connection. Follow official
         emergency instructions; do not wait for this app in immediate danger.
@@ -413,7 +445,7 @@ function Operations() {
           )}
         </>
       )}
-    </main>
+    </section>
   )
 }
 

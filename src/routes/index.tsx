@@ -63,6 +63,8 @@ import {
 } from '../lib/planning-areas'
 import { preloadCountyShelterPlans } from '../lib/county-shelter-plans'
 import { usePlanningStore } from '../store/planning-store'
+import { afnCountyForArea } from '../lib/afn-map'
+import '../staff-operations.css'
 
 export const Route = createFileRoute('/')({ component: Home })
 
@@ -78,6 +80,9 @@ const loadInsightsPanel = () =>
   }))
 
 const InsightsPanel = lazy(loadInsightsPanel)
+const StaffOperations = lazy(() =>
+  import('./operations').then((module) => ({ default: module.Operations })),
+)
 
 function preloadResponseWorkspace() {
   void loadInsightsPanel()
@@ -111,6 +116,12 @@ const residentRouteSummary: Record<HazardId, string> = {
 
 function Home() {
   const [hydrated, setHydrated] = useState(false)
+  const [staffOpen, setStaffOpen] = useState(false)
+  const staffToggleRef = useRef<HTMLButtonElement>(null)
+  const staffPanelRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (staffOpen) staffPanelRef.current?.focus()
+  }, [staffOpen])
   const [wideScreen, setWideScreen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [mobileSetupOpen, setMobileSetupOpen] = useState(false)
@@ -368,7 +379,7 @@ function Home() {
 
   return (
     <main
-      className={`app ${statewideOverview ? 'is-statewide' : ''} ${mobilePanel === 'resident' ? 'has-resident-route' : ''}`}
+      className={`app ${staffOpen ? 'has-staff-workspace' : ''} ${statewideOverview ? 'is-statewide' : ''} ${mobilePanel === 'resident' ? 'has-resident-route' : ''}`}
       data-hydrated={hydrated}
     >
       <header className="atlas-header" ref={headerRef}>
@@ -385,9 +396,20 @@ function Home() {
         </div>
 
         <div className="header-actions">
-          <Link className="case-entry-link" to="/operations">
+          <button
+            ref={staffToggleRef}
+            className="case-entry-link"
+            type="button"
+            aria-expanded={staffOpen}
+            aria-controls="map-staff-workspace"
+            onClick={() => {
+              setStaffOpen((open) => !open)
+              setMobilePanel(null)
+              setFocusOpen(false)
+            }}
+          >
             Staff response
-          </Link>
+          </button>
           <Link className="case-entry-link" to="/coordination">
             Coordinate plan
           </Link>
@@ -449,12 +471,52 @@ function Home() {
             fallback={<div className="map-loading">Loading the map…</div>}
           >
             <ResilienceMap
+              coordination={staffOpen}
               focusEntries={
                 focusOpen && !mobilePanel ? focusEntries : undefined
               }
             />
           </Suspense>
         </div>
+
+        {staffOpen && (
+          <aside
+            id="map-staff-workspace"
+            className="map-staff-workspace"
+            aria-label="Map-linked staff workspace"
+            ref={staffPanelRef}
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setStaffOpen(false)
+                staffToggleRef.current?.focus()
+              }
+            }}
+          >
+            <div className="map-staff-heading">
+              <strong>Map evidence → staff handoffs → preparedness</strong>
+              <button
+                type="button"
+                onClick={() => {
+                  setStaffOpen(false)
+                  staffToggleRef.current?.focus()
+                }}
+              >
+                Back to planning
+              </button>
+            </div>
+            <Suspense fallback={<p role="status">Loading staff workspace…</p>}>
+              <StaffOperations
+                embedded
+                county={
+                  statewideOverview
+                    ? undefined
+                    : afnCountyForArea(selectedAreaId, selectedIsland)
+                }
+              />
+            </Suspense>
+          </aside>
+        )}
 
         {!mobilePanel && (
           <button

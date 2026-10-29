@@ -7,6 +7,15 @@ page partners, issue protective-action orders, or independently observe travel.
 Do not wait for this app when official instructions or natural warning signs
 require immediate protective action.
 
+On the homepage, **Staff response** opens this same workspace beside the existing
+map (below it on phones), without navigating away or resetting planning selections.
+The selected community's County scopes the authorized request and preparedness
+lists; the statewide view shows all authorized Counties. This is County-level
+context, not geocoded pickup points or a hazard intersection. Close the workspace
+with **Back to planning** to return to the conversation and evidence tools.
+Staff authentication and authorization remain unchanged; public map data never
+creates a request. `/operations` remains available as a standalone staff view.
+
 ## What actually changes hands
 
 An authorized County coordinator records an intake reference, incident reference,

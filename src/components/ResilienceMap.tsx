@@ -160,8 +160,10 @@ type FocusEntry = { area: { id: string }; focus: GeographicFocus }
 
 export function ResilienceMap({
   focusEntries,
+  coordination = false,
 }: {
   focusEntries?: FocusEntry[]
+  coordination?: boolean
 }) {
   const planningState = usePlanningStore(useShallow(selectPlanningMapState))
   const deferredPlanningState = useDeferredValue(planningState)
@@ -172,6 +174,7 @@ export function ResilienceMap({
       displayEventId={planningState.selectedEventId}
       displayHazard={planningState.hazard}
       focusEntries={focusEntries}
+      coordination={coordination}
     />
   )
 }
@@ -181,11 +184,13 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   displayEventId,
   displayHazard,
   focusEntries,
+  coordination,
 }: {
   planningState: PlanningMapState
   displayEventId: string | null
   displayHazard: PlanningMapState['hazard']
   focusEntries?: FocusEntry[]
+  coordination: boolean
 }) {
   const {
     statewideOverview,
@@ -400,6 +405,10 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   ])
 
   useEffect(() => {
+    if (mapLoaded) mapRef.current?.resize()
+  }, [mapLoaded, coordination])
+
+  useEffect(() => {
     const focus = selectedPlanningZone ?? locationFocus
     if (!mapLoaded || !focus) return
     mapRef.current?.flyTo({
@@ -408,7 +417,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       duration: 900,
       essential: true,
     })
-  }, [locationFocus, mapLoaded, selectedPlanningZone])
+  }, [locationFocus, mapLoaded, selectedPlanningZone, coordination])
 
   useEffect(() => {
     if (
@@ -432,10 +441,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
     selectedArea,
     comparingLocations,
     statewideOverview,
+    coordination,
   ])
 
   useEffect(() => {
     if (!mapLoaded || !statewideOverview) return
+    mapRef.current?.resize()
     const narrow = window.innerWidth <= 900
     mapRef.current?.fitBounds(
       [
@@ -443,13 +454,15 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         [-154.7, 22.35],
       ],
       {
-        padding: narrow
-          ? { top: 100, bottom: 160, left: 25, right: 70 }
-          : { top: 90, bottom: 80, left: 340, right: 500 },
+        padding: coordination
+          ? { top: 45, bottom: 35, left: 30, right: 30 }
+          : narrow
+            ? { top: 100, bottom: 160, left: 25, right: 70 }
+            : { top: 90, bottom: 80, left: 340, right: 500 },
         duration: 0,
       },
     )
-  }, [mapLoaded, statewideOverview])
+  }, [mapLoaded, statewideOverview, coordination])
 
   useEffect(() => {
     if (!mapLoaded || !comparingLocations) return

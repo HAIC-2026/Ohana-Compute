@@ -47,6 +47,91 @@ async function saved(page: Page) {
   ).toBeVisible()
 }
 
+test('staff handoffs stay beside the planning map and return to the same planning state', async ({
+  browser,
+}, testInfo) => {
+  const viewport =
+    testInfo.project.name === 'mobile'
+      ? { width: 390, height: 844 }
+      : { width: 1440, height: 1000 }
+  const { context, page } = await signIn(browser, 'county-staff', viewport)
+  try {
+    await page.goto('/')
+    await expect(page.locator('main.app')).toHaveAttribute(
+      'data-hydrated',
+      'true',
+    )
+    await page
+      .getByRole('button', { name: 'Staff response', exact: true })
+      .click()
+    const workspace = page.getByRole('complementary', {
+      name: 'Map-linked staff workspace',
+    })
+    await expect(workspace).toBeVisible()
+    await expect(
+      workspace.getByRole('button', { name: 'Sign out' }),
+    ).toBeVisible()
+    await expect(workspace.getByText(/Map scope: All islands/)).toBeVisible()
+    await expect(page).toHaveURL('http://127.0.0.1:3196/')
+    const map = await page.locator('.map-stage').boundingBox()
+    const panel = await workspace.boundingBox()
+    expect(map).not.toBeNull()
+    expect(panel).not.toBeNull()
+    if (map && panel) {
+      expect(map.width).toBeGreaterThan(200)
+      expect(map.height).toBeGreaterThan(120)
+      if (viewport.width > 900)
+        expect(map.x + map.width).toBeLessThanOrEqual(panel.x + 1)
+      else expect(map.y + map.height).toBeLessThanOrEqual(panel.y + 1)
+    }
+    await workspace
+      .getByRole('button', { name: 'Preparedness', exact: true })
+      .click()
+    await expect(
+      workspace.getByRole('heading', {
+        name: 'Close the gaps before the next emergency',
+      }),
+    ).toBeVisible()
+    await expect(
+      workspace.getByRole('button', { name: 'Back to planning', exact: true }),
+    ).toBeInViewport()
+    await expect(page.locator('body')).toHaveJSProperty(
+      'scrollWidth',
+      viewport.width,
+    )
+    await page.screenshot({
+      path: `screenshots/map-staff-${testInfo.project.name}.png`,
+    })
+    await workspace
+      .getByRole('button', { name: 'Back to planning', exact: true })
+      .click()
+    await expect(workspace).toHaveCount(0)
+    await expect(page.locator('.map-stage')).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Staff response', exact: true }),
+    ).toBeFocused()
+    if (viewport.width > 900) {
+      await page
+        .getByLabel('Choose island', { exact: true })
+        .selectOption('Oʻahu')
+      await page
+        .getByRole('button', { name: 'Staff response', exact: true })
+        .click()
+      await expect(
+        workspace.getByText(/Map scope: Honolulu County/),
+      ).toBeVisible()
+      await workspace
+        .getByRole('button', { name: 'Back to planning', exact: true })
+        .click()
+      await expect(
+        page.getByLabel('Choose island', { exact: true }),
+      ).toHaveValue('Oʻahu')
+    }
+  } finally {
+    await context.close()
+  }
+})
+
 test('real signed staff sessions complete a declined, escalated and reassigned handoff and preparedness review', async ({
   browser,
 }, testInfo) => {
