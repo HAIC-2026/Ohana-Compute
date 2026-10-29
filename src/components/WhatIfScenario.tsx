@@ -20,6 +20,13 @@ const labels = {
 function range(value: ResourceDemandRange) {
   return `${value.low.toLocaleString()}–${value.high.toLocaleString()} (planning ${value.planning.toLocaleString()})`
 }
+const countyFips: Record<string, string> = {
+  Hawaii: '001',
+  Honolulu: '003',
+  Kauai: '007',
+  Maui: '009',
+}
+
 export function WhatIfScenario({
   profile,
   scenario,
@@ -37,12 +44,16 @@ export function WhatIfScenario({
   const [stock, setStock] = useState('')
   const mealStock = stock === '' ? null : Number(stock)
   const county = planningCountyForIsland(island)
-  const geography =
-    profile?.acs?.geography.name.replace(/[ʻ’']/g, '').toLowerCase() ?? ''
+  const acsGeography = profile?.acs?.geography
+  const geography = acsGeography?.name.replace(/[ʻ’']/g, '').toLowerCase() ?? ''
+  // Fallback tract resolution names only the tract; use exact Hawaiʻi FIPS.
+  const countyMatches =
+    county !== null &&
+    (geography.includes(`${county.toLowerCase()} county`) ||
+      (acsGeography?.state_code === '15' &&
+        acsGeography.county_code === countyFips[county]))
   const population =
-    county &&
-    geography.includes(`${county.toLowerCase()} county`) &&
-    /\bcensus tract\b/.test(geography)
+    countyMatches && /\bcensus tract\b/.test(geography)
       ? profile?.acs?.population
       : undefined
   const validStock =

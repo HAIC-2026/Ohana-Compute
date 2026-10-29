@@ -299,3 +299,41 @@ test('source outages leave model needs and ranking unknown', async ({
   await expect(chat).toContainText('No supported ranking yet')
   await expect(chat).toContainText('Kūpuna (age 65+): unknown')
 })
+
+test('tract-only fallback geography uses exact county FIPS before modeling', async ({
+  page,
+}) => {
+  const withGeography = (countyCode: string) => ({
+    ...communityProfile,
+    acs: {
+      ...communityProfile.acs,
+      geography: {
+        name: 'Census Tract 39',
+        state_code: '15',
+        county_code: countyCode,
+      },
+    },
+  })
+  let countyCode = '003'
+  await page.route('**/api/v1/community/profile?*', (route) =>
+    route.fulfill({ json: withGeography(countyCode) }),
+  )
+  const chat = await open(page)
+  await say(page, 'Town')
+  await say(page, 'What changes if the outage lasts 5 days?')
+  const simulator = chat.getByRole('region', {
+    name: 'What-if scenario simulator',
+  })
+  await expect(
+    simulator.getByText('Modeled needs ranges', { exact: true }),
+  ).toBeVisible()
+
+  countyCode = '009'
+  await page.reload()
+  const reloaded = await open(page)
+  await say(page, 'Town')
+  await say(page, 'What changes if the outage lasts 5 days?')
+  await expect(
+    reloaded.getByRole('region', { name: 'What-if scenario simulator' }),
+  ).toContainText('Modeled needs unavailable')
+})

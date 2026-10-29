@@ -23,6 +23,8 @@ export type CommunityProfile = {
   acs?: {
     geography: {
       name: string
+      state_code?: string
+      county_code?: string
       resolution?: {
         method: string
         vintage: string
