@@ -372,6 +372,7 @@ func run() error {
 			"http://127.0.0.1:3000",
 			"http://127.0.0.1:13000",
 			"http://127.0.0.1:13001",
+			os.Getenv("E2E_FRONTEND_ORIGIN"),
 		},
 		Logger: slog.New(slog.NewTextHandler(os.Stdout, nil)),
 	})

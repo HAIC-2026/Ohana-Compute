@@ -105,6 +105,14 @@ type SourceError struct {
 	Error  string `json:"error"`
 }
 
+// Retrieval health is independent of whether a feed currently contains any events.
+type SourceState struct {
+	ID          string    `json:"id"`
+	Status      string    `json:"status"`
+	RetrievedAt time.Time `json:"retrieved_at"`
+	FreshUntil  time.Time `json:"fresh_until"`
+}
+
 type Snapshot struct {
 	SchemaVersion      string        `json:"schema_version"`
 	GeneratedAt        time.Time     `json:"generated_at"`
@@ -114,6 +122,7 @@ type Snapshot struct {
 	UnavailableMeaning string        `json:"unavailable_meaning"`
 	Triggers           []Trigger     `json:"triggers"`
 	SourceErrors       []SourceError `json:"source_errors,omitempty"`
+	SourceStates       []SourceState `json:"source_states,omitempty"`
 }
 
 type Config struct {
@@ -192,6 +201,10 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: "error", Duration: nwsSource.duration})
 	} else {
 		successes++
+		source := nwsSource.value.Source
+		result.SourceStates = append(result.SourceStates, SourceState{
+			ID: "nws-hi-alerts", Status: source.Status, RetrievedAt: source.RetrievedAt, FreshUntil: source.FreshUntil,
+		})
 		result.Triggers = append(result.Triggers, normalizeNWS(nwsSource.value, now)...)
 		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: sourceOutcome(nwsSource.value.Source.Status), Duration: nwsSource.duration})
 	}
@@ -203,6 +216,10 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: "error", Duration: ptwcSource.duration})
 	} else {
 		successes++
+		source := ptwcSource.value.Source
+		result.SourceStates = append(result.SourceStates, SourceState{
+			ID: "ptwc-cap", Status: source.Status, RetrievedAt: source.RetrievedAt, FreshUntil: source.FreshUntil,
+		})
 		result.Triggers = append(result.Triggers, normalizePTWC(ptwcSource.value, now))
 		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: sourceOutcome(ptwcSource.value.Source.Status), Duration: ptwcSource.duration})
 	}
@@ -214,6 +231,10 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: "error", Duration: comCatSource.duration})
 	} else {
 		successes++
+		source := comCatSource.value.Source
+		result.SourceStates = append(result.SourceStates, SourceState{
+			ID: "usgs-comcat", Status: source.Status, RetrievedAt: source.RetrievedAt, FreshUntil: source.FreshUntil,
+		})
 		result.Triggers = append(result.Triggers, normalizeComCat(comCatSource.value, now)...)
 		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: sourceOutcome(comCatSource.value.Source.Status), Duration: comCatSource.duration})
 	}

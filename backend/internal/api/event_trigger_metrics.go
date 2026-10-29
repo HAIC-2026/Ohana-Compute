@@ -19,6 +19,7 @@ func eventTriggerHandler(
 			func(observation eventtriggers.SourceObservation) {
 				source := boundedEventSource(observation.Source)
 				outcome := boundedEventOutcome(observation.Outcome)
+				observeSourceFailure(writer, observation.Source, outcome)
 				metrics.eventSourceRequests.WithLabelValues(source, outcome).Inc()
 				metrics.eventSourceDuration.
 					WithLabelValues(source, outcome).

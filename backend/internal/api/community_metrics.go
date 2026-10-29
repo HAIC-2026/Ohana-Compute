@@ -32,6 +32,7 @@ func communityProfileHandler(
 			func(observation community.SourceObservation) {
 				source := boundedAFNSource(observation.Source)
 				outcome := boundedAFNOutcome(observation.Outcome)
+				observeSourceFailure(writer, observation.Source, outcome)
 				metrics.afnSourceRequests.WithLabelValues(source, outcome).Inc()
 				metrics.afnSourceDuration.
 					WithLabelValues(source, outcome).

@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CoordinationRouteImport } from './routes/coordination'
+import { Route as ExerciseRouteImport } from './routes/exercise'
+import { Route as OfflineRouteImport } from './routes/offline'
+import { Route as SourceHealthRouteImport } from './routes/source-health'
 import { Route as WaianaeRouteImport } from './routes/waianae'
 
 const IndexRoute = IndexRouteImport.update({
@@ -23,6 +26,21 @@ const CoordinationRoute = CoordinationRouteImport.update({
   path: '/coordination',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExerciseRoute = ExerciseRouteImport.update({
+  id: '/exercise',
+  path: '/exercise',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OfflineRoute = OfflineRouteImport.update({
+  id: '/offline',
+  path: '/offline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SourceHealthRoute = SourceHealthRouteImport.update({
+  id: '/source-health',
+  path: '/source-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WaianaeRoute = WaianaeRouteImport.update({
   id: '/waianae',
   path: '/waianae',
@@ -32,30 +50,61 @@ const WaianaeRoute = WaianaeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
+  '/exercise': typeof ExerciseRoute
+  '/offline': typeof OfflineRoute
+  '/source-health': typeof SourceHealthRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
+  '/exercise': typeof ExerciseRoute
+  '/offline': typeof OfflineRoute
+  '/source-health': typeof SourceHealthRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
+  '/exercise': typeof ExerciseRoute
+  '/offline': typeof OfflineRoute
+  '/source-health': typeof SourceHealthRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/coordination' | '/waianae'
+  fullPaths:
+    | '/'
+    | '/coordination'
+    | '/exercise'
+    | '/offline'
+    | '/source-health'
+    | '/waianae'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/coordination' | '/waianae'
-  id: '__root__' | '/' | '/coordination' | '/waianae'
+  to:
+    | '/'
+    | '/coordination'
+    | '/exercise'
+    | '/offline'
+    | '/source-health'
+    | '/waianae'
+  id:
+    | '__root__'
+    | '/'
+    | '/coordination'
+    | '/exercise'
+    | '/offline'
+    | '/source-health'
+    | '/waianae'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CoordinationRoute: typeof CoordinationRoute
+  ExerciseRoute: typeof ExerciseRoute
+  OfflineRoute: typeof OfflineRoute
+  SourceHealthRoute: typeof SourceHealthRoute
   WaianaeRoute: typeof WaianaeRoute
 }
 
@@ -75,6 +124,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoordinationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/exercise': {
+      id: '/exercise'
+      path: '/exercise'
+      fullPath: '/exercise'
+      preLoaderRoute: typeof ExerciseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/offline': {
+      id: '/offline'
+      path: '/offline'
+      fullPath: '/offline'
+      preLoaderRoute: typeof OfflineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/source-health': {
+      id: '/source-health'
+      path: '/source-health'
+      fullPath: '/source-health'
+      preLoaderRoute: typeof SourceHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/waianae': {
       id: '/waianae'
       path: '/waianae'
@@ -88,6 +158,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CoordinationRoute: CoordinationRoute,
+  ExerciseRoute: ExerciseRoute,
+  OfflineRoute: OfflineRoute,
+  SourceHealthRoute: SourceHealthRoute,
   WaianaeRoute: WaianaeRoute,
 }
 export const routeTree = rootRouteImport

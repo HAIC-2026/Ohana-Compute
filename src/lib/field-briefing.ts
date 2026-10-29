@@ -1,6 +1,8 @@
 import { hawaiiDhsReferences } from './official-references'
+import { saveOfflinePacket } from './offline'
 
 export type FieldBriefingInput = {
+  publicArea?: { name: string; island: string }
   generatedAt?: Date
   place: string
   island: string
@@ -599,6 +601,24 @@ FORM: Self-contained field briefing packet; an established-world Operate extensi
 
 export function downloadFieldBriefing(input: FieldBriefingInput) {
   const html = createFieldBriefingHTML(input)
+  const publicArea = input.publicArea
+  if (publicArea) {
+    const savedAt = new Date().toISOString()
+    // The device copy excludes resident-selected locations and support preferences.
+    const publicInput: FieldBriefingInput = {
+      ...input,
+      place: publicArea.name,
+      island: publicArea.island,
+      communication: { ...input.communication, preferences: [] },
+    }
+    const savedHTML = createFieldBriefingHTML(publicInput).replace(
+      '<body>',
+      `<body><aside style="padding:24px;border:2px solid #444;font-weight:bold">SAVED PUBLIC PLANNING SNAPSHOT — NOT LIVE. Last saved at ${savedAt}. Source statuses below describe the snapshot, not current conditions. Verify with the County before action. Resident preferences and selected locations are excluded.</aside>`,
+    )
+    void saveOfflinePacket(fieldBriefingFilename(publicInput), savedHTML).catch(
+      () => window.dispatchEvent(new Event('offline-save-error')),
+    )
+  }
   const url = URL.createObjectURL(
     new Blob([html], { type: 'text/html;charset=utf-8' }),
   )

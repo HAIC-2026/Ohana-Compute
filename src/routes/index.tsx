@@ -413,6 +413,15 @@ function Home() {
           </button>
           <details className="planning-examples">
             <summary>Examples</summary>
+            <Link className="case-entry-link" to="/exercise">
+              Tabletop exercise
+            </Link>
+            <Link className="case-entry-link" to="/offline">
+              Offline planning
+            </Link>
+            <Link className="case-entry-link" to="/source-health">
+              Data-source health
+            </Link>
             <Link className="case-entry-link" to="/waianae">
               Fictional Waiʻanae case
             </Link>
