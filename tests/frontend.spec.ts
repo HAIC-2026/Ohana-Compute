@@ -230,22 +230,36 @@ test('planner consumes official aggregate AFN context', async ({
   await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
-  const afnContext = page.getByTestId('afn-context')
+  const afnContext = page
+    .getByLabel('Emergency response planning')
+    .getByTestId('afn-context')
   await expect(
     afnContext.getByText('Official public sources available'),
   ).toBeVisible()
   await expect(afnContext).toContainText('4 of 4')
-  await expect(page.getByTestId('afn-disability')).toContainText('220 (9.3%)')
-  await expect(page.getByTestId('afn-language')).toContainText('150 (6.4%)')
-  await expect(page.getByTestId('afn-transportation')).toContainText(
-    '80 (8.5%)',
-  )
-  await expect(page.getByTestId('afn-medical-power')).toContainText(
-    '1–11 (privacy-protected)',
-  )
-  await expect(page.getByTestId('afn-risk-baseline')).toContainText(
-    'National risk baseline: Relatively Moderate',
-  )
+  await expect(
+    page
+      .getByLabel('Emergency response planning')
+      .getByTestId('afn-disability'),
+  ).toContainText('220 (9.3%)')
+  await expect(
+    page.getByLabel('Emergency response planning').getByTestId('afn-language'),
+  ).toContainText('150 (6.4%)')
+  await expect(
+    page
+      .getByLabel('Emergency response planning')
+      .getByTestId('afn-transportation'),
+  ).toContainText('80 (8.5%)')
+  await expect(
+    page
+      .getByLabel('Emergency response planning')
+      .getByTestId('afn-medical-power'),
+  ).toContainText('1–11 (privacy-protected)')
+  await expect(
+    page
+      .getByLabel('Emergency response planning')
+      .getByTestId('afn-risk-baseline'),
+  ).toContainText('National risk baseline: Relatively Moderate')
   await expect(afnContext).toContainText('No person-level records')
   await expect(afnContext).toContainText('U.S. Census Bureau · 2024 ACS 5-year')
 })
@@ -272,7 +286,9 @@ test('planner identifies missing AFN sources without exposing raw errors', async
   })
 
   await openLocalPlanning(page)
-  const afnContext = page.getByTestId('afn-context')
+  const afnContext = page
+    .getByLabel('Emergency response planning')
+    .getByTestId('afn-context')
   await expect(afnContext).toContainText(
     'Partial official source coverage · 3 of 4',
   )
@@ -288,7 +304,9 @@ test('Waiʻanae AFN request uses an on-tract planning coordinate', async ({
   test.skip(!testInfo.project.name.startsWith('desktop'))
   await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
-  await expect(page.getByTestId('afn-context')).toContainText('4 of 4')
+  await expect(
+    page.getByLabel('Emergency response planning').getByTestId('afn-context'),
+  ).toContainText('4 of 4')
 
   let requestedCoordinates = ''
   await page.route('**/api/v1/community/profile?*', async (route) => {
@@ -317,13 +335,13 @@ test('planner fails closed when official AFN sources are unavailable', async ({
   })
 
   await openLocalPlanning(page)
-  const afnContext = page.getByTestId('afn-context')
+  const afnContext = page
+    .getByLabel('Emergency response planning')
+    .getByTestId('afn-context')
   await expect(
     afnContext.getByText('Official sources unavailable'),
   ).toBeVisible()
-  await expect(afnContext).toContainText(
-    'must not be treated as official AFN estimates',
-  )
+  await expect(afnContext).toContainText('This is not zero need or low risk')
 })
 
 test('Town neighborhood panels change shelter and route guidance', async ({

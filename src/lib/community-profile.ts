@@ -97,6 +97,9 @@ export type CommunityProfileState = {
 
 const profileCache = new Map<string, CommunityProfile>()
 const profileRequests = new Map<string, Promise<CommunityProfile>>()
+// Panels mounting just after a failure share it instead of re-requesting.
+const failureCooldownMs = 10_000
+const profileFailures = new Map<string, { at: number; error: unknown }>()
 
 export function getCommunityProfileStatus(
   profile: CommunityProfile,
@@ -127,6 +130,10 @@ function loadCommunityProfile(
 ) {
   const existingRequest = profileRequests.get(cacheKey)
   if (existingRequest) return existingRequest
+  const recentFailure = profileFailures.get(cacheKey)
+  if (recentFailure && Date.now() - recentFailure.at < failureCooldownMs) {
+    return Promise.reject(recentFailure.error)
+  }
 
   const request = backendGet<CommunityProfile>('/api/v1/community/profile', {
     lat: latitude,
@@ -134,7 +141,12 @@ function loadCommunityProfile(
   })
     .then((profile) => {
       profileCache.set(cacheKey, profile)
+      profileFailures.delete(cacheKey)
       return profile
+    })
+    .catch((error: unknown) => {
+      profileFailures.set(cacheKey, { at: Date.now(), error })
+      throw error
     })
     .finally(() => {
       profileRequests.delete(cacheKey)
