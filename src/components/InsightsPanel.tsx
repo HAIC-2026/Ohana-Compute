@@ -613,8 +613,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
           state={resourceDemandState}
           serviceDays={resourceDemandDays}
           shelterStandard={resourceDemandStandard}
+          outageHours={resourceDemandOutageHours}
           onServiceDaysChange={setResourceDemandDays}
           onShelterStandardChange={setResourceDemandStandard}
+          onOutageHoursChange={setResourceDemandOutageHours}
         />
         {area.id === 'molokai-kalaupapa' ? (
           <section aria-label="Kalawao coordination">
