@@ -29,6 +29,11 @@ export type CommunityProfile = {
     limited_english_population: AggregateMetric
     population_with_disability: AggregateMetric
     population_below_poverty: AggregateMetric
+    languages?: Array<{
+      label: string
+      variable: string
+      speakers: AggregateMetric
+    }>
     source: CommunitySource
   }
   svi?: {

@@ -40,10 +40,13 @@ func TestCommunityProfileCombinesDetailedAndSubjectData(t *testing.T) {
 			if request.URL.Query().Get("key") != "test-key" {
 				t.Error("expected Census API key")
 			}
+			if !strings.Contains(request.URL.Query().Get("get"), "B16001_099E,B16001_099M") {
+				t.Error("expected sourced Tagalog language estimate and margin of error")
+			}
 
 			_, _ = writer.Write([]byte(`[
-				["NAME","B01003_001E","B01003_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","state","county","tract"],
-				["Census Tract 1.20","2361","150","900","80","15","12","15","003","000120"]
+				["NAME","B01003_001E","B01003_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","B16001_099E","B16001_099M","state","county","tract"],
+				["Census Tract 1.20","2361","150","900","80","15","12","84","25","15","003","000120"]
 			]`))
 		case "/subject":
 			dataRequests.Add(1)
@@ -85,6 +88,17 @@ func TestCommunityProfileCombinesDetailedAndSubjectData(t *testing.T) {
 		*first.NoVehicleHouseholds.Percent < 1.66 ||
 		second.Source.Status != "fresh" {
 		t.Fatalf("unexpected profile: %#v", first)
+	}
+	if len(first.Languages) != 8 || first.Languages[6].Speakers.Estimate == nil ||
+		*first.Languages[6].Speakers.Estimate != 84 ||
+		*first.Languages[6].Speakers.MarginOfError != 25 ||
+		first.Languages[0].Speakers.Estimate != nil {
+		t.Fatalf("language estimates or unknowns not preserved: %#v", first.Languages)
+	}
+	*first.Languages[6].Speakers.Estimate = 999
+	third, err := client.CommunityProfile(context.Background(), 21.29, -157.68)
+	if err != nil || *third.Languages[6].Speakers.Estimate != 84 {
+		t.Fatal("language cache mutated through returned profile")
 	}
 }
 

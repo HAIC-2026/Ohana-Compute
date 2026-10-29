@@ -59,6 +59,24 @@ type Profile struct {
 	BelowPoverty        Metric       `json:"population_below_poverty"`
 	Source              SourceStatus `json:"source"`
 	Warnings            []string     `json:"warnings,omitempty"`
+	Languages           []Language   `json:"languages"`
+}
+
+type Language struct {
+	Label    string `json:"label"`
+	Variable string `json:"variable"`
+	Speakers Metric `json:"speakers"`
+}
+
+var languageGroups = []struct{ label, variable string }{
+	{"Spanish", "B16001_003"},
+	{"Chinese (including Mandarin and Cantonese)", "B16001_075"},
+	{"Japanese", "B16001_078"},
+	{"Korean", "B16001_081"},
+	{"Vietnamese", "B16001_087"},
+	{"Other languages of Asia", "B16001_096"},
+	{"Tagalog (including Filipino)", "B16001_099"},
+	{"Ilocano, Samoan, Hawaiian, or other Austronesian languages", "B16001_102"},
 }
 
 type Config struct {
@@ -164,12 +182,16 @@ func (client *Client) loadCommunityProfile(
 	detailedChannel := make(chan queryResult, 1)
 	subjectChannel := make(chan queryResult, 1)
 	go func() {
-		values, err := client.queryDataset(ctx, client.detailedURL, geography, []string{
+		variables := []string{
 			"NAME",
 			"B01003_001E", "B01003_001M",
 			"B08201_001E", "B08201_001M",
 			"B08201_002E", "B08201_002M",
-		})
+		}
+		for _, group := range languageGroups {
+			variables = append(variables, group.variable+"E", group.variable+"M")
+		}
+		values, err := client.queryDataset(ctx, client.detailedURL, geography, variables)
 		detailedChannel <- queryResult{values: values, err: err}
 	}()
 	go func() {
@@ -243,6 +265,13 @@ func (client *Client) loadCommunityProfile(
 			"ACS values are estimates for an aggregate Census tract, not facts about an individual household.",
 			"Use margins of error when comparing small areas or prioritizing resources.",
 		},
+	}
+	for _, group := range languageGroups {
+		profile.Languages = append(profile.Languages, Language{
+			Label:    group.label,
+			Variable: group.variable,
+			Speakers: metric(detailed.values, group.variable+"E", group.variable+"M", "", ""),
+		})
 	}
 	if total := parseNumber(detailed.values["B08201_001E"]); total != nil &&
 		profile.NoVehicleHouseholds.Estimate != nil &&
@@ -420,6 +449,10 @@ func (client *Client) evictOldest() {
 }
 
 func cloneProfile(profile Profile) Profile {
+	profile.Languages = append([]Language(nil), profile.Languages...)
+	for index := range profile.Languages {
+		profile.Languages[index].Speakers = cloneMetric(profile.Languages[index].Speakers)
+	}
 	profile.Population = cloneMetric(profile.Population)
 	profile.NoVehicleHouseholds = cloneMetric(profile.NoVehicleHouseholds)
 	profile.LimitedEnglish = cloneMetric(profile.LimitedEnglish)

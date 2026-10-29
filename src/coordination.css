@@ -1,0 +1,206 @@
+.coordination-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 4vw, 48px) 64px;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.coordination-page h1 {
+  font-size: clamp(24px, 4vw, 30px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  margin: 24px 0 12px;
+}
+.coordination-page h2 {
+  font-size: 24px;
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+.coordination-page h3 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+.coordination-page p {
+  max-width: 75ch;
+}
+.coordination-page a {
+  color: var(--cp-accent, #0b7482);
+  text-underline-offset: 3px;
+}
+.coordination-page section {
+  margin-top: 40px;
+}
+.coordination-header,
+.coordination-title,
+.coordination-footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.coordination-header {
+  border-bottom: 1px solid #ccd9da;
+  padding-bottom: 16px;
+  flex-wrap: wrap;
+}
+.coordination-header span {
+  font-size: 13px;
+}
+.coordination-title > div {
+  max-width: 760px;
+}
+.coordination-page button,
+.coordination-page select {
+  font: inherit;
+  border: 1px solid #769194;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+}
+.coordination-page button {
+  cursor: pointer;
+}
+.coordination-page button:hover {
+  background: var(--cp-surface-soft);
+}
+.coordination-page button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.coordination-page button:focus-visible,
+.coordination-page select:focus-visible,
+.coordination-page a:focus-visible,
+.coordination-page summary:focus-visible,
+.coordination-table-scroll:focus-visible {
+  outline: 3px solid #18828c;
+  outline-offset: 3px;
+}
+.coordination-title > button,
+.coordination-footer-actions > button {
+  background: #0b7482;
+  color: #fff;
+  flex-shrink: 0;
+}
+.coordination-title > button:hover,
+.coordination-footer-actions > button:hover {
+  background: #18828c;
+}
+.coordination-controls {
+  display: grid;
+  grid-template-columns: 1fr 0.65fr 1.35fr;
+  gap: 16px;
+}
+.coordination-controls label {
+  display: flex;
+  flex-direction: column;
+  font-weight: 650;
+  gap: 6px;
+  min-width: 0;
+}
+.coordination-controls select {
+  width: 100%;
+}
+.coordination-notice {
+  padding: 16px;
+  background: var(--cp-surface-soft);
+  border: 1px solid #ccd9da;
+  border-radius: 8px;
+}
+.coordination-timeline {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  border-top: 1px solid #769194;
+  padding-top: 24px;
+}
+.coordination-timeline article {
+  min-width: 0;
+}
+.coordination-page dt {
+  font-weight: 700;
+  margin-top: 14px;
+}
+.coordination-page dd {
+  margin: 3px 0 0;
+}
+.coordination-page details {
+  margin-top: 16px;
+  border-top: 1px solid #ccd9da;
+  padding-top: 12px;
+}
+.coordination-page summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+.coordination-table-scroll {
+  overflow-x: auto;
+}
+.coordination-page table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 780px;
+  text-align: left;
+}
+.coordination-page caption {
+  text-align: left;
+  font-weight: 650;
+  padding: 0 0 12px;
+}
+.coordination-page th,
+.coordination-page td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #ccd9da;
+  vertical-align: top;
+}
+.coordination-page thead {
+  background: var(--cp-surface-soft);
+}
+.coordination-page small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.coordination-languages {
+  columns: 2;
+  column-gap: 32px;
+  padding-left: 20px;
+}
+.coordination-languages li {
+  break-inside: avoid;
+  margin-bottom: 8px;
+}
+.coordination-reach {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-top: 24px;
+}
+.coordination-reach ul {
+  padding-left: 20px;
+}
+.coordination-gap {
+  border-bottom: 1px solid #ccd9da;
+  padding-bottom: 8px;
+}
+@media (max-width: 760px) {
+  .coordination-title,
+  .coordination-footer-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .coordination-controls,
+  .coordination-timeline,
+  .coordination-reach {
+    grid-template-columns: 1fr;
+  }
+  .coordination-timeline article + article {
+    border-top: 1px solid #ccd9da;
+    padding-top: 24px;
+  }
+  .coordination-languages {
+    columns: 1;
+  }
+}

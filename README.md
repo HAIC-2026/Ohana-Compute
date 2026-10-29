@@ -24,6 +24,15 @@ households.
 
 ## What works
 
+- **[Forecast-to-plan coordination](docs/forecast-to-plan.md)**: **Coordinate
+  plan** (`/coordination`) turns a labeled practice scenario, or an explicitly
+  selected fresh statewide official trigger, into a before/during/after AFN
+  timeline with County decision owners, State ESF-6 support and partner roles.
+  A four-jurisdiction roll-up keeps representative-area estimates separate from
+  County totals and exposes Kalawao and island coverage gaps. Public ACS language
+  groups, accessible formats and offline channels inform a reviewed reach plan.
+  Download a structured, unsent County AFN annex draft; no message, activation,
+  dispatch or approval is sent or recorded.
 - **Statewide conversation-first entry**: the default map shows Hawaiʻi's
   islands, not a fictional person. Choose a supported island/community in
   the local guide, inspect source-backed screening and prepare five CMIST

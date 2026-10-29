@@ -385,6 +385,9 @@ function Home() {
         </div>
 
         <div className="header-actions">
+          <Link className="case-entry-link" to="/coordination">
+            Coordinate plan
+          </Link>
           {!statewideOverview && (
             <button
               type="button"
