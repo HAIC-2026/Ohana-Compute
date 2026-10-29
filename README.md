@@ -1,5 +1,9 @@
 # Hawaiʻi Mass Care Planner
 
+Development now lives in **[HAIC-2026/Ohana-Compute](https://github.com/HAIC-2026/Ohana-Compute)**.
+The [original repository](https://github.com/chokevin/hawaii-resilience-map)
+is retained as a public archive for historical pull requests and references.
+
 An emergency-planner-first mass-care prototype for the 2026 Hawaiʻi Annual
 Innovation Challenge. It helps Counties, State partners, and community
 organizations map affected communities, model access and functional needs and

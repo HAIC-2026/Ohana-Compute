@@ -95,6 +95,8 @@ repository's `development` environment and approved variables, and verify its
 protection rules. Apply changes through the existing infrastructure ownership
 process; do not recreate infrastructure or substitute credentials to bypass
 identity setup. The migration itself does not provision or deploy anything.
+The Go backend retains its existing module/import identity for compatibility;
+that identifier does not change the canonical development repository above.
 
 ## 5. Enable Prometheus and Grafana discovery
 
