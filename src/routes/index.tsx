@@ -508,6 +508,7 @@ function Home() {
             <Suspense fallback={<p role="status">Loading staff workspace…</p>}>
               <StaffOperations
                 embedded
+                hazard={hazard}
                 county={
                   statewideOverview
                     ? undefined

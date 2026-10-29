@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   countyNames,
   label,
-  nextHandoff,
+  handoffDecision,
+  readinessEvidence,
+  readinessGaps,
+  readinessOverdue,
   requestOverdue,
   staffApi,
   StaffApiError,
@@ -23,9 +26,11 @@ export const Route = createFileRoute('/operations')({ component: Operations })
 export function Operations({
   embedded = false,
   county,
+  hazard,
 }: {
   embedded?: boolean
   county?: string
+  hazard?: string
 }) {
   const [session, setSession] = useState<StaffSession | null>(null)
   const [board, setBoard] = useState<OperationsBoard | null>(null)
@@ -38,20 +43,26 @@ export function Operations({
   const [tab, setTab] = useState('response')
   const [mode, setMode] = useState('exercise')
   const [showCreate, setShowCreate] = useState(false)
+  const [showFinding, setShowFinding] = useState(false)
+  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [clock, setClock] = useState(0)
   const [notice, setNotice] = useState('')
-  const loading = useRef<Promise<void> | null>(null)
+  const loading = useRef<Promise<boolean> | null>(null)
+  const receivedAt = useRef(0)
   const sessionEpoch = useRef(0)
-  const refresh = useCallback((): Promise<void> => {
+  const refresh = useCallback((): Promise<boolean> => {
     if (loading.current) return loading.current
     const run = async () => {
       const epoch = sessionEpoch.current
       try {
         const current = await staffApi<StaffSession>('staff/session')
-        if (epoch !== sessionEpoch.current) return
+        if (epoch !== sessionEpoch.current) return false
         if (current.authenticated) {
           const next = await staffApi<OperationsBoard>('operations/board')
-          if (epoch !== sessionEpoch.current) return
+          if (epoch !== sessionEpoch.current) return false
           setBoard(next)
+          receivedAt.current = performance.now()
+          setClock(receivedAt.current)
           setSynced(next.server_time)
         } else {
           setBoard(null)
@@ -59,8 +70,9 @@ export function Operations({
         setSession(current)
         setStale(false)
         setError('')
+        return true
       } catch (failure) {
-        if (epoch !== sessionEpoch.current) return
+        if (epoch !== sessionEpoch.current) return false
         setStale(true)
         setError(
           failure instanceof Error
@@ -71,6 +83,7 @@ export function Operations({
           setSession({ enabled: true, authenticated: false })
           setBoard(null)
         }
+        return false
       }
     }
     loading.current = run().finally(() => {
@@ -80,7 +93,10 @@ export function Operations({
   }, [])
   useEffect(() => {
     void refresh()
-    const timer = window.setInterval(() => void refresh(), 5000)
+    const timer = window.setInterval(() => {
+      setClock(performance.now())
+      void refresh()
+    }, 5000)
     window.addEventListener('focus', refresh)
     return () => {
       sessionEpoch.current++
@@ -88,6 +104,11 @@ export function Operations({
       window.removeEventListener('focus', refresh)
     }
   }, [refresh])
+  useEffect(() => {
+    setShowCreate(false)
+    setShowFinding(false)
+    setSelected('')
+  }, [county, hazard])
   async function mutate(path: string, input: object) {
     setBusy(true)
     setWriteError('')
@@ -95,7 +116,12 @@ export function Operations({
     try {
       await staffApi(path, { ...input, key: crypto.randomUUID() })
       await loading.current
-      await refresh()
+      if (!(await refresh())) {
+        setWriteError(
+          'Write accepted by the server, but the refreshed workspace is unavailable. Reconnect and inspect shared state before acting again.',
+        )
+        return false
+      }
       setNotice('Saved to the shared workspace.')
       return true
     } catch (failure) {
@@ -118,7 +144,9 @@ export function Operations({
     }
   }
   const member = session?.member
-  const serverNow = board ? Date.parse(board.server_time) : Date.now()
+  const serverNow = board
+    ? Date.parse(board.server_time) + Math.max(0, clock - receivedAt.current)
+    : Date.now()
   const requests =
     board?.requests
       .filter(
@@ -126,23 +154,24 @@ export function Operations({
           request.mode === mode && (!county || request.county === county),
       )
       .sort((a, b) => {
-        const priority = (value: AssistanceRequest) =>
-          ['closed', 'cancelled'].includes(value.status)
-            ? 3
-            : requestOverdue(value, serverNow)
-              ? 0
-              : value.blocker
-                ? 1
-                : 2
         return (
-          priority(a) - priority(b) ||
+          handoffDecision(a, serverNow).priority -
+            handoffDecision(b, serverNow).priority ||
           Date.parse(a.due_at) - Date.parse(b.due_at)
         )
       }) ?? []
   const tasks =
-    board?.tasks.filter(
-      (task) => task.mode === mode && (!county || task.county === county),
-    ) ?? []
+    board?.tasks
+      .filter(
+        (task) => task.mode === mode && (!county || task.county === county),
+      )
+      .sort(
+        (a, b) =>
+          Number(a.status === 'closed') - Number(b.status === 'closed') ||
+          Number(readinessOverdue(b, serverNow)) -
+            Number(readinessOverdue(a, serverNow)) ||
+          Date.parse(a.due_at) - Date.parse(b.due_at),
+      ) ?? []
   const request = requests.find((entry) => entry.id === selected)
   const orgName = (id: string) =>
     board?.organizations.find((org) => org.id === id)?.name ?? id
@@ -274,6 +303,7 @@ export function Operations({
                   setMode(event.target.value)
                   setSelected('')
                   setShowCreate(false)
+                  setShowFinding(false)
                 }}
               >
                 <option value="exercise">EXERCISE — not a live incident</option>
@@ -299,8 +329,96 @@ export function Operations({
               confirmations are staff-reported.
             </p>
           )}
+          {county && !member.counties.includes(county) && (
+            <p className="ops-boundary">
+              The selected County is outside your configured staff jurisdiction.
+              No operational records or creation actions are available for it.
+              The public map remains planning evidence, not an operational
+              coverage commitment.
+            </p>
+          )}
           {tab === 'response' ? (
             <>
+              <section
+                className="ops-decision-summary"
+                aria-label="Response decision priorities"
+              >
+                <h2>What needs a decision now</h2>
+                <p>
+                  Authorized {mode} requests only—not modeled population demand
+                  or available capacity.
+                  {stale ? ' Last known state; reconnect to verify.' : ''}
+                </p>
+                <dl className="ops-priority-counts">
+                  <div>
+                    <dt>Overdue handoffs</dt>
+                    <dd>
+                      {
+                        requests.filter((entry) =>
+                          requestOverdue(entry, serverNow),
+                        ).length
+                      }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Blocked requests</dt>
+                    <dd>
+                      {
+                        requests.filter(
+                          (entry) =>
+                            entry.blocker &&
+                            !['closed', 'cancelled', 'arrived'].includes(
+                              entry.status,
+                            ),
+                        ).length
+                      }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Due within one hour</dt>
+                    <dd>
+                      {
+                        requests.filter(
+                          (entry) => handoffDecision(entry, serverNow).dueSoon,
+                        ).length
+                      }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>ETA beyond deadline</dt>
+                    <dd>
+                      {
+                        requests.filter(
+                          (entry) =>
+                            handoffDecision(entry, serverNow).deadlineRisk,
+                        ).length
+                      }
+                    </dd>
+                  </div>
+                </dl>
+                <p>
+                  Conditions can overlap; these counts must not be added
+                  together.
+                </p>
+                <button
+                  type="button"
+                  aria-pressed={attentionOnly}
+                  onClick={() => {
+                    setAttentionOnly((value) => !value)
+                    setSelected('')
+                  }}
+                >
+                  {attentionOnly
+                    ? 'Show all handoffs'
+                    : 'Show time-critical or blocked handoffs'}
+                </button>
+                {member.role === 'state' && (
+                  <p>
+                    Only County-escalated requests appear here. A missing County
+                    is not evidence that it needs no support.
+                  </p>
+                )}
+              </section>
               <div className="ops-section-heading">
                 <h2>
                   {member.role === 'state'
@@ -313,6 +431,11 @@ export function Operations({
                   <button
                     className="ops-primary"
                     type="button"
+                    disabled={
+                      busy ||
+                      stale ||
+                      (!!county && !member.counties.includes(county))
+                    }
                     onClick={() => setShowCreate(!showCreate)}
                   >
                     New assistance request
@@ -322,6 +445,8 @@ export function Operations({
               {showCreate && (
                 <CreateRequest
                   member={member}
+                  county={county}
+                  hazard={hazard}
                   disabled={busy || stale}
                   mode={mode}
                   save={async (input) => {
@@ -343,40 +468,65 @@ export function Operations({
                         : 'Unassigned work is never presented as accepted.'}
                     </p>
                   )}
-                  {requests.map((entry) => (
-                    <button
-                      className={`ops-request ${entry.id === selected ? 'is-selected' : ''}`}
-                      key={entry.id}
-                      type="button"
-                      onClick={() => {
-                        setSelected(entry.id)
-                        setWriteError('')
-                      }}
-                      aria-pressed={entry.id === selected}
-                    >
-                      <span className="ops-request-title">
-                        {entry.intake_ref}
-                        <span>
-                          {entry.people}{' '}
-                          {entry.people === 1 ? 'person' : 'people'}
-                        </span>
-                      </span>
-                      <span>
-                        {entry.incident_ref} · {countyNames[entry.county]} ·{' '}
-                        {label(entry.assistance)}
-                      </span>
-                      <strong>{nextHandoff(entry, serverNow)}</strong>
-                      <span
-                        className={
-                          requestOverdue(entry, serverNow) ? 'ops-late' : ''
-                        }
+                  {attentionOnly &&
+                    !requests.some(
+                      (entry) => handoffDecision(entry, serverNow).priority < 4,
+                    ) && (
+                      <p>
+                        No time-critical or blocked handoffs in this authorized
+                        snapshot. Other work may still need acknowledgment.
+                      </p>
+                    )}
+                  {requests
+                    .filter(
+                      (entry) =>
+                        !attentionOnly ||
+                        handoffDecision(entry, serverNow).priority < 4,
+                    )
+                    .map((entry) => (
+                      <button
+                        className={`ops-request ${entry.id === selected ? 'is-selected' : ''}`}
+                        key={entry.id}
+                        type="button"
+                        onClick={() => {
+                          setSelected(entry.id)
+                          setWriteError('')
+                        }}
+                        aria-pressed={entry.id === selected}
                       >
-                        {requestOverdue(entry, serverNow) ? 'OVERDUE · ' : ''}
-                        Due {new Date(entry.due_at).toLocaleTimeString()}
-                        {entry.escalated ? ' · State support requested' : ''}
-                      </span>
-                    </button>
-                  ))}
+                        <span className="ops-request-title">
+                          {entry.intake_ref}
+                          <span>
+                            {entry.people}{' '}
+                            {entry.people === 1 ? 'person' : 'people'}
+                          </span>
+                        </span>
+                        <span>
+                          {entry.incident_ref} · {countyNames[entry.county]} ·{' '}
+                          {label(entry.assistance)}
+                        </span>
+                        <strong>
+                          {handoffDecision(entry, serverNow).action}
+                        </strong>
+                        <span>
+                          Next owner:{' '}
+                          {orgName(handoffDecision(entry, serverNow).owner)} ·{' '}
+                          {label(handoffDecision(entry, serverNow).urgency)}
+                        </span>
+                        <span
+                          className={
+                            requestOverdue(entry, serverNow) ? 'ops-late' : ''
+                          }
+                        >
+                          {requestOverdue(entry, serverNow) ? 'OVERDUE · ' : ''}
+                          Next check{' '}
+                          {new Date(
+                            handoffDecision(entry, serverNow).deadline,
+                          ).toLocaleString()}
+                          {entry.escalated ? ' · State support requested' : ''}
+                        </span>
+                      </button>
+                    ))}
                 </section>
                 <section className="ops-detail" aria-label="Request handoff">
                   {request ? (
@@ -417,13 +567,56 @@ export function Operations({
             <section aria-label="Preparedness tasks">
               <h2>Close the gaps before the next emergency</h2>
               <p>
-                Tasks come from a request or exercise finding. A submitted
-                evidence reference is not completion; the County must review it.
+                Tasks come from public evidence, an agency assessment, a request
+                or exercise finding. A submitted evidence reference is not
+                completion; the County must review it.
               </p>
+              <p>
+                {tasks.filter((task) => task.status !== 'closed').length} open
+                or awaiting review ·{' '}
+                {
+                  tasks.filter((task) => readinessOverdue(task, serverNow))
+                    .length
+                }{' '}
+                overdue ·{' '}
+                {tasks.filter((task) => task.status === 'in_review').length}{' '}
+                awaiting County review. Closure verifies the recorded evidence,
+                not County-wide readiness.
+              </p>
+              {member.role === 'county' && (
+                <button
+                  type="button"
+                  className="ops-primary"
+                  disabled={
+                    busy ||
+                    stale ||
+                    (!!county && !member.counties.includes(county))
+                  }
+                  onClick={() => setShowFinding((value) => !value)}
+                >
+                  Record preparedness finding
+                </button>
+              )}
+              {showFinding && member.role === 'county' && (
+                <CreateFinding
+                  key={`${county ?? 'all'}-${hazard ?? 'all'}-${mode}`}
+                  member={member}
+                  organizations={board.organizations}
+                  county={county}
+                  hazard={hazard}
+                  mode={mode}
+                  disabled={busy || stale}
+                  save={async (input) => {
+                    if (await mutate('operations/readiness', input))
+                      setShowFinding(false)
+                  }}
+                />
+              )}
               {tasks.length === 0 && (
                 <p className="ops-empty">
-                  No readiness tasks in your scope. Open a response request and
-                  choose “Create preparedness task” to assign a discovered gap.
+                  No readiness tasks in your scope. County staff can record a
+                  preparedness finding without creating an incident or an
+                  individual assistance request.
                 </p>
               )}
               {tasks.map((task) => (
@@ -433,6 +626,7 @@ export function Operations({
                   member={member}
                   orgName={orgName}
                   disabled={busy || stale}
+                  now={serverNow}
                   command={(input) =>
                     mutate(`operations/readiness/${task.id}/commands`, {
                       ...input,
@@ -451,11 +645,15 @@ export function Operations({
 
 function CreateRequest({
   member,
+  county,
+  hazard,
   disabled,
   mode,
   save,
 }: {
   member: StaffMember
+  county?: string
+  hazard?: string
   disabled: boolean
   mode: string
   save: (input: object) => Promise<void>
@@ -508,19 +706,21 @@ function CreateRequest({
         </label>
         <label>
           County
-          <select name="county">
-            {member.counties.map((county) => (
-              <option key={county} value={county}>
-                {countyNames[county]}
-              </option>
-            ))}
+          <select name="county" defaultValue={county} required>
+            {member.counties
+              .filter((code) => !county || code === county)
+              .map((code) => (
+                <option key={code} value={code}>
+                  {countyNames[code]}
+                </option>
+              ))}
           </select>
         </label>
         <label>
           Hazard
-          <select name="hazard">
-            {['hurricane', 'flood', 'wildfire', 'tsunami'].map((hazard) => (
-              <option key={hazard}>{hazard}</option>
+          <select name="hazard" defaultValue={hazard ?? 'hurricane'}>
+            {['hurricane', 'flood', 'wildfire', 'tsunami'].map((value) => (
+              <option key={value}>{value}</option>
             ))}
           </select>
         </label>
@@ -551,6 +751,151 @@ function CreateRequest({
         </label>
         <button className="ops-primary" type="submit">
           Create shared request
+        </button>
+      </fieldset>
+    </form>
+  )
+}
+
+function CreateFinding({
+  member,
+  organizations,
+  county,
+  hazard,
+  mode,
+  disabled,
+  save,
+}: {
+  member: StaffMember
+  organizations: Array<Organization>
+  county?: string
+  hazard?: string
+  mode: string
+  disabled: boolean
+  save: (input: object) => Promise<void>
+}) {
+  const [selectedCounty, setSelectedCounty] = useState(
+    county ?? member.counties[0],
+  )
+  const [gap, setGap] = useState('transport_agreement')
+  const options = organizations.filter((org) =>
+    org.counties.includes(selectedCounty),
+  )
+  return (
+    <form
+      className="ops-form"
+      aria-label="Preparedness finding"
+      onSubmit={(event) => {
+        event.preventDefault()
+        const data = new FormData(event.currentTarget)
+        void save({
+          mode,
+          county: selectedCounty,
+          hazard: data.get('hazard'),
+          source_kind: data.get('source_kind'),
+          source_ref: data.get('source_ref'),
+          organization: data.get('organization'),
+          gap,
+          due_at: new Date(String(data.get('due'))).toISOString(),
+        })
+      }}
+    >
+      <h3>Assign prevention work from evidence</h3>
+      <p>
+        No emergency or resident request is required. Record an opaque reference
+        to the assessment in your approved records system—not a name, address,
+        URL or unreviewed population count.
+      </p>
+      <fieldset disabled={disabled}>
+        <label>
+          Finding County
+          <select
+            required
+            value={selectedCounty}
+            onChange={(event) => setSelectedCounty(event.target.value)}
+          >
+            {member.counties
+              .filter((code) => !county || code === county)
+              .map((code) => (
+                <option value={code} key={code}>
+                  {countyNames[code]}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Finding hazard
+          <select name="hazard" defaultValue={hazard ?? 'hurricane'}>
+            {['hurricane', 'flood', 'wildfire', 'tsunami'].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Evidence basis
+          <select
+            name="source_kind"
+            defaultValue={
+              mode === 'exercise' ? 'exercise_finding' : 'agency_assessment'
+            }
+          >
+            {mode === 'exercise' && (
+              <option value="exercise_finding">Exercise finding</option>
+            )}
+            <option value="agency_assessment">Agency assessment</option>
+            <option value="public_evidence">
+              Public evidence requiring local verification
+            </option>
+          </select>
+        </label>
+        <label>
+          Assessment reference
+          <input
+            name="source_ref"
+            required
+            maxLength={64}
+            pattern={'[A-Za-z0-9][A-Za-z0-9_\\-]{2,63}'}
+            placeholder="ASSESSMENT-001"
+          />
+        </label>
+        <label>
+          Gap to address
+          <select value={gap} onChange={(event) => setGap(event.target.value)}>
+            {Object.entries(readinessGaps).map(([key, value]) => (
+              <option key={key} value={key}>
+                {value.domain} · {label(key)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p>
+          <strong>Evidence required for County review:</strong>{' '}
+          {readinessEvidence(gap)?.evidence}
+        </p>
+        <label>
+          Finding owner
+          <select
+            key={selectedCounty}
+            name="organization"
+            required
+            defaultValue=""
+          >
+            <option value="" disabled>
+              Choose an accountable organization
+            </option>
+            {options.map((org) => (
+              <option key={org.id} value={org.id}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Finding review deadline
+          <input name="due" type="datetime-local" required />
+        </label>
+        <button type="submit" disabled={!options.length}>
+          Assign preparedness finding
         </button>
       </fieldset>
     </form>
@@ -893,12 +1238,7 @@ function RequestDetail({
                 <label>
                   Gap to close
                   <select name="gap">
-                    {[
-                      'transport_agreement',
-                      'receiving_access',
-                      'backup_power',
-                      'accessible_warning',
-                    ].map((value) => (
+                    {Object.keys(readinessGaps).map((value) => (
                       <option key={value} value={value}>
                         {label(value)}
                       </option>
@@ -925,12 +1265,14 @@ function TaskRow({
   orgName,
   disabled,
   command,
+  now,
 }: {
   task: ReadinessTask
   member: StaffMember
   orgName: (id: string) => string
   disabled: boolean
   command: (input: object) => Promise<boolean>
+  now: number
 }) {
   const [evidence, setEvidence] = useState('')
   const owner = member.organization === task.organization
@@ -941,14 +1283,29 @@ function TaskRow({
       <div>
         <h3>{label(task.gap)}</h3>
         <p>
-          From {task.incident_ref} / {task.source_ref}
+          {task.request_id
+            ? `From ${task.incident_ref} / ${task.source_ref}`
+            : `From ${label(task.source_kind ?? 'agency_assessment')} · ${task.source_ref}`}
+        </p>
+        <p>
+          {task.hazard ? `${label(task.hazard)} · ` : ''}
+          {readinessEvidence(task.gap)?.domain} · Evidence required:{' '}
+          {readinessEvidence(task.gap)?.evidence}
         </p>
         <p>
           {orgName(task.organization)} · {countyNames[task.county]} · due{' '}
-          {new Date(task.due_at).toLocaleDateString()}
+          {new Date(task.due_at).toLocaleString()}
         </p>
       </div>
       <strong>{label(task.status)}</strong>
+      {readinessOverdue(task, now) && (
+        <strong className="ops-late">
+          OVERDUE ·{' '}
+          {task.status === 'in_review'
+            ? 'County evidence review required'
+            : 'Assigned organization follow-up required'}
+        </strong>
+      )}
       {task.evidence_ref && (
         <p>
           Evidence reference: {task.evidence_ref} · verify in the authorized

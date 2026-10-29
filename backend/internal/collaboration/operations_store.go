@@ -265,7 +265,7 @@ func (store *SQLiteStore) CreateReadinessTask(ctx context.Context, requestID str
 	if request.Revision != input.ExpectedRevision {
 		return ReadinessTask{}, ErrConflict
 	}
-	if !opsReference.MatchString(input.Organization) || !slices.Contains([]string{"transport_agreement", "receiving_access", "backup_power", "accessible_warning"}, input.Gap) ||
+	if !opsReference.MatchString(input.Organization) || !validReadinessGap(input.Gap) ||
 		!input.DueAt.After(now) || input.DueAt.After(now.Add(366*24*time.Hour)) {
 		return ReadinessTask{}, ErrInvalidInput
 	}
@@ -276,6 +276,7 @@ func (store *SQLiteStore) CreateReadinessTask(ctx context.Context, requestID str
 	value := ReadinessTask{
 		ID: id, RequestID: requestID, Revision: 1, Mode: request.Mode, County: request.County,
 		SourceRef: request.IntakeRef, IncidentRef: request.IncidentRef,
+		SourceKind: "request", Hazard: request.Hazard,
 		Coordinator: request.Coordinator, Organization: input.Organization, Gap: input.Gap,
 		Escalated: request.Escalated,
 		Status:    "open", DueAt: input.DueAt, CreatedAt: now,
@@ -285,6 +286,69 @@ func (store *SQLiteStore) CreateReadinessTask(ctx context.Context, requestID str
 		return ReadinessTask{}, err
 	}
 	return value, tx.Commit()
+}
+
+// CreateReadinessFinding records prevention work without inventing an incident or resident request.
+func (store *SQLiteStore) CreateReadinessFinding(ctx context.Context, input ReadinessFindingCreate, actor OpsActor, now time.Time) (ReadinessTask, error) {
+	if actor.Role != "county" || !opsCounty(actor, input.County) {
+		return ReadinessTask{}, ErrOpsForbidden
+	}
+	if !slices.Contains([]string{"exercise", "operational"}, input.Mode) ||
+		!slices.Contains([]string{"001", "003", "007", "009"}, input.County) ||
+		!slices.Contains([]string{"hurricane", "flood", "wildfire", "tsunami"}, input.Hazard) ||
+		!slices.Contains([]string{"agency_assessment", "public_evidence", "exercise_finding"}, input.SourceKind) ||
+		(input.SourceKind == "exercise_finding" && input.Mode != "exercise") ||
+		!opsReference.MatchString(input.SourceRef) || !opsReference.MatchString(input.Organization) ||
+		!validReadinessGap(input.Gap) || !input.DueAt.After(now) || input.DueAt.After(now.Add(366*24*time.Hour)) {
+		return ReadinessTask{}, ErrInvalidInput
+	}
+	fingerprint, err := opsFingerprint(input)
+	if err != nil {
+		return ReadinessTask{}, err
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReadinessTask{}, err
+	}
+	defer tx.Rollback()
+	replay, err := opsReplay(ctx, tx, actor, input.Key, fingerprint)
+	if err != nil {
+		return ReadinessTask{}, err
+	}
+	if replay != "" {
+		task, err := opsLoad[ReadinessTask](ctx, tx, replay, "readiness")
+		if err == nil && !opsTaskRead(actor, task) {
+			return ReadinessTask{}, ErrOpsForbidden
+		}
+		return task, err
+	}
+	var duplicates int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM operational_records WHERE kind='readiness'
+		AND json_extract(document,'$.mode')=? AND json_extract(document,'$.county')=?
+		AND json_extract(document,'$.coordinator')=? AND json_extract(document,'$.source_kind')=?
+		AND json_extract(document,'$.source_ref')=? AND json_extract(document,'$.gap')=?
+		AND json_extract(document,'$.organization')=? AND json_extract(document,'$.hazard')=?
+		AND json_extract(document,'$.status')!='closed'`,
+		input.Mode, input.County, actor.Organization, input.SourceKind, input.SourceRef, input.Gap, input.Organization, input.Hazard).Scan(&duplicates); err != nil {
+		return ReadinessTask{}, err
+	}
+	if duplicates > 0 {
+		return ReadinessTask{}, ErrConflict
+	}
+	id, err := opsID()
+	if err != nil {
+		return ReadinessTask{}, err
+	}
+	task := ReadinessTask{
+		ID: id, Revision: 1, Mode: input.Mode, County: input.County, Hazard: input.Hazard,
+		SourceRef: input.SourceRef, SourceKind: input.SourceKind, Coordinator: actor.Organization,
+		Organization: input.Organization, Gap: input.Gap, Status: "open", DueAt: input.DueAt, CreatedAt: now,
+		Events: []OpsEvent{{Action: "create_finding", Organization: actor.Organization, Actor: actor.Subject, At: now}},
+	}
+	if err := opsSave(ctx, tx, id, "readiness", 1, task, actor, input.Key, fingerprint, "create_finding", now); err != nil {
+		return ReadinessTask{}, err
+	}
+	return task, tx.Commit()
 }
 
 func (store *SQLiteStore) CommandReadinessTask(ctx context.Context, id string, input ReadinessCommand, actor OpsActor, now time.Time) (ReadinessTask, error) {

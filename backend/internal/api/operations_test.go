@@ -120,8 +120,38 @@ func TestOperationsAPIPrivacyAuthorizationAndMetrics(t *testing.T) {
 			t.Fatalf("invalid target %s: %d", target, w.Code)
 		}
 	}
+	finding := collaboration.ReadinessFindingCreate{
+		Key: "finding-key", Mode: "exercise", County: "003", Hazard: "flood",
+		SourceKind: "exercise_finding", SourceRef: "ASSESSMENT-001", Organization: "driver-org",
+		Gap: "daily_support", DueAt: time.Now().Add(24 * time.Hour),
+	}
+	findingBody, _ := json.Marshal(finding)
+	for _, scenario := range []struct {
+		account string
+		origin  bool
+		status  int
+	}{
+		{"county", false, 403}, {"driver", true, 404}, {"foreign", true, 404},
+		{"county", true, 200},
+	} {
+		got := call("POST", "/api/v1/operations/readiness", scenario.account, string(findingBody), scenario.origin)
+		if got.Code != scenario.status {
+			t.Fatalf("finding API by %s: %d %s", scenario.account, got.Code, got.Body.String())
+		}
+	}
+	finding.Organization = "foreign-driver"
+	findingBody, _ = json.Marshal(finding)
+	if got := call("POST", "/api/v1/operations/readiness", "county", string(findingBody), true); got.Code != 400 {
+		t.Fatalf("finding target scope: %d", got.Code)
+	}
+	if got := call("POST", "/api/v1/operations/readiness", "county", `{"unexpected":"field"}`, true); got.Code != 400 {
+		t.Fatalf("finding unknown fields: %d", got.Code)
+	}
+	if got := call("POST", "/api/v1/operations/readiness", "county", string(findingBody)+`{}`, true); got.Code != 400 {
+		t.Fatalf("finding trailing JSON: %d", got.Code)
+	}
 	metrics := call("GET", "/metrics", "", "", true).Body.String()
-	for _, private := range []string{"RESTRICTED-REF", request.ID, "county-person", "county-org", "DRILL-001"} {
+	for _, private := range []string{"ASSESSMENT-001", "RESTRICTED-REF", request.ID, "county-person", "county-org", "DRILL-001"} {
 		if strings.Contains(metrics, private) {
 			t.Fatalf("metrics leak: %s", private)
 		}

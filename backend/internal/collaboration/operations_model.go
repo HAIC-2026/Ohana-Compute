@@ -76,6 +76,8 @@ type ReadinessTask struct {
 	ID           string     `json:"id"`
 	RequestID    string     `json:"request_id"`
 	SourceRef    string     `json:"source_ref"`
+	SourceKind   string     `json:"source_kind,omitempty"`
+	Hazard       string     `json:"hazard,omitempty"`
 	IncidentRef  string     `json:"incident_ref"`
 	Revision     int        `json:"revision"`
 	Mode         string     `json:"mode"`
@@ -90,6 +92,22 @@ type ReadinessTask struct {
 	SubmittedBy  string     `json:"-"`
 	CreatedAt    time.Time  `json:"created_at"`
 	Events       []OpsEvent `json:"events"`
+}
+
+type ReadinessFindingCreate struct {
+	Key          string    `json:"key"`
+	Mode         string    `json:"mode"`
+	County       string    `json:"county"`
+	Hazard       string    `json:"hazard"`
+	SourceKind   string    `json:"source_kind"`
+	SourceRef    string    `json:"source_ref"`
+	Organization string    `json:"organization"`
+	Gap          string    `json:"gap"`
+	DueAt        time.Time `json:"due_at"`
+}
+
+func validReadinessGap(gap string) bool {
+	return slices.Contains([]string{"transport_agreement", "receiving_access", "backup_power", "accessible_warning", "daily_support", "medical_support"}, gap)
 }
 
 type ReadinessCreate struct {

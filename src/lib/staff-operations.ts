@@ -55,6 +55,9 @@ export type ReadinessTask = {
   id: string
   request_id: string
   source_ref: string
+  source_kind?:
+    'request' | 'public_evidence' | 'agency_assessment' | 'exercise_finding'
+  hazard?: string
   incident_ref: string
   revision: number
   mode: string
@@ -132,6 +135,7 @@ export function nextHandoff(request: AssistanceRequest, now: number) {
   if (request.blocker) return `Blocked: ${label(request.blocker)}`
   if (request.status === 'picked_up' && request.released)
     return 'Receiving partner: confirm arrival'
+  if (!request.receiving) return 'County: choose a receiving partner'
   if (!request.receiving_ready) return 'Receiving partner: confirm readiness'
   if (['requested', 'declined'].includes(request.status))
     return 'Coordinator: offer transport'
@@ -141,6 +145,116 @@ export function nextHandoff(request: AssistanceRequest, now: number) {
   if (request.eta && Date.parse(request.eta) < now)
     return 'Pickup ETA missed: coordinator follow-up'
   return 'Transport provider: confirm pickup'
+}
+
+export const readinessGaps = {
+  accessible_warning: {
+    domain: 'Communication',
+    evidence:
+      'A reviewed language/format arrangement, tested offline fallback and responsible outreach partner.',
+  },
+  medical_support: {
+    domain: 'Medical',
+    evidence:
+      'A qualified partner assessment of medical-support requirements and the approved referral arrangement.',
+  },
+  backup_power: {
+    domain: 'Medical',
+    evidence:
+      'A documented power-support assessment, tested runtime and responsible qualified partner—not a generator count inferred from population.',
+  },
+  daily_support: {
+    domain: 'Independence',
+    evidence:
+      'A reviewed daily-living or caregiver-support arrangement and an accessible continuity procedure.',
+  },
+  receiving_access: {
+    domain: 'Safety',
+    evidence:
+      'A receiving-partner accessibility and support assessment with outstanding limitations recorded.',
+  },
+  transport_agreement: {
+    domain: 'Transportation',
+    evidence:
+      'An agency-reviewed transport agreement identifying the accessible capability, acceptance procedure and fallback.',
+  },
+} as const
+
+export function readinessEvidence(gap: string) {
+  return Object.entries(readinessGaps).find(([key]) => key === gap)?.[1]
+}
+
+export function readinessOverdue(task: ReadinessTask, now: number) {
+  return task.status !== 'closed' && Date.parse(task.due_at) < now
+}
+
+export function handoffDecision(request: AssistanceRequest, now: number) {
+  const terminal = ['closed', 'cancelled'].includes(request.status)
+  const deadlineRisk =
+    request.status === 'accepted' &&
+    !!request.eta &&
+    Date.parse(request.eta) > Date.parse(request.due_at)
+  const dueSoon =
+    !terminal &&
+    request.status !== 'arrived' &&
+    Date.parse(request.due_at) >= now &&
+    Date.parse(request.due_at) - now <= 60 * 60_000
+  const urgency = terminal
+    ? 'complete'
+    : requestOverdue(request, now)
+      ? 'overdue'
+      : request.blocker
+        ? 'blocked'
+        : deadlineRisk
+          ? 'deadline_risk'
+          : dueSoon
+            ? 'due_soon'
+            : 'waiting'
+  let owner = request.coordinator
+  if (
+    !terminal &&
+    request.verified &&
+    request.status !== 'arrived' &&
+    !request.blocker
+  ) {
+    if (request.status === 'picked_up' && request.released)
+      owner = request.receiving
+    else if (request.receiving && !request.receiving_ready)
+      owner = request.receiving
+    else if (
+      request.receiving_ready &&
+      (request.status === 'offered' ||
+        (request.status === 'accepted' &&
+          request.released &&
+          !requestOverdue(request, now)))
+    )
+      owner = request.transport
+  }
+  if (deadlineRisk) owner = request.coordinator
+  return {
+    urgency,
+    deadlineRisk,
+    dueSoon,
+    owner,
+    action:
+      deadlineRisk && !request.blocker
+        ? 'County: resolve pickup ETA beyond completion deadline'
+        : nextHandoff(request, now),
+    deadline:
+      request.status === 'accepted' &&
+      request.eta &&
+      Date.parse(request.eta) < Date.parse(request.due_at)
+        ? request.eta
+        : request.due_at,
+    priority: [
+      'overdue',
+      'blocked',
+      'deadline_risk',
+      'due_soon',
+      'waiting',
+      'complete',
+    ].indexOf(urgency),
+  }
 }
 
 export function requestOverdue(request: AssistanceRequest, now: number) {

@@ -221,13 +221,19 @@ test('real signed staff sessions complete a declined, escalated and reassigned h
     await refresh(alpha)
     await expect(alpha.getByText(ref, { exact: true })).toHaveCount(0)
     await openRequest(bravo, ref)
-    await bravo.getByLabel('Provider pickup ETA').fill(localTime(30))
+    await bravo.getByLabel('Provider pickup ETA').fill(localTime(90))
     await bravo.getByRole('button', { name: 'Accept & commit ETA' }).click()
     await saved(bravo)
     await expect(
       bravo.getByRole('button', { name: 'Confirm pickup completed' }),
     ).toHaveCount(0)
     await openRequest(county, ref)
+    await expect(
+      county.getByRole('region', { name: 'Response decision priorities' }),
+    ).toContainText('ETA beyond deadline')
+    await expect(
+      county.locator('.ops-request').filter({ hasText: ref }),
+    ).toContainText('County: resolve pickup ETA beyond completion deadline')
     await county.getByRole('checkbox').check()
     await county
       .getByRole('button', { name: 'Record movement prerequisites confirmed' })
@@ -254,6 +260,7 @@ test('real signed staff sessions complete a declined, escalated and reassigned h
       path: testInfo.outputPath('closed-handoff.png'),
       fullPage: true,
     })
+
     await county
       .getByRole('button', { name: 'Create preparedness task' })
       .click()
@@ -376,6 +383,139 @@ test('failed save and disconnected state never imply an accepted handoff', async
     await expect(
       page.getByText('Disconnected — actions disabled'),
     ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Create shared request' }),
+    ).toBeDisabled()
+  } finally {
+    await context.close()
+  }
+})
+
+test('preparedness starts from evidence without manufacturing an emergency request', async ({
+  browser,
+}, testInfo) => {
+  const viewport =
+    testInfo.project.name === 'mobile'
+      ? { width: 390, height: 844 }
+      : { width: 1440, height: 1000 }
+  const county = await signIn(browser, 'county-staff', viewport)
+  const partner = await signIn(browser, 'transport-staff', viewport)
+  const other = await signIn(browser, 'other-county-staff', viewport)
+  try {
+    const before = await (
+      await county.page.request.get('/api/v1/operations/board')
+    ).json()
+    const ref = `PREP-${testInfo.project.name}-${Date.now()}`
+    await county.page
+      .getByRole('button', { name: 'Preparedness', exact: true })
+      .click()
+    await county.page
+      .getByRole('button', { name: 'Record preparedness finding', exact: true })
+      .click()
+    const form = county.page.getByRole('form', { name: 'Preparedness finding' })
+    await form.getByLabel('Finding hazard').selectOption('tsunami')
+    await form.getByLabel('Assessment reference').fill(ref)
+    await form.getByLabel('Gap to address').selectOption('daily_support')
+    await expect(form).toContainText(
+      'daily-living or caregiver-support arrangement',
+    )
+    await form.getByLabel('Finding owner').selectOption('transport-one')
+    await form
+      .getByLabel('Finding review deadline')
+      .fill(localTime(2 * 24 * 60))
+    await form
+      .getByRole('button', { name: 'Assign preparedness finding' })
+      .click()
+    await saved(county.page)
+    const task = county.page.locator('.ops-task').filter({ hasText: ref })
+    await expect(task).toContainText('exercise finding')
+    await expect(task).toContainText('Independence')
+    const after = await (
+      await county.page.request.get('/api/v1/operations/board')
+    ).json()
+    expect(after.requests).toHaveLength(before.requests.length)
+    expect(
+      after.tasks.find(
+        (entry: { source_ref: string }) => entry.source_ref === ref,
+      ),
+    ).toMatchObject({
+      request_id: '',
+      incident_ref: '',
+      hazard: 'tsunami',
+      status: 'open',
+    })
+    await county.page.getByLabel('Record context').selectOption('operational')
+    await expect(
+      county.page.locator('.ops-task').filter({ hasText: ref }),
+    ).toHaveCount(0)
+    await county.page.getByLabel('Record context').selectOption('exercise')
+    for (const user of [partner, other]) {
+      await user.page
+        .getByRole('button', { name: 'Preparedness', exact: true })
+        .click()
+      await refresh(user.page)
+    }
+    await expect(other.page.getByText(ref, { exact: false })).toHaveCount(0)
+    const partnerTask = partner.page
+      .locator('.ops-task')
+      .filter({ hasText: ref })
+    await partnerTask
+      .getByLabel('Evidence reference')
+      .fill('SUPPORT-AGREEMENT-001')
+    await partnerTask
+      .getByRole('button', { name: 'Submit evidence for County review' })
+      .click()
+    await saved(partner.page)
+    await refresh(county.page)
+    await expect(task).toContainText('in review')
+    await county.page.screenshot({
+      path: testInfo.outputPath('preparedness-finding.png'),
+      fullPage: true,
+    })
+    await task
+      .getByRole('button', { name: 'Confirm reviewed evidence & close' })
+      .click()
+    await saved(county.page)
+    await expect(task.getByText('closed', { exact: true })).toBeVisible()
+  } finally {
+    await Promise.all([
+      county.context.close(),
+      partner.context.close(),
+      other.context.close(),
+    ])
+  }
+})
+
+test('an accepted write with failed refresh never shows a synchronized success', async ({
+  browser,
+}, testInfo) => {
+  const { context, page } = await signIn(browser, 'county-staff', {
+    width: 390,
+    height: 844,
+  })
+  try {
+    await page.route('**/api/v1/operations/requests', async (route) => {
+      const response = await route.fetch()
+      await page.route('**/api/v1/operations/board', (next) => next.abort())
+      await route.fulfill({ response })
+    })
+    await page.getByRole('button', { name: 'New assistance request' }).click()
+    await page.getByLabel('Incident / exercise reference').fill('REFRESH-DRILL')
+    await page
+      .getByLabel('Intake reference', { exact: true })
+      .fill(`SYNC-${testInfo.project.name}`)
+    await page
+      .getByLabel('County-requested completion deadline')
+      .fill(localTime(60))
+    await page.getByRole('button', { name: 'Create shared request' }).click()
+    await expect(
+      page
+        .getByRole('alert')
+        .filter({ hasText: 'Write accepted by the server' }),
+    ).toBeVisible()
+    await expect(
+      page.getByText('Saved to the shared workspace.', { exact: true }),
+    ).toHaveCount(0)
     await expect(
       page.getByRole('button', { name: 'Create shared request' }),
     ).toBeDisabled()

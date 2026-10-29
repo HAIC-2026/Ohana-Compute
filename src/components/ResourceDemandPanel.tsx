@@ -33,6 +33,71 @@ const unitLabels: Record<string, string> = {
   beneficiary_hours: 'beneficiary-hours',
 }
 
+// Planning vocabulary for matching each modeled domain to partner capability.
+// It describes what to ask about, never an available or published quantity.
+const cmistCapabilities: Partial<
+  Record<
+    string,
+    { capability: string; compatibleUnit: string; validationQuestion: string }
+  >
+> = {
+  communication: {
+    capability:
+      'Interpreters, translated alerts, plain-language and accessible-format materials',
+    compatibleUnit:
+      'Language- or format-qualified support capacity per person served',
+    validationQuestion:
+      'Which languages and accessible formats can County or partner staff confirm for this area, and how many people can each cover?',
+  },
+  medical: {
+    capability:
+      'Power continuity for durable medical equipment, medication refrigeration and clinical support',
+    compatibleUnit:
+      'Powered, clinically supported spaces per power-dependent person',
+    validationQuestion:
+      'Which sites or partners can confirm backup power, refrigeration and clinical coverage, and for how many power-dependent people?',
+  },
+  independence: {
+    capability: 'Accessible cots, mobility aids and accessible sleeping areas',
+    compatibleUnit: 'Accessible sleeping places or mobility aids per person',
+    validationQuestion:
+      'How many accessible cots, mobility aids and accessible sleeping areas can the County or partners confirm for this area?',
+  },
+  safety_support: {
+    capability:
+      'Caregiver, behavioral-health and safety check-in outreach capacity',
+    compatibleUnit: 'Outreach or check-in contacts per person',
+    validationQuestion:
+      'Which County programs or partners can confirm caregiver, behavioral-health or check-in coverage, and at what volume?',
+  },
+  transportation: {
+    capability:
+      'Accessible transport, including wheelchair-accessible vehicles and drivers',
+    compatibleUnit:
+      'Accessible transport seats per trip, matching the modeled seat-planning equivalents',
+    validationQuestion:
+      'How many accessible seats and wheelchair positions per trip can County transit or partners confirm, and with what lead time?',
+  },
+}
+
+const assumptionUnitLabels: Record<string, string> = {
+  share_of_aggregate_population: 'share of aggregate population',
+  share_of_cohort: 'share of each reference cohort',
+  share_of_households: 'share of households',
+  days: 'days',
+  beneficiary_hours_per_emPOWER_count: 'outage hours per public emPOWER count',
+}
+
+function assumptionValueText(unit: string, values: number[]) {
+  const format = (value: number) =>
+    unit.startsWith('share_')
+      ? `${Number((value * 100).toFixed(1)).toLocaleString()}%`
+      : value.toLocaleString()
+  if (values.length === 3)
+    return `Low ${format(values[0])} · planning ${format(values[1])} · high ${format(values[2])}`
+  return values.map(format).join(', ')
+}
+
 function rangeText(
   range: { low: number; planning: number; high: number } | undefined,
   unit: string,
@@ -251,17 +316,47 @@ export function ResourceDemandPanel({
               explicit assumptions. Categories overlap and are not additive.
             </p>
             <div>
-              {response.cmist.map((need) => (
-                <article key={need.domain}>
-                  <strong>{need.label}</strong>
-                  <span>
-                    {need.demand
-                      ? rangeText(need.demand, need.unit)
-                      : `Unavailable · ${need.unavailable_reason?.replaceAll('_', ' ') ?? 'source missing'}`}
-                  </span>
-                  <small>{need.basis}</small>
-                </article>
-              ))}
+              {response.cmist.map((need) => {
+                const capability = cmistCapabilities[need.domain]
+                return (
+                  <article
+                    key={need.domain}
+                    data-testid={`cmist-${need.domain}`}
+                  >
+                    <strong>{need.label}</strong>
+                    <span>
+                      {need.demand
+                        ? `Modeled need ${rangeText(need.demand, need.unit)}`
+                        : `Unavailable · ${need.unavailable_reason?.replaceAll('_', ' ') ?? 'source missing'}`}
+                    </span>
+                    <small>{need.basis}</small>
+                    {capability ? (
+                      <dl>
+                        <div>
+                          <dt>Needed capability</dt>
+                          <dd>{capability.capability}</dd>
+                        </div>
+                        <div>
+                          <dt>Compatible supply unit</dt>
+                          <dd>{capability.compatibleUnit}</dd>
+                        </div>
+                        <div>
+                          <dt>Supply</dt>
+                          <dd>
+                            Unknown · no County-published or matched partner
+                            supply for this domain in this model. Nothing is
+                            subtracted and no gap is calculated.
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Validate with County or partner</dt>
+                          <dd>{capability.validationQuestion}</dd>
+                        </div>
+                      </dl>
+                    ) : null}
+                  </article>
+                )
+              })}
             </div>
           </section>
 
@@ -372,6 +467,41 @@ export function ResourceDemandPanel({
                 aggregate population range and versioned assumptions. Identical
                 canonical requests produce identical results.
               </p>
+              <section
+                className="resource-demand-assumptions"
+                aria-label="Returned model assumptions"
+              >
+                <strong>Returned assumptions</strong>
+                <p>
+                  Low, planning, and high values are scenario stress-test bounds
+                  from versioned assumptions, not statistical confidence
+                  intervals. Survey margins of error widen only the aggregate
+                  inputs; the fractions and multipliers below are planning
+                  choices, not measured uncertainty.
+                </p>
+                {response.assumptions.length ? (
+                  <ul>
+                    {response.assumptions.map((assumption) => (
+                      <li key={assumption.id}>
+                        <strong>{assumption.label}</strong>
+                        <small>
+                          {assumptionUnitLabels[assumption.unit] ??
+                            assumption.unit.replaceAll('_', ' ')}
+                        </small>
+                        <span>
+                          {assumptionValueText(
+                            assumption.unit,
+                            assumption.values,
+                          )}
+                        </span>
+                        <span>{assumption.basis}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No assumptions were returned for this calculation.</p>
+                )}
+              </section>
               <ul>
                 {response.sources.map((source) => (
                   <li key={source.id}>

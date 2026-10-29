@@ -119,6 +119,98 @@ func TestOperationalHandoffAndReadiness(t *testing.T) {
 	}
 }
 
+func TestPreparednessFindingWithoutIncident(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "findings.db")
+	store, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	county := OpsActor{"county-user", "county-team", "county", []string{"003"}}
+	partner := OpsActor{"partner-user", "transport-one", "transport", []string{"003"}}
+	state := OpsActor{"state-user", "state-team", "state", []string{"003"}}
+	foreign := OpsActor{"other-user", "other-county", "county", []string{"009"}}
+	input := ReadinessFindingCreate{
+		Key: "finding-create", Mode: "operational", County: "003", Hazard: "tsunami",
+		SourceKind: "public_evidence", SourceRef: "ASSESSMENT-001", Organization: partner.Organization,
+		Gap: "accessible_warning", DueAt: now.Add(24 * time.Hour),
+	}
+	for _, actor := range []OpsActor{partner, state, foreign} {
+		if _, err := store.CreateReadinessFinding(ctx, input, actor, now); !errors.Is(err, ErrOpsForbidden) {
+			t.Fatalf("finding create by %s: %v", actor.Role, err)
+		}
+	}
+	for _, change := range []func(*ReadinessFindingCreate){
+		func(v *ReadinessFindingCreate) { v.SourceRef = "a name and address" },
+		func(v *ReadinessFindingCreate) { v.SourceKind = "exercise_finding" },
+		func(v *ReadinessFindingCreate) { v.Gap = "invented" },
+		func(v *ReadinessFindingCreate) { v.Hazard = "invented" },
+		func(v *ReadinessFindingCreate) { v.Mode = "invented" },
+		func(v *ReadinessFindingCreate) { v.DueAt = now.Add(-time.Hour) },
+	} {
+		invalid := input
+		change(&invalid)
+		if _, err := store.CreateReadinessFinding(ctx, invalid, county, now); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid finding accepted: %+v %v", invalid, err)
+		}
+	}
+	task, err := store.CreateReadinessFinding(ctx, input, county, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.CreateReadinessFinding(ctx, input, county, now)
+	if err != nil || replayed.ID != task.ID || replayed.Revision != 1 {
+		t.Fatalf("finding retry: %+v %v", replayed, err)
+	}
+	duplicate := input
+	duplicate.Key = "duplicate-finding"
+	if _, err := store.CreateReadinessFinding(ctx, duplicate, county, now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate finding: %v", err)
+	}
+	if task.RequestID != "" || task.IncidentRef != "" || task.Escalated || task.Hazard != "tsunami" {
+		t.Fatalf("finding invented incident context: %+v", task)
+	}
+	for _, actor := range []OpsActor{county, partner} {
+		requests, err := store.ListOpsRequests(ctx, actor)
+		if err != nil || len(requests) != 0 {
+			t.Fatalf("invented resident request: %+v %v", requests, err)
+		}
+	}
+	for _, actor := range []OpsActor{state, foreign} {
+		tasks, err := store.ListReadinessTasks(ctx, actor)
+		if err != nil || len(tasks) != 0 {
+			t.Fatalf("finding scope leak: %+v %v", tasks, err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer store.Close()
+	tasks, err := store.ListReadinessTasks(ctx, partner)
+	if err != nil || len(tasks) != 1 || tasks[0].SourceRef != input.SourceRef {
+		t.Fatalf("finding restart: %+v %v", tasks, err)
+	}
+	task = tasks[0]
+	task, err = store.CommandReadinessTask(ctx, task.ID, ReadinessCommand{
+		Key: "finding-submit", ExpectedRevision: task.Revision, Action: "submit", EvidenceRef: "REVIEW-001",
+	}, partner, now)
+	if err != nil || task.Status != "in_review" {
+		t.Fatalf("submit finding evidence: %+v %v", task, err)
+	}
+	task, err = store.CommandReadinessTask(ctx, task.ID, ReadinessCommand{
+		Key: "finding-approve", ExpectedRevision: task.Revision, Action: "approve",
+	}, county, now)
+	if err != nil || task.Status != "closed" {
+		t.Fatalf("finding review: %+v %v", task, err)
+	}
+}
+
 func TestOpsConflictsAndGuards(t *testing.T) {
 	store, err := OpenSQLite(":memory:")
 	if err != nil {

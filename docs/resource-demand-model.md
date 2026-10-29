@@ -37,12 +37,18 @@ exposure multipliers:
 | Tsunami   |           1.3 |     1.1 |          1.2 |              1.3 |            1.4 |
 | Wildfire  |           1.2 |     1.4 |          1.3 |              1.2 |            1.3 |
 
-The frontend shows each formula, assumption, source identifier, and range
-beside the category. These screening estimates prompt State ESF-6 and County
+The frontend shows each modeled range, basis, and needed capability beside the
+category, with a compatible supply unit and a concrete County or partner
+validation question. CMIST supply is shown as unknown: the model has no
+County-published or matched partner supply for these domains, so nothing is
+subtracted and no CMIST gap is calculated. The evidence disclosure lists every
+returned assumption with its readable unit and values, and explains that
+low/planning/high values are stress-test bounds rather than statistical
+confidence intervals. These screening estimates prompt State ESF-6 and County
 partners to validate interpreters, accessible formats, medications and
 refrigeration, power, accessible cots and mobility aids, caregiver and
 behavioral-health support, and accessible transport seats. They are not
-validated operational requirement rates.
+validated operational requirement rates or operational requests.
 
 ## Separate demand lines
 

@@ -5121,6 +5121,43 @@ html[data-theme='dark'] .focus-distribution .is-review-first {
   line-height: 1.35;
 }
 
+.resource-demand-cmist article dl {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin: 0;
+  gap: 6px 10px;
+}
+
+.resource-demand-cmist article dt {
+  color: var(--cp-text-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.resource-demand-cmist article dd {
+  margin: 1px 0 0;
+  color: var(--cp-text);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.resource-demand-assumptions {
+  display: grid;
+  margin-bottom: 8px;
+  gap: 4px;
+}
+
+.resource-demand-assumptions > strong {
+  font-size: 10px;
+}
+
+.resource-demand-assumptions p {
+  margin: 0;
+}
+
 .resource-demand-capacity {
   display: flex;
   padding: 9px 0;

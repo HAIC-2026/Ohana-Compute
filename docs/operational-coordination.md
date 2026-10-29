@@ -55,7 +55,19 @@ never changes from EXERCISE to operational; the contexts remain separate.
 ## Exceptions and synchronization
 
 County boards expose unaccepted offers, receiving blockers, missed pickup ETAs
-and requested deadlines. Staff explicitly request State support; a persisted
+and requested deadlines. The decision summary and attention filter prioritize
+overdue work, blockers, accepted pickup ETAs beyond the requested completion
+deadline, and completion deadlines within one hour. Conditions may overlap:
+do not sum the counts. Next-owner labels name the actual configured organization
+or County coordinator; an absent receiving partner requires County selection,
+not acknowledgment by a nonexistent partner. The next check is the earlier of
+an accepted pickup ETA and completion deadline. These are review prompts, not
+automatic reassignments, protective-action orders or a guarantee of safe timing.
+Closed/cancelled requests need no action; arrived requests still require County
+closure. The summary contains only authorized records, not modeled population
+demand, available vehicles or a statewide completeness claim.
+
+Staff explicitly request State support; a persisted
 escalation becomes visible in the State workspace. Overdue conditions are derived
 from durable timestamps and server time, so restarting the backend does not
 silently clear them. **Visibility in the app is not a notification or page.**
@@ -73,15 +85,46 @@ checks reject stale writes. A failed/timed-out write is not treated as success:
 refresh authoritative state before acting again. API command keys make exact
 retries idempotent; reusing a key with different content conflicts. A repeated
 intake reference within the same mode, County and incident also conflicts.
+If a write is accepted but the following authoritative refresh fails, the UI
+explicitly reports that distinction, does not claim synchronized success, and
+disables writes until reconnection.
 
 ## Between emergencies
 
-Open a request and create a preparedness task for a transport agreement,
-receiving accessibility, backup power or accessible warning gap. Assign a
-configured organization and deadline. That organization supplies an evidence
-reference; County staff review the evidence in their authorized records system
-and approve closure or return it. The evidence submitter cannot approve their
-own submission. EXERCISE findings remain labeled as such.
+Open **Preparedness → Record preparedness finding** to assign prevention work
+without creating an incident or an individual assistance request. Choose the
+County, hazard, evidence basis and opaque assessment reference. Supported bases
+are `agency_assessment`, `public_evidence` requiring local verification, and
+`exercise_finding` in EXERCISE context only. Public demographics never
+automatically create a task, establish an individual need or activate a resource.
+The map-selected County and hazard carry through to the form; the owner list is
+limited to configured organizations serving that County.
+
+Six bounded gap categories cover all five CMIST domains:
+
+| Gap                 | Domain         | Evidence needed for review                                      |
+| ------------------- | -------------- | --------------------------------------------------------------- |
+| Transport agreement | Transportation | Reviewed agreement, capability and contact/escalation procedure |
+| Receiving access    | Safety         | Accessibility and receiving arrangements                        |
+| Backup power        | Medical        | Power continuity arrangements and limitations                   |
+| Accessible warning  | Communication  | Accessible formats/channels, responsible partner and fallback   |
+| Daily support       | Independence   | Daily-living/caregiver support arrangements                     |
+| Medical support     | Medical        | Appropriate qualified support and referral arrangement          |
+
+The form/task shows the concrete evidence criterion for its category. Assign a
+configured organization and future review deadline (at most 366 days). An
+identical open finding conflicts instead of silently creating duplicate work.
+The organization supplies an evidence reference; County staff review it in their
+authorized records system and approve closure or return it. The submitter cannot
+approve their own evidence. Overdue findings include those waiting for County
+review; closed findings sort last. Closure confirms only this recorded evidence,
+not overall County readiness.
+
+Existing request-derived tasks remain available from the request detail and
+retain their original request/incident provenance. Standalone findings carry
+source kind, source reference and hazard instead; no resident request, incident
+or State escalation is manufactured. Existing jurisdiction, organization, revision
+and audit rules apply. EXERCISE findings and operational records remain separate.
 
 ## Privacy and operational prerequisites
 

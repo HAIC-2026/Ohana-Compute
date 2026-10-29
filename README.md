@@ -31,8 +31,11 @@ records.
   receiving-partner accounts through verified assistance requests, explicit
   offers/acceptance, receiving confirmation, pickup/arrival acknowledgments and
   County closure. Declines, overdue work and explicit State support requests
-  stay visible; blockers become owned preparedness tasks requiring evidence and
-  County review. Organizational OIDC, server-controlled jurisdiction membership
+  stay visible. A time-critical queue names the next accountable owner and flags
+  blocked/overdue work and pickup ETAs beyond the requested deadline.
+  Preparedness findings can start from an assessment or exercise without an
+  emergency request, with CMIST evidence requirements, an owner, deadline and
+  independent County review. Organizational OIDC, server-controlled jurisdiction membership
   and durable SQLite storage must be configured. This is a staff pilot, not a
   dispatch/paging integration or official adoption. Evaluate using labeled
   synthetic EXERCISE records until participating agencies validate the workflow.

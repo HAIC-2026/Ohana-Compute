@@ -18,6 +18,7 @@ type OperationsStore interface {
 	CommandOpsRequest(context.Context, string, collaboration.OpsCommand, collaboration.OpsActor, time.Time) (collaboration.OpsRequest, error)
 	ListReadinessTasks(context.Context, collaboration.OpsActor) ([]collaboration.ReadinessTask, error)
 	CreateReadinessTask(context.Context, string, collaboration.ReadinessCreate, collaboration.OpsActor, time.Time) (collaboration.ReadinessTask, error)
+	CreateReadinessFinding(context.Context, collaboration.ReadinessFindingCreate, collaboration.OpsActor, time.Time) (collaboration.ReadinessTask, error)
 	CommandReadinessTask(context.Context, string, collaboration.ReadinessCommand, collaboration.OpsActor, time.Time) (collaboration.ReadinessTask, error)
 }
 
@@ -106,6 +107,22 @@ func registerOperationsRoutes(mux *http.ServeMux, store OperationsStore, staff o
 			return
 		}
 		value, err := store.CreateOpsRequest(r.Context(), input, actor, time.Now().UTC())
+		result(w, value, err)
+	})
+	mux.HandleFunc("POST /api/v1/operations/readiness", func(w http.ResponseWriter, r *http.Request) {
+		actor, ok := authorize(w, r)
+		if !ok {
+			return
+		}
+		var input collaboration.ReadinessFindingCreate
+		if !decodeCollaborationJSON(w, r, &input) {
+			return
+		}
+		if !validTarget(actor, input.Organization, "", input.County) {
+			result(w, nil, collaboration.ErrInvalidInput)
+			return
+		}
+		value, err := store.CreateReadinessFinding(r.Context(), input, actor, time.Now().UTC())
 		result(w, value, err)
 	})
 	mux.HandleFunc("POST /api/v1/operations/requests/{id}/commands", func(w http.ResponseWriter, r *http.Request) {

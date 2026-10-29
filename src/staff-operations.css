@@ -211,6 +211,28 @@
   margin: 0;
   color: var(--cp-text);
 }
+.ops-decision-summary {
+  border-block: 1px solid #769194;
+  padding: 16px 0;
+  margin-bottom: 24px;
+}
+.ops-decision-summary h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.ops-priority-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+.ops-priority-counts dt {
+  font-size: 13px;
+}
+.ops-priority-counts dd {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+}
 .ops-workspace {
   display: grid;
   grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.5fr);
