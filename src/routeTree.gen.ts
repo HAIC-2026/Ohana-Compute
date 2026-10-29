@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CoordinationRouteImport } from './routes/coordination'
 import { Route as WaianaeRouteImport } from './routes/waianae'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CoordinationRoute = CoordinationRouteImport.update({
+  id: '/coordination',
+  path: '/coordination',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WaianaeRoute = WaianaeRouteImport.update({
@@ -25,27 +31,31 @@ const WaianaeRoute = WaianaeRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/coordination': typeof CoordinationRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/coordination': typeof CoordinationRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/coordination': typeof CoordinationRoute
   '/waianae': typeof WaianaeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/waianae'
+  fullPaths: '/' | '/coordination' | '/waianae'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/waianae'
-  id: '__root__' | '/' | '/waianae'
+  to: '/' | '/coordination' | '/waianae'
+  id: '__root__' | '/' | '/coordination' | '/waianae'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CoordinationRoute: typeof CoordinationRoute
   WaianaeRoute: typeof WaianaeRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/coordination': {
+      id: '/coordination'
+      path: '/coordination'
+      fullPath: '/coordination'
+      preLoaderRoute: typeof CoordinationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/waianae': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CoordinationRoute: CoordinationRoute,
   WaianaeRoute: WaianaeRoute,
 }
 export const routeTree = rootRouteImport
