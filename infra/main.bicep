@@ -10,7 +10,7 @@ param prefix string = 'hawaii-resilience'
 param environment string = 'dev'
 
 @description('GitHub repository allowed to deploy the development backend.')
-param githubRepository string = 'chokevin/hawaii-resilience-map'
+param githubRepository string = 'HAIC-2026/Ohana-Compute'
 
 @description('GitHub Actions environment allowed to use the deployment identity.')
 param githubEnvironment string = 'development'

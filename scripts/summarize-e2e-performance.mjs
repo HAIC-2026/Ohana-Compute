@@ -51,7 +51,7 @@ const navigation = metrics['initial-view-timing-ms'] ?? {}
 const summary = `# Resident journey browser performance
 
 ## Run context
-- repo: chokevin/hawaii-resilience-map
+- repo: HAIC-2026/Ohana-Compute
 - branch/commit: main / ${commit}
 - command: \`npm run test:journey\`
 - started_at: ${new Date().toISOString()}

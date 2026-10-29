@@ -45,7 +45,7 @@ pull request text. See
 - Permission to create resource groups, role assignments, AKS, ACR, identities,
   and Key Vault
 - GitHub CLI signed in as an administrator of
-  `chokevin/hawaii-resilience-map`
+  `HAIC-2026/Ohana-Compute`
 - Helm and kubectl for local inspection
 
 ## 1. Store the local key
@@ -78,11 +78,23 @@ repository file, GitHub secret, or Kubernetes manifest.
 
 ```bash
 gh workflow run deploy-dev-backend.yml \
-  --repo chokevin/hawaii-resilience-map
+  --repo HAIC-2026/Ohana-Compute
 ```
 
 The workflow builds the backend image, pushes it to ACR, deploys the Helm
 release, and reports the development load-balancer address.
+
+### Repository migration
+
+The canonical repository is `HAIC-2026/Ohana-Compute`. Moving Git history does
+not move an existing cloud identity trust or deployment configuration.
+Before running deployments from the new repository, an authorized operator
+must review/update the deployment identity's federated subject to
+`repo:HAIC-2026/Ohana-Compute:environment:development`, configure the new
+repository's `development` environment and approved variables, and verify its
+protection rules. Apply changes through the existing infrastructure ownership
+process; do not recreate infrastructure or substitute credentials to bypass
+identity setup. The migration itself does not provision or deploy anything.
 
 ## 5. Enable Prometheus and Grafana discovery
 

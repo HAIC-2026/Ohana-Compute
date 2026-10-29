@@ -12,7 +12,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 resource_group="${AZURE_RESOURCE_GROUP:-hawaii-resilience-dev}"
 deployment_name="${AZURE_DEPLOYMENT_NAME:-hawaii-resilience-dev}"
 location="${AZURE_LOCATION:-westus3}"
-github_repository="${GITHUB_REPOSITORY:-chokevin/hawaii-resilience-map}"
+github_repository="${GITHUB_REPOSITORY:-HAIC-2026/Ohana-Compute}"
 github_environment="${GITHUB_ENVIRONMENT:-development}"
 
 command -v az >/dev/null 2>&1 || {
