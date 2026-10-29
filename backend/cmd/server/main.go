@@ -101,6 +101,7 @@ func main() {
 		census.NewClient(census.Config{
 			HTTPClient: &http.Client{Timeout: 12 * time.Second},
 			APIKey:     censusAPIKey,
+			ArcGIS:     arcGISClient,
 		}),
 	)
 	cyclones := cphc.NewClient(cphc.Config{

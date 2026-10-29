@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -26,11 +28,12 @@ const (
 var ErrAPIKeyRequired = errors.New("Census API key is required")
 
 type Geography struct {
-	StateCode  string `json:"state_code"`
-	CountyCode string `json:"county_code"`
-	TractCode  string `json:"tract_code"`
-	TractFIPS  string `json:"tract_fips"`
-	Name       string `json:"name"`
+	StateCode  string               `json:"state_code"`
+	CountyCode string               `json:"county_code"`
+	TractCode  string               `json:"tract_code"`
+	TractFIPS  string               `json:"tract_fips"`
+	Name       string               `json:"name"`
+	Resolution *GeographyResolution `json:"resolution,omitempty"`
 }
 
 type Metric struct {
@@ -51,15 +54,19 @@ type SourceStatus struct {
 }
 
 type Profile struct {
-	Geography           Geography    `json:"geography"`
-	Population          Metric       `json:"population"`
-	NoVehicleHouseholds Metric       `json:"no_vehicle_households"`
-	LimitedEnglish      Metric       `json:"limited_english_population"`
-	Disability          Metric       `json:"population_with_disability"`
-	BelowPoverty        Metric       `json:"population_below_poverty"`
-	Source              SourceStatus `json:"source"`
-	Warnings            []string     `json:"warnings,omitempty"`
-	Languages           []Language   `json:"languages"`
+	Geography              Geography    `json:"geography"`
+	Population             Metric       `json:"population"`
+	NoVehicleHouseholds    Metric       `json:"no_vehicle_households"`
+	LimitedEnglish         Metric       `json:"limited_english_population"`
+	Disability             Metric       `json:"population_with_disability"`
+	BelowPoverty           Metric       `json:"population_below_poverty"`
+	KupunaLivingAlone      Metric       `json:"kupuna_living_alone"`
+	Housing50PlusUnits     Metric       `json:"housing_50_plus_units"`
+	IncompletePlumbing     Metric       `json:"incomplete_plumbing"`
+	NoInternetSubscription Metric       `json:"no_internet_subscription"`
+	Source                 SourceStatus `json:"source"`
+	Warnings               []string     `json:"warnings,omitempty"`
+	Languages              []Language   `json:"languages"`
 }
 
 type Language struct {
@@ -88,6 +95,7 @@ type Config struct {
 	CacheTTL        time.Duration
 	Now             func() time.Time
 	MaxCacheEntries int
+	ArcGIS          GeographyQuerier
 }
 
 type Client struct {
@@ -100,9 +108,11 @@ type Client struct {
 	now         func() time.Time
 	maxEntries  int
 	requests    singleflight.Group
+	arcGIS      GeographyQuerier
 
-	mu    sync.RWMutex
-	cache map[string]Profile
+	mu       sync.RWMutex
+	cache    map[string]Profile
+	counties map[string][]Profile
 }
 
 type geocoderResponse struct {
@@ -128,6 +138,10 @@ func NewClient(config Config) *Client {
 	if maxEntries <= 0 {
 		maxEntries = 512
 	}
+	querier := config.ArcGIS
+	if querier == nil {
+		querier = arcgis.NewClient(arcgis.Config{HTTPClient: httpClient, Now: now, MaxCacheEntries: maxEntries})
+	}
 	return &Client{
 		httpClient:  httpClient,
 		apiKey:      strings.TrimSpace(config.APIKey),
@@ -137,7 +151,9 @@ func NewClient(config Config) *Client {
 		cacheTTL:    cacheTTL,
 		now:         now,
 		maxEntries:  maxEntries,
+		arcGIS:      querier,
 		cache:       make(map[string]Profile),
+		counties:    make(map[string][]Profile),
 	}
 }
 
@@ -182,27 +198,11 @@ func (client *Client) loadCommunityProfile(
 	detailedChannel := make(chan queryResult, 1)
 	subjectChannel := make(chan queryResult, 1)
 	go func() {
-		variables := []string{
-			"NAME",
-			"B01003_001E", "B01003_001M",
-			"B08201_001E", "B08201_001M",
-			"B08201_002E", "B08201_002M",
-		}
-		for _, group := range languageGroups {
-			variables = append(variables, group.variable+"E", group.variable+"M")
-		}
-		values, err := client.queryDataset(ctx, client.detailedURL, geography, variables)
+		values, err := client.queryDataset(ctx, client.detailedURL, geography, detailedVariables)
 		detailedChannel <- queryResult{values: values, err: err}
 	}()
 	go func() {
-		values, err := client.queryDataset(ctx, client.subjectURL, geography, []string{
-			"S1601_C05_001E", "S1601_C05_001M",
-			"S1601_C06_001E", "S1601_C06_001M",
-			"S1810_C02_001E", "S1810_C02_001M",
-			"S1810_C03_001E", "S1810_C03_001M",
-			"S1701_C02_001E", "S1701_C02_001M",
-			"S1701_C03_001E", "S1701_C03_001M",
-		})
+		values, err := client.queryDataset(ctx, client.subjectURL, geography, subjectVariables)
 		subjectChannel <- queryResult{values: values, err: err}
 	}()
 
@@ -215,38 +215,44 @@ func (client *Client) loadCommunityProfile(
 		return Profile{}, fmt.Errorf("Census subject profile: %w", subject.err)
 	}
 
+	profile := client.profileFromValues(geography, detailed.values, subject.values, now)
+	client.store(cacheKey, profile)
+	return profile, nil
+}
+
+func (client *Client) profileFromValues(geography Geography, detailed, subject map[string]string, now time.Time) Profile {
 	profile := Profile{
 		Geography: geography,
 		Population: metric(
-			detailed.values,
+			detailed,
 			"B01003_001E",
 			"B01003_001M",
 			"",
 			"",
 		),
 		NoVehicleHouseholds: metric(
-			detailed.values,
+			detailed,
 			"B08201_002E",
 			"B08201_002M",
 			"",
 			"",
 		),
 		LimitedEnglish: metric(
-			subject.values,
+			subject,
 			"S1601_C05_001E",
 			"S1601_C05_001M",
 			"S1601_C06_001E",
 			"S1601_C06_001M",
 		),
 		Disability: metric(
-			subject.values,
+			subject,
 			"S1810_C02_001E",
 			"S1810_C02_001M",
 			"S1810_C03_001E",
 			"S1810_C03_001M",
 		),
 		BelowPoverty: metric(
-			subject.values,
+			subject,
 			"S1701_C02_001E",
 			"S1701_C02_001M",
 			"S1701_C03_001E",
@@ -264,26 +270,59 @@ func (client *Client) loadCommunityProfile(
 		Warnings: []string{
 			"ACS values are estimates for an aggregate Census tract, not facts about an individual household.",
 			"Use margins of error when comparing small areas or prioritizing resources.",
+			"50+ unit structures are a housing-density proxy, not building height, elevator dependence, or evacuation assistance.",
+			"Incomplete plumbing is a housing-quality proxy, not a medical need or current water outage.",
+			"No internet subscription includes access without a subscription and no access; it does not measure phone service or warning receipt.",
+			"Summed count margins of error use the root-sum-of-squares approximation; derived percentages have no calculated margins of error.",
 		},
 	}
 	for _, group := range languageGroups {
 		profile.Languages = append(profile.Languages, Language{
 			Label:    group.label,
 			Variable: group.variable,
-			Speakers: metric(detailed.values, group.variable+"E", group.variable+"M", "", ""),
+			Speakers: metric(detailed, group.variable+"E", group.variable+"M", "", ""),
 		})
 	}
-	if total := parseNumber(detailed.values["B08201_001E"]); total != nil &&
+	profile.KupunaLivingAlone = sumMetric(detailed, "B11010_005", "B11010_012")
+	setPercent(&profile.KupunaLivingAlone, detailed, "B11001_001E")
+	profile.Housing50PlusUnits = metric(detailed, "B25024_009E", "B25024_009M", "", "")
+	setPercent(&profile.Housing50PlusUnits, detailed, "B25024_001E")
+	profile.IncompletePlumbing = metric(detailed, "B25047_003E", "B25047_003M", "", "")
+	setPercent(&profile.IncompletePlumbing, detailed, "B25047_001E")
+	profile.NoInternetSubscription = sumMetric(detailed, "B28002_012", "B28002_013")
+	setPercent(&profile.NoInternetSubscription, detailed, "B28002_001E")
+	if geography.Resolution != nil {
+		profile.Warnings = append(profile.Warnings, geography.Resolution.Warnings...)
+	}
+	if total := parseNumber(detailed["B08201_001E"]); total != nil &&
 		profile.NoVehicleHouseholds.Estimate != nil &&
 		*total > 0 {
 		percent := *profile.NoVehicleHouseholds.Estimate / *total * 100
 		profile.NoVehicleHouseholds.Percent = &percent
 	}
-	client.store(cacheKey, profile)
-	return profile, nil
+	return profile
 }
 
 func (client *Client) resolveGeography(
+	ctx context.Context,
+	latitude float64,
+	longitude float64,
+) (Geography, error) {
+	geography, err := client.resolveGeocoder(ctx, latitude, longitude)
+	if err == nil {
+		geography.Resolution = &GeographyResolution{
+			Method: "census-geocoder", Vintage: "Current_Current",
+			SourceURL: client.geocoderURL,
+		}
+		return geography, nil
+	}
+	if ctx.Err() != nil {
+		return Geography{}, err
+	}
+	return client.resolveTIGERweb(ctx, latitude, longitude, err)
+}
+
+func (client *Client) resolveGeocoder(
 	ctx context.Context,
 	latitude float64,
 	longitude float64,
@@ -300,8 +339,8 @@ func (client *Client) resolveGeography(
 		return Geography{}, fmt.Errorf("Census geography lookup: %w", err)
 	}
 	tracts := response.Result.Geographies["Census Tracts"]
-	if len(tracts) == 0 {
-		return Geography{}, errors.New("Census geography lookup returned no tract")
+	if len(tracts) != 1 {
+		return Geography{}, fmt.Errorf("Census geography lookup returned %d tracts; exactly one is required", len(tracts))
 	}
 	tract := tracts[0]
 	return Geography{
@@ -400,7 +439,7 @@ func parseNumber(value string) *float64 {
 		return nil
 	}
 	parsed, err := strconv.ParseFloat(trimmed, 64)
-	if err != nil || parsed <= -666666 {
+	if err != nil || parsed < 0 || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
 		return nil
 	}
 	return &parsed
@@ -453,11 +492,28 @@ func cloneProfile(profile Profile) Profile {
 	for index := range profile.Languages {
 		profile.Languages[index].Speakers = cloneMetric(profile.Languages[index].Speakers)
 	}
+	if profile.Geography.Resolution != nil {
+		resolution := *profile.Geography.Resolution
+		resolution.Warnings = append([]string(nil), resolution.Warnings...)
+		if resolution.Source != nil {
+			source := *resolution.Source
+			if source.RefreshAttemptedAt != nil {
+				at := *source.RefreshAttemptedAt
+				source.RefreshAttemptedAt = &at
+			}
+			resolution.Source = &source
+		}
+		profile.Geography.Resolution = &resolution
+	}
 	profile.Population = cloneMetric(profile.Population)
 	profile.NoVehicleHouseholds = cloneMetric(profile.NoVehicleHouseholds)
 	profile.LimitedEnglish = cloneMetric(profile.LimitedEnglish)
 	profile.Disability = cloneMetric(profile.Disability)
 	profile.BelowPoverty = cloneMetric(profile.BelowPoverty)
+	profile.KupunaLivingAlone = cloneMetric(profile.KupunaLivingAlone)
+	profile.Housing50PlusUnits = cloneMetric(profile.Housing50PlusUnits)
+	profile.IncompletePlumbing = cloneMetric(profile.IncompletePlumbing)
+	profile.NoInternetSubscription = cloneMetric(profile.NoInternetSubscription)
 	profile.Warnings = append([]string(nil), profile.Warnings...)
 	return profile
 }

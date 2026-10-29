@@ -209,7 +209,10 @@ export function hasRepresentativeWorkflow(areaId: string) {
 }
 
 export function usesCatalogWorkflow(area: PlanningArea) {
-  return area.island !== 'Oʻahu' && hasRepresentativeWorkflow(area.id)
+  return (
+    Boolean(area.screeningOnly) ||
+    (area.island !== 'Oʻahu' && hasRepresentativeWorkflow(area.id))
+  )
 }
 
 export function findPlanningJurisdiction(

@@ -36,6 +36,7 @@ in a portal.
 - `GET /api/v1/planning/live-status?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/acs?lat={latitude}&lon={longitude}`
+- `GET /api/v1/community/afn-layer?county={three-digit-county-FIPS}`
 - `GET /api/v1/community/svi?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/empower?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/fema-risk?lat={latitude}&lon={longitude}`
@@ -136,9 +137,252 @@ resource feed. Its four representative workflows cover Urban Honolulu,
 Central/West Maui, Hilo/Lower Puna, and East Kauaʻi. Resource capacities,
 capabilities, and route states are deterministic product fixtures that require
 local validation and never imply that a facility is open or a road is
-passable. Molokaʻi, Lānaʻi, Niʻihau, and Kalawao are returned as unsupported
-workflow scope. Reader failures return `502` with `Cache-Control: no-store`; no
+passable. Its separate `screening_areas` array provides geography-only entries
+for `molokai-kaunakakai`, `lanai-city`, and `molokai-kalaupapa`, with
+`screening_only: true`, county codes, coordinates, jurisdiction IDs, and scope
+notes. These do not fabricate practice briefings, inventory, capacities, routes,
+or AFN estimates. Kalawao uses the separate screening jurisdiction ID `kalawao`;
+this does not add a partner-matching jurisdiction or substitute Maui partners.
+Niʻihau remains unsupported. Reader failures return `502` with `Cache-Control: no-store`; no
 Oʻahu-shaped success response is synthesized.
+
+### Tract AFN screening layer
+
+`GET /api/v1/community/afn-layer` returns a GeoJSON `FeatureCollection` with
+provenance and interpretation foreign members. The optional `county` query
+accepts exactly one three-digit county FIPS: `001` Hawaiʻi, `003` Honolulu,
+`005` Kalawao, `007` Kauaʻi, or `009` Maui. Omit it for all five counties.
+Invalid or repeated county values return `400`; an unconfigured layer reader
+returns `503`; no valid requested tract geometry returns `502`. Geometry may
+still be returned when Census credentials or ACS/SVI data are unavailable:
+the result is explicitly `partial`, values are unknown, and `source_errors`
+names each affected source and county. No fixture is served as live evidence.
+
+The following is an illustrative **shape only**, not a retrieved response.
+`geometry: null` marks where a real GeoJSON `Polygon` or `MultiPolygon` appears
+in successful responses; the adapter rejects missing or non-polygon geometry.
+Dates and identifiers below are placeholders. Every listed indicator is always
+present as a metric object; unavailable estimates/MOEs are `null`, never
+zero-filled. Optional percentage fields are omitted when unavailable.
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "<11-digit-tract-FIPS>",
+      "geometry": null,
+      "properties": {
+        "tract_fips": "<11-digit-tract-FIPS>",
+        "county_code": "005",
+        "name": "<ACS geography name or TIGERweb tract name>",
+        "indicators": {
+          "population": { "estimate": null, "margin_of_error": null },
+          "no_vehicle_households": {
+            "estimate": null,
+            "margin_of_error": null
+          },
+          "limited_english_population": {
+            "estimate": null,
+            "margin_of_error": null
+          },
+          "population_with_disability": {
+            "estimate": null,
+            "margin_of_error": null
+          },
+          "population_below_poverty": {
+            "estimate": null,
+            "margin_of_error": null
+          },
+          "kupuna_living_alone": { "estimate": null, "margin_of_error": null },
+          "housing_50_plus_units": {
+            "estimate": null,
+            "margin_of_error": null
+          },
+          "incomplete_plumbing": { "estimate": null, "margin_of_error": null },
+          "no_internet_subscription": {
+            "estimate": null,
+            "margin_of_error": null
+          }
+        },
+        "svi": null
+      }
+    }
+  ],
+  "status": "partial",
+  "sources": [
+    {
+      "id": "census-tigerweb-tracts",
+      "authority": "U.S. Census Bureau",
+      "url": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2024/MapServer/8/query",
+      "retrieved_at": "<RFC3339 timestamp>",
+      "fresh_until": "<RFC3339 timestamp>",
+      "status": "fresh",
+      "vintage": "TIGERweb ACS2024",
+      "county_code": "005"
+    }
+  ],
+  "source_errors": [
+    {
+      "source": "acs-5-year",
+      "county_code": "005",
+      "error": "<explicit upstream or credential error>"
+    }
+  ],
+  "cmist_domains": [
+    {
+      "id": "communication",
+      "label": "Communication",
+      "indicators": ["limited_english_population", "no_internet_subscription"],
+      "unknowns": [
+        "Preferred language and accessible warning format",
+        "Phone service, warning receipt, and live communications outages"
+      ]
+    },
+    {
+      "id": "maintaining_health",
+      "label": "Maintaining health",
+      "indicators": [
+        "population_with_disability",
+        "incomplete_plumbing",
+        "population_below_poverty"
+      ],
+      "unknowns": [
+        "Medical equipment, oxygen, dialysis, medication refrigeration, and current water or power outage"
+      ]
+    },
+    {
+      "id": "independence",
+      "label": "Independence",
+      "indicators": ["population_with_disability", "housing_50_plus_units"],
+      "unknowns": [
+        "Individual assistance needs, building height, elevator dependence, and accessible entrances"
+      ]
+    },
+    {
+      "id": "support_safety_self_determination",
+      "label": "Support, safety and self-determination",
+      "indicators": ["kupuna_living_alone"],
+      "unknowns": [
+        "Caregiver availability, social support, consent, and ability to evacuate"
+      ]
+    },
+    {
+      "id": "transportation",
+      "label": "Transportation",
+      "indicators": ["no_vehicle_households"],
+      "unknowns": [
+        "Accessible vehicle demand, driver availability, transit service, and evacuation intent"
+      ]
+    }
+  ],
+  "indicator_definitions": {
+    "housing_50_plus_units": {
+      "label": "Housing units in structures with 50+ units",
+      "universe": "Housing units (percentage denominator B25024_001)",
+      "variables": ["B25024_009"],
+      "proxy": true,
+      "limitations": "Housing-density proxy, not building height, elevator dependence, or a count of buildings."
+    }
+  },
+  "warnings": [
+    "<aggregate screening, vintage mismatch, MOE and unknown-needs warnings>"
+  ]
+}
+```
+
+In actual responses `indicator_definitions` contains **all nine** indicator
+keys, each with the same `{label, universe, variables, proxy, limitations}`
+shape shown above. `variables` lists ACS variable stems (the adapter requests
+the corresponding `E` estimates and `M` margins of error). A metric may also
+contain `percent: number` and `percent_margin_of_error: number`; absent fields
+mean unavailable, not zero. Percentages use 0–100; SVI percentiles use 0–1.
+There are no numeric CMIST domain scores, weights, ranks, or inferred demand:
+`cmist_domains[].indicators` references indicator keys, and `unknowns`
+describes gaps the mapped evidence cannot answer.
+
+`svi`, when matched, has the existing point-SVI shape:
+`tract_fips`, `location`, nullable integer `population`, `age_65_or_older`,
+`with_disability`, `limited_english`, `no_vehicle_households`; nullable numeric
+`overall_percentile`, `socioeconomic_percentile`,
+`household_characteristics_percentile`, `racial_ethnic_minority_percentile`,
+`housing_transportation_percentile`; and `source` plus `warnings`. It is
+`null` when unavailable or unmatched, not a synthesized index.
+
+Collection `status` is `complete` only when no source errors were recorded,
+otherwise `partial`. It describes retrieval/join completeness, not operational
+safety or whether every estimate was published. Published suppressed estimates
+remain null even with a complete retrieval. `source_errors` is always an array.
+`sources` contains one record per available source/county, with IDs
+`census-tigerweb-tracts`, `acs-5-year`, or `cdc-svi-2022`; each preserves authority,
+URL, timestamps, `fresh`/`stale` status, vintage, and county code. ArcGIS source
+records can additionally contain `upstream_last_modified` and
+`refresh_attempted_at`. Stale last-valid ArcGIS snapshots remain explicitly
+stale and make the collection partial; ACS does not silently fall back.
+
+#### Sources, measures, and proxy limitations
+
+The adapter requests real WGS84 tract polygons from
+[Census TIGERweb ACS2024 layer 8](https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2024/MapServer/8),
+filtered by state `15` and county. It retrieves county-wide
+[2024 ACS five-year detailed](https://api.census.gov/data/2024/acs/acs5.html)
+and [subject](https://api.census.gov/data/2024/acs/acs5/subject.html) rows using
+the existing `CENSUS_API_KEY` / `CENSUS_API_KEY_FILE` setup. Detailed and subject
+data use two batch requests per county, rather than a geocoder and two requests
+per tract. ACS and ArcGIS caches are bounded; planning snapshots refresh after
+24 hours. Geometry and SVI use the existing ArcGIS coalescing/cache path.
+An upstream ArcGIS transfer-limit flag fails explicitly rather than silently
+presenting a truncated collection as complete.
+
+| Indicator key                | ACS measure                                    | Percentage universe / limitation                                                                                                                              |
+| ---------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `population`                 | `B01003_001`                                   | People; not current occupancy.                                                                                                                                |
+| `no_vehicle_households`      | `B08201_002`                                   | All households (`B08201_001`); vehicle availability is not accessible transport demand.                                                                       |
+| `limited_english_population` | `S1601_C05_001` count, `S1601_C06_001` percent | Population age 5+ speaking English less than very well; not preferred language or warning format.                                                             |
+| `population_with_disability` | `S1810_C02_001` count, `S1810_C03_001` percent | Civilian noninstitutionalized population; not equipment dependence or individual support needs.                                                               |
+| `population_below_poverty`   | `S1701_C02_001` count, `S1701_C03_001` percent | People with determined poverty status; not current resources or resilience.                                                                                   |
+| `kupuna_living_alone`        | `B11010_005` + `B11010_012`                    | Male plus female householders age 65+ living alone; percent of all households (`B11001_001`), not all older residents. Living alone is not absent caregivers. |
+| `housing_50_plus_units`      | `B25024_009`                                   | Housing units (`B25024_001`); units in structures with 50+ units, not number of buildings, building height, elevators, or evacuation assistance.              |
+| `incomplete_plumbing`        | `B25047_003`                                   | Housing units (`B25047_001`); housing-quality proxy, not a current water outage or medical need.                                                              |
+| `no_internet_subscription`   | `B28002_012` + `B28002_013`                    | Households (`B28002_001`); access without a subscription plus no access, not phone coverage, warning receipt, or current outages.                             |
+
+The same four new metric keys are also present on point ACS profiles.
+Point profiles normally resolve the tract using the Census geocoder. If that
+service fails or returns no unique tract, the adapter requests an exact WGS84
+point intersection from the official TIGERweb ACS2024 tract layer, reusing the
+ArcGIS cache/client. It accepts exactly one result with consistent Hawaii
+state/county/tract/FIPS identifiers. No result, multiple results (including a
+boundary ambiguity), or malformed identifiers fail explicitly; there is no
+nearest-tract, pinned-ID, other-county, or fixture substitution.
+
+`acs.geography.resolution` records `method` (`census-geocoder` or
+`tigerweb-acs2024-point-intersection`), `vintage`, and `source_url`. The
+alternative also retains the original `geocoder_error`, official ArcGIS
+`source` provenance/freshness, and `warnings`. These warnings are also appended
+to `acs.warnings` so an otherwise usable ACS profile cannot silently hide the
+geocoder outage. An explicitly stale last-valid TIGERweb response remains
+labeled stale. The population/indicator source still identifies ACS separately;
+boundary resolution is not an ACS measurement. If both geography providers
+fail, the error preserves both failures and no profile is fabricated.
+
+Negative Census/CDC sentinel values and non-finite numeric values become
+unknown. A sum remains unknown if a required component estimate is missing.
+ACS MOEs are 90% confidence intervals; summed count MOEs use the
+root-sum-of-squares approximation and remain unknown if any component MOE is
+missing. Derived percentages have no calculated percent MOE. Published subject
+percent MOEs are retained.
+
+[CDC/ATSDR SVI 2022 tract layer](https://onemap.cdc.gov/onemapservices/rest/services/SVI/CDC_ATSDR_Social_Vulnerability_Index_2022_USA/FeatureServer/2)
+is queried by `STCNTY` and joined by exact 11-digit FIPS, never nearest point,
+name, or another county's values. SVI uses 2018–2022 ACS, while the other
+profiles/boundaries use the 2024 vintage; warnings disclose this mismatch.
+Boundary changes, water tracts, suppressed estimates, and missing matches
+remain unknown. Kalawao public tract geography is included, but neither a
+resident registry nor person-level AFN/medical inferences are produced.
+Medical equipment, caregivers, accessible vehicle demand, and current service
+disruptions remain unknown. Telemetry uses bounded source/outcome labels,
+never tract IDs, coordinates, query strings, API keys, or indicator values.
 
 `POST /api/v1/planning/resource-demand` accepts a strict, versioned aggregate
 request and returns deterministic low/planning/high scenario ranges. The

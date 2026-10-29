@@ -26,6 +26,12 @@ colors:
   midnight-text: '#f3f8f8'
   midnight-muted: '#b8caca'
   midnight-aqua: '#73c9cf'
+  afn-zero: '#e8f4fa'
+  afn-ten: '#9ccfe6'
+  afn-twenty-five: '#4388ba'
+  afn-fifty: '#173f72'
+  afn-unknown: '#858c92'
+  afn-hazard-outline: '#ad5200'
 typography:
   question:
     fontFamily: 'Segoe UI, Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif'

@@ -689,159 +689,178 @@ function Home() {
             <strong>{mainNeed}</strong>
           </div>
 
-          <NeighborhoodBriefingPanel areaId={area.id} hazard={hazard} compact />
+          {!area.screeningOnly && (
+            <NeighborhoodBriefingPanel
+              areaId={area.id}
+              hazard={hazard}
+              compact
+            />
+          )}
 
-          <div
-            className="challenge-flow"
-            aria-label="Emergency response planning summary"
-          >
-            <section className="challenge-step is-people">
-              <div className="challenge-step-heading">
-                <span>1</span>
-                <div>
-                  <small>Map</small>
-                  <h3>Who may need help</h3>
-                </div>
-              </div>
-              <div className="people-total">
-                <Users size={19} />
-                <span>
-                  <strong>{scenario.exposedPopulation.toLocaleString()}</strong>
-                  people may be affected
-                </span>
-              </div>
-              <div className="need-list">
-                {challengeSnapshot.topNeeds.map((need) => (
-                  <span key={need}>{need}</span>
-                ))}
-              </div>
-              <CommunityAfnSummary coordinates={area.coordinates} />
-              {activeEvent && (
-                <div className="public-guidance">
-                  <details>
-                    <summary>Public guidance</summary>
-                    <ul>
-                      {activeEvent.publicGuidance.map((guidance) => (
-                        <li key={guidance}>{guidance}</li>
-                      ))}
-                    </ul>
-                  </details>
-                </div>
-              )}
-            </section>
-
-            <section className="challenge-step is-resources">
-              <div className="challenge-step-heading">
-                <span>2</span>
-                <div>
-                  <small>Model</small>
-                  <h3>Needs and resource gaps</h3>
-                </div>
-              </div>
-              <div className="resource-grid">
-                <div>
-                  <HousePlus size={17} />
-                  <strong>{challengeSnapshot.sheltersNearby}</strong>
-                  <span>shelters nearby</span>
-                </div>
-                <div>
-                  <BatteryCharging size={17} />
-                  <strong>{challengeSnapshot.backupPowerSites}</strong>
-                  <span>with backup power</span>
-                </div>
-                <div>
-                  <BusFront size={17} />
-                  <strong>{challengeSnapshot.transportTeams}</strong>
-                  <span>transport teams</span>
-                </div>
-                <div>
-                  <RouteIcon size={17} />
-                  <strong>{challengeSnapshot.routesToVerify}</strong>
-                  <span>routes to verify</span>
-                </div>
-              </div>
-              {nextResourceCheck ? (
-                <div className="resource-check">
-                  <div>
-                    <small>Next local resource check</small>
-                    <strong>{nextResourceCheck.name}</strong>
-                    <span>
-                      Capacity {nextResourceCheck.capacity} ·{' '}
-                      {nextResourceCheck.capabilities.slice(0, 2).join(' · ')}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => confirmResource(nextResourceCheck.id)}
-                  >
-                    Confirm
-                  </button>
-                </div>
-              ) : resourceInventory.length > 0 ? (
-                <div className="resource-check is-complete">
-                  <CheckCircle2 size={17} />
-                  <div>
-                    <small>Resource checks complete</small>
-                    <strong>All listed local resources are confirmed</strong>
-                  </div>
-                </div>
-              ) : (
-                <div className="resource-check is-unavailable">
-                  <HousePlus size={17} />
-                  <div>
-                    <small>Practice resources unavailable</small>
-                    <strong>Retry in the Response Plan</strong>
-                  </div>
-                </div>
-              )}
-              {nextRouteCheck ? (
-                <div className="route-check">
-                  <RouteIcon size={15} />
-                  <span>
-                    <strong>{nextRouteCheck.name}</strong>
-                    <small>
-                      Needs confirmation
-                      {confirmedRoute
-                        ? ` · practice alternate: ${confirmedRoute.name}; verify current conditions`
-                        : ' · no alternate route confirmed'}
-                    </small>
-                  </span>
-                </div>
-              ) : (
-                <div className="route-check is-unavailable">
-                  <RouteIcon size={15} />
-                  <span>
-                    <strong>Practice routes unavailable</strong>
-                    <small>No prior-island route was substituted</small>
-                  </span>
-                </div>
-              )}
-              <p className="resource-gap">
-                Gap to address: {challengeSnapshot.topNeeds[0].toLowerCase()}.{' '}
-                {readinessMessage}
+          {area.screeningOnly ? (
+            <section aria-label="Community screening only">
+              <p>{area.summary}</p>
+              <CommunityAfnSummary coordinates={area.coordinates} detailed />
+              <p>
+                Open the response workspace to model public aggregate needs and
+                review documented partner roles. Local exposure and capacity are
+                unknown, not zero.
               </p>
             </section>
-
-            <section className="challenge-step is-action">
-              <div className="challenge-step-heading">
-                <span>3</span>
-                <div>
-                  <small>Match</small>
-                  <h3>Coordinated response</h3>
+          ) : (
+            <div
+              className="challenge-flow"
+              aria-label="Emergency response planning summary"
+            >
+              <section className="challenge-step is-people">
+                <div className="challenge-step-heading">
+                  <span>1</span>
+                  <div>
+                    <small>Map</small>
+                    <h3>Who may need help</h3>
+                  </div>
                 </div>
-              </div>
-              <div className="first-action">
-                <CheckCircle2 size={18} />
-                <div>
-                  <strong>{localSteps[0].title}</strong>
+                <div className="people-total">
+                  <Users size={19} />
                   <span>
-                    {localSteps[0].owner} · {localSteps[0].timing}
+                    <strong>
+                      {scenario.exposedPopulation.toLocaleString()}
+                    </strong>
+                    people may be affected
                   </span>
                 </div>
-              </div>
-            </section>
-          </div>
+                <div className="need-list">
+                  {challengeSnapshot.topNeeds.map((need) => (
+                    <span key={need}>{need}</span>
+                  ))}
+                </div>
+                <CommunityAfnSummary coordinates={area.coordinates} />
+                {activeEvent && (
+                  <div className="public-guidance">
+                    <details>
+                      <summary>Public guidance</summary>
+                      <ul>
+                        {activeEvent.publicGuidance.map((guidance) => (
+                          <li key={guidance}>{guidance}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  </div>
+                )}
+              </section>
 
+              <section className="challenge-step is-resources">
+                <div className="challenge-step-heading">
+                  <span>2</span>
+                  <div>
+                    <small>Model</small>
+                    <h3>Needs and resource gaps</h3>
+                  </div>
+                </div>
+                <div className="resource-grid">
+                  <div>
+                    <HousePlus size={17} />
+                    <strong>{challengeSnapshot.sheltersNearby}</strong>
+                    <span>shelters nearby</span>
+                  </div>
+                  <div>
+                    <BatteryCharging size={17} />
+                    <strong>{challengeSnapshot.backupPowerSites}</strong>
+                    <span>with backup power</span>
+                  </div>
+                  <div>
+                    <BusFront size={17} />
+                    <strong>{challengeSnapshot.transportTeams}</strong>
+                    <span>transport teams</span>
+                  </div>
+                  <div>
+                    <RouteIcon size={17} />
+                    <strong>{challengeSnapshot.routesToVerify}</strong>
+                    <span>routes to verify</span>
+                  </div>
+                </div>
+                {nextResourceCheck ? (
+                  <div className="resource-check">
+                    <div>
+                      <small>Next local resource check</small>
+                      <strong>{nextResourceCheck.name}</strong>
+                      <span>
+                        Capacity {nextResourceCheck.capacity} ·{' '}
+                        {nextResourceCheck.capabilities.slice(0, 2).join(' · ')}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => confirmResource(nextResourceCheck.id)}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                ) : resourceInventory.length > 0 ? (
+                  <div className="resource-check is-complete">
+                    <CheckCircle2 size={17} />
+                    <div>
+                      <small>Resource checks complete</small>
+                      <strong>All listed local resources are confirmed</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="resource-check is-unavailable">
+                    <HousePlus size={17} />
+                    <div>
+                      <small>Practice resources unavailable</small>
+                      <strong>Retry in the Response Plan</strong>
+                    </div>
+                  </div>
+                )}
+                {nextRouteCheck ? (
+                  <div className="route-check">
+                    <RouteIcon size={15} />
+                    <span>
+                      <strong>{nextRouteCheck.name}</strong>
+                      <small>
+                        Needs confirmation
+                        {confirmedRoute
+                          ? ` · practice alternate: ${confirmedRoute.name}; verify current conditions`
+                          : ' · no alternate route confirmed'}
+                      </small>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="route-check is-unavailable">
+                    <RouteIcon size={15} />
+                    <span>
+                      <strong>Practice routes unavailable</strong>
+                      <small>No prior-island route was substituted</small>
+                    </span>
+                  </div>
+                )}
+                <p className="resource-gap">
+                  Gap to address: {challengeSnapshot.topNeeds[0].toLowerCase()}.{' '}
+                  {readinessMessage}
+                </p>
+              </section>
+
+              <section className="challenge-step is-action">
+                <div className="challenge-step-heading">
+                  <span>3</span>
+                  <div>
+                    <small>Match</small>
+                    <h3>Coordinated response</h3>
+                  </div>
+                </div>
+                <div className="first-action">
+                  <CheckCircle2 size={18} />
+                  <div>
+                    <strong>{localSteps[0].title}</strong>
+                    <span>
+                      {localSteps[0].owner} · {localSteps[0].timing}
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
           <button
             type="button"
             className="relief-primary"

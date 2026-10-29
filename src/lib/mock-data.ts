@@ -17,6 +17,7 @@ export type PlanningArea = {
   summary: string
   cmist: Array<{ category: string; value: number }>
   showOnStatewideMap?: boolean
+  screeningOnly?: boolean
   responseFocus?: Partial<Record<HazardId, string>>
   communities?: string[]
 }
@@ -1764,6 +1765,35 @@ export const layers: Array<{
   },
 ]
 
+const screeningAreas: PlanningArea[] = (
+  [
+    ['molokai-kaunakakai', 'Kaunakakai', 'Molokaʻi', -157.0206, 21.0903],
+    ['lanai-city', 'Lānaʻi City', 'Lānaʻi', -156.917, 20.8283],
+    [
+      'molokai-kalaupapa',
+      'Kalaupapa · Kalawao County',
+      'Molokaʻi',
+      -156.984,
+      21.189,
+    ],
+  ] as const
+).map(([id, name, island, longitude, latitude]) => ({
+  id,
+  name,
+  island,
+  coordinates: [longitude, latitude] as [number, number],
+  screeningOnly: true,
+  // Legacy practice fields are not evidence and must never render for screening-only areas.
+  population: 0,
+  exposedPopulation: 0,
+  households: 0,
+  readiness: 0,
+  change: 0,
+  cmist: [],
+  summary:
+    'Public aggregate community screening. Exposure, local resource capacity and routes require County verification; no other island’s practice data is substituted.',
+}))
+
 export const areas: PlanningArea[] = [
   {
     id: 'oahu-kaimuki',
@@ -2185,6 +2215,7 @@ export const areas: PlanningArea[] = [
       { category: 'Transportation', value: 82 },
     ],
   },
+  ...screeningAreas,
 ]
 
 export const postalLocations: PostalLocation[] = [

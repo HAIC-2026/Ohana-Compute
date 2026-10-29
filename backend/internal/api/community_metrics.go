@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/census"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 )
 
@@ -157,10 +158,56 @@ func recordMaskedEmPOWER(metrics *Metrics, profile *community.EmPOWER) {
 
 func boundedAFNSource(source string) string {
 	switch source {
-	case "acs-5-year", "cdc-svi-2022", "hhs-empower", "fema-nri":
+	case "acs-5-year", "cdc-svi-2022", "hhs-empower", "fema-nri", "census-tigerweb-tracts":
 		return source
 	default:
 		return "other"
+	}
+}
+
+func afnLayerHandler(logger *slog.Logger, metrics *Metrics, reader AFNLayerReader) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		county := query.Get("county")
+		if (county != "" && !census.ValidHawaiiCounty(county)) || len(query["county"]) > 1 {
+			writeAPIError(writer, http.StatusBadRequest, "county must be one of 001, 003, 005, 007, 009", "community-afn-layer")
+			return
+		}
+		if reader == nil {
+			writeAPIError(writer, http.StatusServiceUnavailable, "tract AFN sources are not configured", "community-afn-layer")
+			return
+		}
+		ctx := community.WithSourceObserver(request.Context(), func(observation community.SourceObservation) {
+			source, outcome := boundedAFNSource(observation.Source), boundedAFNOutcome(observation.Outcome)
+			metrics.afnSourceRequests.WithLabelValues(source, outcome).Inc()
+			metrics.afnSourceDuration.WithLabelValues(source, outcome).Observe(observation.Duration.Seconds())
+		})
+		layer, err := reader.AFNLayer(ctx, county)
+		if err != nil {
+			logger.Error("load tract AFN layer", "error", err)
+			writeAPIError(writer, http.StatusBadGateway, "tract AFN geometry source unavailable", "community-afn-layer")
+			return
+		}
+		type sourceState struct {
+			status      string
+			retrievedAt time.Time
+		}
+		states := map[string]sourceState{}
+		for _, source := range layer.Sources {
+			id := boundedAFNSource(source.ID)
+			state, exists := states[id]
+			if !exists || source.RetrievedAt.Before(state.retrievedAt) {
+				state.retrievedAt = source.RetrievedAt
+			}
+			if source.Status == "stale" || !exists {
+				state.status = source.Status
+			}
+			states[id] = state
+		}
+		for source, state := range states {
+			recordAFNSourceStatus(metrics, source, state.status, state.retrievedAt)
+		}
+		writeJSON(writer, http.StatusOK, layer)
 	}
 }
 

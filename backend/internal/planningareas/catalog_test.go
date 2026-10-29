@@ -128,6 +128,7 @@ func TestCatalogMarksPracticeProvenanceStaleAfterReviewWindow(t *testing.T) {
 			return time.Date(2027, time.May, 1, 0, 0, 0, 0, time.UTC)
 		},
 	}
+
 	snapshot, err := catalog.Snapshot(context.Background())
 	if err != nil {
 		t.Fatalf("Snapshot returned error: %v", err)
@@ -137,5 +138,37 @@ func TestCatalogMarksPracticeProvenanceStaleAfterReviewWindow(t *testing.T) {
 			"freshness = %q, want stale",
 			snapshot.Provenance.Freshness,
 		)
+	}
+}
+
+func TestScreeningGeographiesHaveNoInventedWorkflowInventory(t *testing.T) {
+	t.Parallel()
+	snapshot, err := NewCatalog().Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.ScreeningAreas) != 3 {
+		t.Fatalf("missing screening communities: %#v", snapshot.ScreeningAreas)
+	}
+	expected := map[string]struct {
+		county, jurisdiction string
+		coordinates          [2]float64
+	}{
+		"molokai-kaunakakai": {"009", "maui", [2]float64{-157.0206, 21.0903}},
+		"lanai-city":         {"009", "maui", [2]float64{-156.917, 20.8283}},
+		"molokai-kalaupapa":  {"005", "kalawao", [2]float64{-156.984, 21.189}},
+	}
+	for _, area := range snapshot.ScreeningAreas {
+		want, ok := expected[area.ID]
+		if !ok || !area.ScreeningOnly || area.CountyCode != want.county || area.JurisdictionID != want.jurisdiction || area.Coordinates != want.coordinates {
+			t.Fatalf("wrong screening geography: %#v", area)
+		}
+		for _, jurisdiction := range snapshot.Jurisdictions {
+			for _, workflow := range jurisdiction.Areas {
+				if workflow.ID == area.ID {
+					t.Fatalf("screening-only area fabricated a practice workflow: %s", area.ID)
+				}
+			}
+		}
 	}
 }

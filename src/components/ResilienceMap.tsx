@@ -55,6 +55,16 @@ import type {
   OfficialWildfireRisk,
 } from '../lib/official-emergency-data'
 import { usePlanningStore } from '../store/planning-store'
+import {
+  afnCountyForArea,
+  afnCounties,
+  afnDisplayGeometry,
+  afnIndicators,
+  useAfnMap,
+  useCountyAfnLayer,
+} from '../lib/afn-map'
+import { useAfnHazard } from '../lib/afn-hazard'
+import { formatAggregateMetric } from '../lib/community-profile'
 
 const emptyHazardGeometry = {
   type: 'FeatureCollection' as const,
@@ -201,6 +211,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   const [streetMapUnavailable, setStreetMapUnavailable] = useState(false)
   const [geographyUnavailable, setGeographyUnavailable] = useState(false)
   const [geographyVisible, setGeographyVisible] = useState(false)
+  const [afnVisible, setAfnVisible] = useState(false)
   const [colorVersion, setColorVersion] = useState(0)
   const [officialEvacuationZone, setOfficialEvacuationZone] =
     useState<OfficialEvacuationZone | null>(null)
@@ -215,6 +226,16 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
   )
   const selectedArea =
     areas.find((area) => area.id === selectedAreaId) ?? areas[0]
+  const afn = useAfnMap()
+  const afnCounty = afnCountyForArea(selectedArea.id, selectedArea.island)
+  const afnEnabled = afn.enabled && !statewideOverview
+  const afnLayer = useCountyAfnLayer(afnCounty, afnEnabled)
+  const afnHazard = useAfnHazard(selectedArea.coordinates, hazard, afnEnabled)
+  const afnGeometry = useMemo(
+    () => afnDisplayGeometry(afnLayer.data, afn.indicator),
+    [afnLayer.data, afn.indicator],
+  )
+  useEffect(() => afn.setCounty(afnCounty), [afnCounty, afn.setCounty])
   const planningAreaCatalog = usePlanningAreaCatalog()
   const catalogArea = findStatewidePlanningArea(
     planningAreaCatalog.snapshot,
@@ -525,6 +546,9 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
       data-map-loaded={mapLoaded}
       data-map-geography-visible={geographyVisible}
       data-map-scope={statewideOverview ? 'statewide' : selectedArea.id}
+      data-map-afn-county={afnEnabled ? afnCounty : ''}
+      data-map-afn-indicator={afnEnabled ? afn.indicator : ''}
+      data-map-afn-visible={afnEnabled && afnVisible}
       data-telemetry-category="map"
     >
       {(streetMapUnavailable || geographyUnavailable) && (
@@ -534,7 +558,104 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
             : 'Street map interrupted · Coastline view'}
         </div>
       )}
-      {!statewideOverview && (
+      {afnEnabled && (
+        <details
+          className="afn-map-legend"
+          aria-label="Aggregate AFN map legend"
+        >
+          <summary>
+            {afn.domain} ·{' '}
+            {afnCounties.find((item) => item.id === afnCounty)?.name} ·{' '}
+            {displayHazard}
+          </summary>
+          <strong>{afnIndicators[afn.indicator].label}</strong>
+          {afnLayer.data?.indicator_definitions?.[afn.indicator] && (
+            <p>
+              Percentage universe:{' '}
+              {afnLayer.data.indicator_definitions[afn.indicator]?.universe}
+            </p>
+          )}
+          <p>{afnIndicators[afn.indicator].note}</p>
+          <p className="afn-map-scale">
+            <span>0%</span>
+            <span>10%</span>
+            <span>25%</span>
+            <span>50%+</span>
+          </p>
+          <p>
+            Blue: share of the indicator’s ACS universe. Gray: unknown. Amber
+            outline: official mapped hazard near community center; not
+            countywide hazard coverage or an AFN/hazard intersection.
+          </p>
+          <p role="status">
+            {afnLayer.error ??
+              (afnLayer.data
+                ? `${afnLayer.data.features.length} public tracts · ${afnLayer.data.status}`
+                : 'Loading public tract geometry and estimates…')}
+          </p>
+          {afnLayer.error && (
+            <button type="button" onClick={afnLayer.retry}>
+              Retry AFN map
+            </button>
+          )}
+          <p>{afnHazard.description}</p>
+          {afnHazard.status === 'ready' &&
+            afnHazard.geometry.features.length === 0 && (
+              <p>
+                No hazard polygon returned near the selected center. This is not
+                an all-clear.
+              </p>
+            )}
+          {afnLayer.data?.sources.map((source) => (
+            <p key={`${source.id}:${source.county_code}`}>
+              {source.authority} · {source.vintage ?? ''} · {source.status}
+              {' · '}
+              {source.retrieved_at
+                ? new Date(source.retrieved_at).toLocaleString()
+                : 'Retrieval time unavailable'}
+            </p>
+          ))}
+          {afnLayer.data?.warnings?.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+          {afnLayer.data?.source_errors?.map((error) => (
+            <p key={error.source}>{error.source}: unavailable</p>
+          ))}
+          {afnLayer.data && (
+            <details>
+              <summary>Inspect tract estimates and uncertainty</summary>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tract</th>
+                    <th>Estimate</th>
+                    <th>± ACS MOE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {afnLayer.data.features.map((feature) => {
+                    const metric = feature.properties.indicators[afn.indicator]
+                    return (
+                      <tr key={feature.properties.tract_fips}>
+                        <th>{feature.properties.name}</th>
+                        <td>{formatAggregateMetric(metric, null)}</td>
+                        <td>
+                          {metric?.margin_of_error?.toLocaleString() ??
+                            'Unknown'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </details>
+          )}
+          <button type="button" onClick={() => afn.setEnabled(false)}>
+            Hide aggregate AFN layer
+          </button>
+        </details>
+      )}
+      {!statewideOverview && !selectedArea.screeningOnly && !afnEnabled && (
         <nav className="map-story-chips" aria-label="Quick map layers">
           <button
             type="button"
@@ -567,7 +688,7 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
           </button>
         </nav>
       )}
-      {!statewideOverview && (
+      {!statewideOverview && !selectedArea.screeningOnly && !afnEnabled && (
         <div
           className="hazard-legend"
           aria-label={
@@ -639,6 +760,12 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         onIdle={() => {
           const map = mapRef.current
           if (!map) return
+          setAfnVisible(
+            Boolean(map.getLayer('county-afn-tract-fill')) &&
+              map.queryRenderedFeatures(undefined, {
+                layers: ['county-afn-tract-fill'],
+              }).length > 0,
+          )
           setGeographyVisible(
             map.queryRenderedFeatures(undefined, {
               layers: ['hawaii-coastline'],
@@ -657,12 +784,64 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         attributionControl={{}}
       >
         <NavigationControl position="bottom-right" showCompass={false} />
+        {afnEnabled && (
+          <>
+            <Source id="county-afn-tracts" type="geojson" data={afnGeometry}>
+              <Layer
+                id="county-afn-tract-fill"
+                type="fill"
+                paint={{
+                  'fill-color': [
+                    'case',
+                    ['==', ['get', 'percent'], null],
+                    '#858c92',
+                    [
+                      'interpolate',
+                      ['linear'],
+                      ['get', 'percent'],
+                      0,
+                      '#e8f4fa',
+                      10,
+                      '#9ccfe6',
+                      25,
+                      '#4388ba',
+                      50,
+                      '#173f72',
+                    ],
+                  ],
+                  'fill-opacity': 0.6,
+                }}
+              />
+              <Layer
+                id="county-afn-tract-line"
+                type="line"
+                paint={{ 'line-color': '#315c78', 'line-width': 0.8 }}
+              />
+            </Source>
+            <Source
+              id="afn-official-hazard"
+              type="geojson"
+              data={afnHazard.geometry}
+            >
+              <Layer
+                id="afn-official-hazard-fill"
+                type="fill"
+                paint={{ 'fill-color': '#ad5200', 'fill-opacity': 0.12 }}
+              />
+              <Layer
+                id="afn-official-hazard-line"
+                type="line"
+                paint={{ 'line-color': '#ad5200', 'line-width': 2.5 }}
+              />
+            </Source>
+          </>
+        )}
 
         <Source
           id="hazard-exposure"
           type="geojson"
           data={
-            !statewideOverview && selectedArea.island === 'Oʻahu'
+            !statewideOverview && !afnEnabled && selectedArea.island === 'Oʻahu'
               ? hazardGeometry[hazard]
               : emptyHazardGeometry
           }
@@ -954,6 +1133,8 @@ const ResilienceMapContent = memo(function ResilienceMapContent({
         ).map(
           ([layerId, color]) =>
             !statewideOverview &&
+            !selectedArea.screeningOnly &&
+            !afnEnabled &&
             activeLayers.includes(layerId) && (
               <Source
                 key={layerId}

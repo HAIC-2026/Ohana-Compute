@@ -40,9 +40,13 @@ households.
   and detailed workspace. Unknown coverage is not low risk, and no statewide
   totals or available-team counts are invented. The guide is deterministic,
   not live AI; typed input is bounded and not saved or sent.
-  Selectable community screening currently covers Oʻahu, Maui, Hawaiʻi and
-  Kauaʻi; gaps for other islands are disclosed rather than filled with
-  another island's evidence.
+  Selectable community screening covers Oʻahu, Maui, Hawaiʻi, Kauaʻi,
+  Molokaʻi (Kaunakakai and Kalaupapa/Kalawao County) and Lānaʻi City.
+  The new rural communities are screening-only: official public aggregates
+  feed the needs model, but no synthetic exposure, readiness, local capacity
+  or route is substituted. Kalawao coordination remains explicitly unverified.
+  Niʻihau has no configured community screening; Kahoʻolawe has no permanent
+  resident community. Missing public estimates remain unknown.
   **Recommend next step** adds explainable decision support: choose a community,
   resolve evidence gaps, bring combined screening signals to County review,
   or compare local evidence. It shows the evidence and versioned rule behind
@@ -83,6 +87,25 @@ households.
   Editable timing leads to five CMIST County checks, a specialist-assessment
   request and an unsent downloadable review packet. No real person/address,
   live closure, team availability, legal order or AI inference is claimed.
+- **County AFN map / CMIST layers**: after choosing a community, expand this
+  control in the conversation's evidence response or response workspace.
+  Toggle the layer and choose a CMIST domain/indicator. The map uses real
+  Census TIGERweb ACS2024 tract polygons in all five political counties,
+  joined to ACS estimates by tract FIPS; CDC SVI remains a separate sourced
+  indicator in the API. Gray means unknown, not low need. The selected
+  official hazard is shown near the community center, not as countywide
+  hazard coverage or an exposure intersection. Hurricane uses flood context
+  only, not wind/surge. Synthetic scenario footprints are hidden while this
+  public aggregate layer is enabled.
+  Inspect the map legend for source freshness, percentage universe, tract
+  estimates and margins of error. Counts cover their source geography, not
+  people inside a hazard polygon.
+- **Challenge-specific aggregate indicators**: detailed community evidence
+  includes kūpuna (65+) living alone, housing units in structures with 50+
+  units (elevator-risk proxy), incomplete plumbing (infrastructure proxy,
+  **not** a count of off-grid/catchment homes), and households without an
+  internet subscription for offline outreach. The indicators overlap and
+  must not be summed. Suppressed estimates and missing sources stay unknown.
 - Island- and neighborhood-first planning for Oʻahu examples
 - Event-dependent resident guidance and official map layers
 - Official operational event-trigger snapshots from NWS, PTWC, and USGS

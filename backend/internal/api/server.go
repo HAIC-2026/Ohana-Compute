@@ -61,6 +61,10 @@ type CommunityReader interface {
 	Profile(context.Context, float64, float64) (community.Profile, error)
 }
 
+type AFNLayerReader interface {
+	AFNLayer(context.Context, string) (community.AFNLayer, error)
+}
+
 type TransportationReader interface {
 	PlannedClosures(context.Context, float64, float64) (transportation.Snapshot, error)
 }
@@ -95,6 +99,7 @@ type Config struct {
 	TsunamiProducts   TsunamiProductReader
 	Official          OfficialReader
 	Community         CommunityReader
+	AFNLayer          AFNLayerReader
 	Transportation    TransportationReader
 	ShelterPlans      ShelterPlanReader
 	PlanningAreas     PlanningAreaReader
@@ -130,6 +135,9 @@ func NewServer(config Config) *Server {
 	}
 	if config.Community == nil {
 		panic("api: Community is required")
+	}
+	if config.AFNLayer == nil {
+		config.AFNLayer, _ = config.Community.(AFNLayerReader)
 	}
 	if config.Transportation == nil {
 		panic("api: Transportation is required")
@@ -294,6 +302,7 @@ func NewServer(config Config) *Server {
 		"acs-5-year",
 		config.Community.ACS,
 	))
+	mux.HandleFunc("GET /api/v1/community/afn-layer", afnLayerHandler(logger, metrics, config.AFNLayer))
 	mux.HandleFunc("GET /api/v1/community/svi", coordinateHandler(
 		logger,
 		"cdc-svi-2022",

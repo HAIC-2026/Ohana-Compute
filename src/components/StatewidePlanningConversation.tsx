@@ -18,6 +18,8 @@ import {
   useGeographicProfiles,
 } from '../lib/geographic-focus'
 import { usePlanningStore } from '../store/planning-store'
+import { CommunityAfnSummary } from './CommunityAfnSummary'
+import { AfnMapControls } from './AfnMapControls'
 import '../statewide-conversation.css'
 import type { PlanningQuestion } from '../lib/statewide-conversation'
 import { defaultScenario } from '../lib/what-if'
@@ -342,10 +344,11 @@ export function StatewidePlanningConversation({
                 mean complete statewide operational data.
               </p>
               <p className="statewide-coverage-note">
-                Community screening is currently configured for Oʻahu, Maui,
-                Hawaiʻi and Kauaʻi. Molokaʻi, Lānaʻi, Niʻihau and Kahoʻolawe do
-                not yet have selectable community screening here; no other
-                island’s evidence is substituted.
+                Select community screening on Oʻahu, Maui, Hawaiʻi, Kauaʻi,
+                Molokaʻi and Lānaʻi, including Kalaupapa in Kalawao County.
+                Niʻihau has no configured community screening; Kahoʻolawe has no
+                permanent resident community. No other island’s evidence is
+                substituted. Missing or suppressed estimates remain unknown.
               </p>
               <div className="statewide-chat-choices">
                 {islands.map((island) => (
@@ -402,6 +405,11 @@ export function StatewidePlanningConversation({
                     </strong>
                     <p>{entry.focus.reason}</p>
                     <p>{entry.focus.action}</p>
+                    <CommunityAfnSummary
+                      coordinates={area!.coordinates}
+                      detailed
+                    />
+                    <AfnMapControls />
                     <details>
                       <summary>Evidence and limits</summary>
                       <p>{entry.focus.evidence}</p>

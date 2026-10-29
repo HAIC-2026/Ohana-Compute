@@ -228,11 +228,26 @@ var sources = []Source{
 		Integration:   "integrated-backend-key-required",
 		Enables: []string{
 			"Aggregate language, disability, age, poverty, and vehicle-access planning",
+			"Tract screening of kūpuna 65+ living alone, housing units in 50+ unit structures, incomplete plumbing, and households without internet subscriptions",
 		},
 		Limitations: []string{
 			"Margins of error must be retained",
 			"Aggregate demographics must never be used to infer an individual's needs",
+			"Structure size, plumbing, internet subscription, and living-alone measures are explicitly limited CMIST planning proxies",
 		},
+	},
+	{
+		ID:            "census-tigerweb-tracts",
+		Name:          "Census TIGERweb ACS2024 tract boundaries",
+		Authority:     "U.S. Census Bureau",
+		Phase:         "P0",
+		DataClass:     "planning",
+		Access:        "Public ArcGIS REST / GeoJSON",
+		URL:           "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2024/MapServer/8/query",
+		UpdateCadence: "Annual geography vintage; backend caches at most 24 hours",
+		Integration:   "integrated-backend",
+		Enables:       []string{"Real tract-level AFN screening geometry across all five Hawaii counties, including Kalawao"},
+		Limitations:   []string{"2024 ACS and 2022 SVI use different vintages; exact FIPS joins may leave unknown values", "Water and unpopulated tracts may have no ACS or SVI estimates; no geometry or estimates are fabricated"},
 	},
 	{
 		ID:            "state-fire-risk",

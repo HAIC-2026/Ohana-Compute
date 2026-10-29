@@ -181,6 +181,7 @@ func TestCommunityProfileSurfacesUpstreamFailure(t *testing.T) {
 	client := NewClient(Config{
 		APIKey:      "test-key",
 		GeocoderURL: server.URL,
+		ArcGIS:      unavailableGeographyQuerier(),
 	})
 	_, err := client.CommunityProfile(context.Background(), 21.29, -157.68)
 	if err == nil || !strings.Contains(err.Error(), "HTTP 503") {

@@ -23,7 +23,14 @@ export type CommunityProfile = {
   acs?: {
     geography: {
       name: string
+      resolution?: {
+        method: string
+        vintage: string
+        source_url: string
+        warnings?: string[]
+      }
     }
+    warnings?: string[]
     population: AggregateMetric
     no_vehicle_households: AggregateMetric
     limited_english_population: AggregateMetric
@@ -34,6 +41,10 @@ export type CommunityProfile = {
       variable: string
       speakers: AggregateMetric
     }>
+    kupuna_living_alone?: AggregateMetric
+    housing_50_plus_units?: AggregateMetric
+    incomplete_plumbing?: AggregateMetric
+    no_internet_subscription?: AggregateMetric
     source: CommunitySource
   }
   svi?: {

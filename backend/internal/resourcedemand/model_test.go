@@ -7,6 +7,25 @@ import (
 	"time"
 )
 
+func TestScreeningOnlyCommunityIDsAcceptedWithoutSyntheticSupply(t *testing.T) {
+	for _, id := range []string{"molokai-kaunakakai", "lanai-city", "molokai-kalaupapa"} {
+		t.Run(id, func(t *testing.T) {
+			request := validRequest()
+			request.Geography.ID = id
+			request.PracticeSupplies = nil
+			response, err := NewCalculator().Calculate(context.Background(), request)
+			if err != nil || response.Geography.ID != id {
+				t.Fatalf("screening geography rejected: %#v %v", response, err)
+			}
+			for _, line := range response.Lines {
+				if line.Supply != nil && line.Supply.AppliedQuantity != 0 {
+					t.Fatal("invented supply for screening geography")
+				}
+			}
+		})
+	}
+}
+
 func TestCalculateIsDeterministicAndAppliesOnlyMatchedSupply(t *testing.T) {
 	request := validRequest()
 	request.PracticeSupplies = []SupplyInput{

@@ -278,7 +278,10 @@ export function buildGeographicFocus(
       Date.now(),
       pointHazards[area.id],
     )
-    const county = planningCountyForIsland(area.island)
+    const county =
+      area.id === 'molokai-kalaupapa'
+        ? 'Kalawao'
+        : planningCountyForIsland(area.island)
     const location = state?.profile?.svi?.location.replace(/[ʻ’']/g, '') ?? ''
     if (
       focus.signals.sviPercentile !== null &&

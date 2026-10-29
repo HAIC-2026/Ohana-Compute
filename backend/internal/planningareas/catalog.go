@@ -100,12 +100,26 @@ type Jurisdiction struct {
 }
 
 type Snapshot struct {
-	GeneratedAt      time.Time      `json:"generated_at"`
-	Status           string         `json:"status"`
-	Summary          Summary        `json:"summary"`
-	Provenance       Provenance     `json:"provenance"`
-	Jurisdictions    []Jurisdiction `json:"jurisdictions"`
-	UnsupportedAreas []string       `json:"unsupported_areas"`
+	GeneratedAt      time.Time       `json:"generated_at"`
+	Status           string          `json:"status"`
+	Summary          Summary         `json:"summary"`
+	Provenance       Provenance      `json:"provenance"`
+	Jurisdictions    []Jurisdiction  `json:"jurisdictions"`
+	UnsupportedAreas []string        `json:"unsupported_areas"`
+	ScreeningAreas   []ScreeningArea `json:"screening_areas"`
+}
+
+// ScreeningArea supplies geography only; it has no invented AFN inventory,
+// capacities, scenario, or practice briefing.
+type ScreeningArea struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Island         string     `json:"island"`
+	JurisdictionID string     `json:"jurisdiction_id"`
+	CountyCode     string     `json:"county_code"`
+	Coordinates    [2]float64 `json:"coordinates"`
+	ScreeningOnly  bool       `json:"screening_only"`
+	ScopeNote      string     `json:"scope_note"`
 }
 
 type Catalog struct {
@@ -146,11 +160,13 @@ func (catalog Catalog) Snapshot(context.Context) (Snapshot, error) {
 			Freshness:   freshness,
 		},
 		Jurisdictions: jurisdictions,
+		ScreeningAreas: []ScreeningArea{
+			{"molokai-kaunakakai", "Kaunakakai", "Molokaʻi", "maui", "009", [2]float64{-157.0206, 21.0903}, true, "Public tract screening only. No local operational inventory or practice workflow is supplied."},
+			{"lanai-city", "Lānaʻi City", "Lānaʻi", "maui", "009", [2]float64{-156.917, 20.8283}, true, "Public tract screening only. No local operational inventory or practice workflow is supplied."},
+			{"molokai-kalaupapa", "Kalaupapa", "Molokaʻi (Kalawao)", "kalawao", "005", [2]float64{-156.984, 21.189}, true, "Kalawao is a separate county administered by State DOH. Public aggregate tract screening is not a resident registry or Maui operational authority."},
+		},
 		UnsupportedAreas: []string{
-			"Molokaʻi",
-			"Lānaʻi",
 			"Niʻihau",
-			"Kalawao",
 		},
 	}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"sync"
 	"time"
@@ -164,6 +165,10 @@ func (client *Client) SVI(
 	if err != nil {
 		return SVI{}, err
 	}
+	return sviFromProperties(properties, result.Source), nil
+}
+
+func sviFromProperties(properties map[string]any, source arcgis.SourceStatus) SVI {
 	return SVI{
 		TractFIPS:                          text(properties, "FIPS"),
 		Location:                           text(properties, "LOCATION"),
@@ -177,12 +182,12 @@ func (client *Client) SVI(
 		HouseholdCharacteristicsPercentile: number(properties, "RPL_THEME2"),
 		RacialEthnicMinorityPercentile:     number(properties, "RPL_THEME3"),
 		HousingTransportationPercentile:    number(properties, "RPL_THEME4"),
-		Source:                             result.Source,
+		Source:                             source,
 		Warnings: []string{
 			"SVI is a relative tract-level planning index based on 2018–2022 ACS data, not a resident-level assessment.",
 			"Use component measures and local context; do not use one percentile as an evacuation decision.",
 		},
-	}, nil
+	}
 }
 
 func (client *Client) EmPOWER(
@@ -415,7 +420,7 @@ func number(properties map[string]any, key string) *float64 {
 			return nil
 		}
 	}
-	if result <= -999 {
+	if result < 0 || math.IsNaN(result) || math.IsInf(result, 0) {
 		return nil
 	}
 	return &result

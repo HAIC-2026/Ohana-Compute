@@ -73,9 +73,10 @@ type Client struct {
 }
 
 type responseEnvelope struct {
-	Type     string       `json:"type"`
-	Features []rawFeature `json:"features"`
-	Error    *arcGISError `json:"error"`
+	Type                  string       `json:"type"`
+	Features              []rawFeature `json:"features"`
+	Error                 *arcGISError `json:"error"`
+	ExceededTransferLimit bool         `json:"exceededTransferLimit"`
 }
 
 type rawFeature struct {
@@ -195,6 +196,9 @@ func (client *Client) query(
 				envelope.Error.Message,
 			),
 		)
+	}
+	if envelope.ExceededTransferLimit {
+		return staleOrError(stale, hasStale, now, fmt.Errorf("%s exceeded the ArcGIS transfer limit; refusing truncated results", query.SourceID))
 	}
 
 	collectionType := envelope.Type

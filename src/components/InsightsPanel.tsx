@@ -55,6 +55,7 @@ import {
 } from '../lib/planning-areas'
 import { AfnPlanningHotspots } from './AfnPlanningHotspots'
 import { CommunityAfnSummary } from './CommunityAfnSummary'
+import { AfnMapControls } from './AfnMapControls'
 import { CountyShelterPlanPanel } from './CountyShelterPlanPanel'
 import { EventTriggerPanel } from './EventTriggerPanel'
 import { LiveOperationalStatusPanel } from './LiveOperationalStatusPanel'
@@ -564,6 +565,49 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     })
   }
 
+  if (area.screeningOnly) {
+    return (
+      <div className={`insights-content ${compact ? 'is-compact' : ''}`}>
+        <section className="area-overview">
+          <h2>Mass care planning for {area.name}</h2>
+          <p>{area.summary}</p>
+          <p>
+            Screening only: no synthetic exposure, readiness, routes or local
+            resource inventory. A modeled tract population is not a count of
+            people exposed to the selected hazard.
+          </p>
+          <CommunityAfnSummary coordinates={planningCoordinates} detailed />
+          <AfnMapControls />
+        </section>
+        <ResourceDemandPanel
+          state={resourceDemandState}
+          serviceDays={resourceDemandDays}
+          shelterStandard={resourceDemandStandard}
+          onServiceDaysChange={setResourceDemandDays}
+          onShelterStandardChange={setResourceDemandStandard}
+        />
+        {area.id === 'molokai-kalaupapa' ? (
+          <section aria-label="Kalawao coordination">
+            <h3>Kalawao coordination requires verification</h3>
+            <p>
+              Confirm the responsible County and State health authorities and
+              locally appropriate partner roles. Maui resources are not
+              substituted for Kalawao capacity.
+            </p>
+          </section>
+        ) : (
+          <>
+            <PartnerMatchPanel state={partnerMatchState} />
+            <CountyShelterPlanPanel
+              island={area.island}
+              practiceResources={[]}
+            />
+          </>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className={`insights-content ${compact ? 'is-compact' : ''}`}>
       <section className="area-overview">
@@ -582,6 +626,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
         <EventTriggerPanel />
         <LiveOperationalStatusPanel coordinates={planningCoordinates} />
         <CommunityAfnSummary coordinates={planningCoordinates} detailed />
+        <AfnMapControls />
         <AfnPlanningHotspots analysis={afnPlanningAnalysis} />
         <StatewidePlanningDepthPanel areaId={area.id} />
 

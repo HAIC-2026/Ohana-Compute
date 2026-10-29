@@ -71,8 +71,9 @@ export function CommunityAfnSummary({
 
       {status === 'unavailable' ? (
         <p className="community-afn-unavailable">
-          Practice needs remain visible, but they must not be treated as
-          official AFN estimates.
+          Public aggregate estimates are unavailable. This is not zero need or
+          low risk; any separately labeled practice data is not official
+          evidence.
         </p>
       ) : profile ? (
         <>
@@ -129,6 +130,42 @@ export function CommunityAfnSummary({
                     'Unavailable'}
                 </strong>
               </div>
+              {(
+                [
+                  [
+                    'Kūpuna (65+) living alone',
+                    profile.acs?.kupuna_living_alone,
+                    'Householders; percentage of all households, not all older residents.',
+                  ],
+                  [
+                    'Housing units in 50+ unit structures · elevator-risk proxy',
+                    profile.acs?.housing_50_plus_units,
+                    'Percentage of all housing units, not buildings.',
+                  ],
+                  [
+                    'Housing units lacking complete plumbing · infrastructure proxy',
+                    profile.acs?.incomplete_plumbing,
+                    'Percentage of all housing units.',
+                  ],
+                  [
+                    'Households without an internet subscription',
+                    profile.acs?.no_internet_subscription,
+                    'Percentage of all households.',
+                  ],
+                ] as const
+              ).map(([label, metric, universe]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{formatAggregateMetric(metric, null)}</strong>
+                  <small>{universe}</small>
+                  {metric?.margin_of_error != null && (
+                    <small>
+                      ACS margin of error: ±
+                      {Math.round(metric.margin_of_error).toLocaleString()}
+                    </small>
+                  )}
+                </div>
+              ))}
               <div>
                 <span>Below poverty estimate</span>
                 <strong>
@@ -161,6 +198,15 @@ export function CommunityAfnSummary({
               </div>
             </div>
           ) : null}
+          {detailed && (
+            <p>
+              Plan trusted offline outreach alongside online alerts. Large
+              structures do not confirm building height or elevator dependence.
+              Incomplete plumbing does not identify off-grid or catchment
+              households. Indicators overlap and must not be added as unique
+              people or households.
+            </p>
+          )}
           <div className="community-afn-source">
             <ShieldCheck size={14} />
             <div>
@@ -187,6 +233,15 @@ export function CommunityAfnSummary({
                 </span>
               ) : null}
               <span>Sources: {sourceLabels.join(' · ')}</span>
+              {profile.acs?.geography.resolution && (
+                <span>
+                  Tract resolution: {profile.acs.geography.resolution.method} ·{' '}
+                  {profile.acs.geography.resolution.vintage}
+                </span>
+              )}
+              {profile.acs?.warnings?.map((warning) => (
+                <span key={warning}>{warning}</span>
+              ))}
               {newestRetrievalLabel ? (
                 <span>
                   Latest retrieval: {newestRetrievalLabel}
