@@ -1,5 +1,6 @@
 import { areas } from './mock-data'
 import type { GeographicFocus } from './geographic-focus'
+import { scenarioBounds } from './what-if'
 
 export const statewidePlanningAreas = areas.filter(
   (area) => area.showOnStatewideMap !== false,
@@ -12,6 +13,7 @@ export const statewidePrompts = [
   'What evidence is missing?',
   'Prepare County questions',
   'Recommend next step',
+  'Try a what-if scenario',
 ] as const
 
 export const decisionActions = {
@@ -87,11 +89,91 @@ function normalized(value: string) {
     .replace(/[\u0300-\u036fʻ’']/g, '')
     .replace(/[?.!]$/, '')
 }
+export type PlanningQuestion = {
+  type: 'planning-question'
+  island: string
+  county?: boolean
+  indicator: 'age' | 'disability' | 'language' | 'transportation' | 'gaps'
+  hazard: 'tsunami' | 'wildfire' | 'flood' | 'hurricane'
+}
+
 export function interpretStatewidePrompt(value: string) {
   if (value.length > 256) return null
   const text = normalized(value)
   const prompt = statewidePrompts.find((item) => normalized(item) === text)
   if (prompt) return { type: 'question' as const, prompt }
+  const outage = text.match(/^what changes if the outage lasts (\d{1,2}) days$/)
+  if (outage && Number(outage[1]) <= 30)
+    return { type: 'outage' as const, days: Number(outage[1]) }
+  const driverPatterns = [
+    {
+      driver: 'warningHours',
+      pattern: /^set warning lead time to (\d{1,3}) hours$/,
+    },
+    { driver: 'shelterUptake', pattern: /^set shelter uptake to (\d{1,3})%$/ },
+    { driver: 'supportDays', pattern: /^set support to (\d{1,2}) days$/ },
+  ] as const
+  for (const { driver, pattern } of driverPatterns) {
+    const match = text.match(pattern)
+    if (match) {
+      const amount = Number(match[1])
+      const [min, max] = scenarioBounds[driver]
+      return amount >= min && amount <= max
+        ? { type: 'scenario-driver' as const, driver, value: amount }
+        : null
+    }
+  }
+  const hazardCommand = text.match(/^model (tsunami|wildfire|flood|hurricane)$/)
+  if (hazardCommand)
+    return {
+      type: 'scenario-hazard' as const,
+      hazard: hazardCommand[1] as PlanningQuestion['hazard'],
+    }
+  const countyNames: Record<string, string> = {
+    'honolulu county': 'Oʻahu',
+    'maui county': 'Maui',
+    'hawaii island': 'Hawaiʻi',
+    'hawaii county': 'Hawaiʻi',
+    'kauai county': 'Kauaʻi',
+  }
+  const resolveIsland = (place: string) =>
+    planningIslands.find((island) => normalized(island) === place) ??
+    countyNames[place]
+  const missing =
+    text.match(/^whats missing for (.+)$/) ??
+    text.match(/^what is missing for (.+)$/)
+  if (missing) {
+    const island = resolveIsland(missing[1])
+    if (island)
+      return {
+        type: 'planning-question',
+        island,
+        ...(missing[1].endsWith(' county') ? { county: true } : {}),
+        indicator: 'gaps',
+        hazard: 'tsunami',
+      } satisfies PlanningQuestion
+  }
+  const comparison = text.match(
+    /^which (.+) communities have the most (kupuna|older adults|people with disabilities|limited english speakers|households without vehicles) and high (tsunami|wildfire|flood|hurricane) exposure$/,
+  )
+  if (comparison) {
+    const island = resolveIsland(comparison[1])
+    const indicators = {
+      kupuna: 'age',
+      'older adults': 'age',
+      'people with disabilities': 'disability',
+      'limited english speakers': 'language',
+      'households without vehicles': 'transportation',
+    } as const
+    if (island)
+      return {
+        type: 'planning-question',
+        island,
+        ...(comparison[1].endsWith(' county') ? { county: true } : {}),
+        indicator: indicators[comparison[2] as keyof typeof indicators],
+        hazard: comparison[3] as PlanningQuestion['hazard'],
+      } satisfies PlanningQuestion
+  }
   if (text === 'statewide' || text === 'show all islands')
     return { type: 'statewide' as const }
   const place = text.replace(/^(?:focus on|explore|show) /, '')

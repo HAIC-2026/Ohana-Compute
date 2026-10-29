@@ -40,6 +40,27 @@ households.
   the suggestion. Navigation requires a planner click; no plan, resource or
   approval is changed by a recommendation. This is a rule-based decision model,
   not trained AI or a live provider.
+  **Try a what-if scenario** models tract-level shelter users, meals, water and
+  powered-shelter person-days from a fresh ACS population and margin of error.
+  Hazard, warning hours, outage days, uptake and support days are visible
+  assumptions; hazard/warning alter verification tasks, not invented numeric
+  exposure multipliers. Optional practice meal stock exposes a meal-gap range;
+  blank supply stays unknown. A one-at-a-time sensitivity view compares uptake
+  +5 percentage points and support/outage +1 day, with bounds disclosed by the
+  controls. `afn-what-if.v1` is an illustrative planning model, not a forecast,
+  CMIST prevalence model, generator-sizing tool or saved operational plan.
+  **More planning questions** supports configured islands/Counties, kūpuna,
+  disability, language and no-vehicle indicators with four hazard screens,
+  missing-evidence questions and “What changes if the outage lasts 5 days?”
+  Scenario commands also include “Set shelter uptake to 20%”, “Set support to
+  5 days”, “Set warning lead time to 2 hours” and “Model tsunami”.
+  `afn-planning-questions.v1` ranks only compatible, fresh tract indicators with
+  elevated area-center screening. It never claims whole-community exposure,
+  sums overlapping tracts or substitutes unknown evidence with zero. Links,
+  source dates, versioned rules and County authority stay visible. All parsing
+  and scenario calculation happen locally; only canonical labels are kept in
+  bounded in-memory history. No raw typed text is stored or transmitted, and
+  this guide does not enable the optional grounded narrative service.
 - **[Waiʻanae assisted-planning case](docs/waianae-assistance-case.md)**:
   open **Examples → Fictional Waiʻanae case** (`/waianae`) for one fictional
   before-storm story, useful as the video walkthrough rather than app scope.

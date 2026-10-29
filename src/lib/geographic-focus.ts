@@ -37,6 +37,7 @@ export type GeographicFocus = {
 }
 
 export type PointHazardScreen = {
+  sources?: Array<{ authority: string; url: string }>
   status: 'elevated' | 'other-mapped' | 'unknown'
   reason: string
   evidence: string
@@ -63,6 +64,7 @@ export function assessPointHazard(
     .map((source) => `${source.authority} · checked ${source.retrieved_at}`)
     .join(' · ')
   const unknown: PointHazardScreen = {
+    sources: sources.map(({ authority, url }) => ({ authority, url })),
     status: 'unknown',
     reason:
       'Hazard evidence unavailable, unmapped or stale at the area center.',
@@ -85,6 +87,7 @@ export function assessPointHazard(
     )
       return unknown
     return {
+      sources: unknown.sources,
       status: classification === 'high' ? 'elevated' : 'other-mapped',
       reason: `${classification === 'lower-mapped' ? 'Lower' : classification === 'high' ? 'High' : 'Moderate'} mapped flood classification at the area center.${hazard === 'hurricane' ? ' Flood screening only; wind and surge are not assessed.' : ''} Not a current flood forecast.`,
       evidence,
@@ -95,6 +98,7 @@ export function assessPointHazard(
     if (result.status !== 'inside' && result.status !== 'outside')
       return unknown
     return {
+      sources: unknown.sources,
       status: result.status === 'inside' ? 'elevated' : 'other-mapped',
       reason: `Area center is ${result.status} the mapped tsunami evacuation zone. Not an evacuation order or an all-clear.`,
       evidence,
@@ -104,6 +108,7 @@ export function assessPointHazard(
   if (!result.rating || !['High', 'Medium', 'Low'].includes(result.rating))
     return unknown
   return {
+    sources: unknown.sources,
     status: result.rating === 'High' ? 'elevated' : 'other-mapped',
     reason: `${result.rating} mapped wildfire risk at the area center. Not a current fire perimeter or warning.`,
     evidence,
@@ -247,6 +252,15 @@ export function summarizeGeographicFocus(
   }
 }
 
+export function planningCountyForIsland(island: string) {
+  if (island === 'Oʻahu') return 'Honolulu'
+  if (island === 'Kauaʻi' || island === 'Niʻihau') return 'Kauai'
+  if (island === 'Hawaiʻi') return 'Hawaii'
+  if (['Maui', 'Molokaʻi', 'Lānaʻi', 'Kahoʻolawe'].includes(island))
+    return 'Maui'
+  return null
+}
+
 export function buildGeographicFocus(
   areas: PlanningArea[],
   profiles: Partial<Record<string, CommunityProfileState>>,
@@ -264,18 +278,12 @@ export function buildGeographicFocus(
       Date.now(),
       pointHazards[area.id],
     )
-    const county =
-      area.island === 'Oʻahu'
-        ? 'Honolulu'
-        : area.island === 'Kauaʻi' || area.island === 'Niʻihau'
-          ? 'Kauai'
-          : area.island === 'Hawaiʻi'
-            ? 'Hawaii'
-            : 'Maui'
+    const county = planningCountyForIsland(area.island)
     const location = state?.profile?.svi?.location.replace(/[ʻ’']/g, '') ?? ''
     if (
       focus.signals.sviPercentile !== null &&
-      (vintages.size > 1 ||
+      (!county ||
+        vintages.size > 1 ||
         !location.toLowerCase().includes(`${county.toLowerCase()} county`))
     ) {
       return {

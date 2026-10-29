@@ -19,8 +19,13 @@ import {
 } from '../lib/geographic-focus'
 import { usePlanningStore } from '../store/planning-store'
 import '../statewide-conversation.css'
+import type { PlanningQuestion } from '../lib/statewide-conversation'
+import { defaultScenario } from '../lib/what-if'
+import { WhatIfScenario } from './WhatIfScenario'
+import { PlanningQuestionResponse } from './PlanningQuestionResponse'
 
-type View = 'areas' | 'evidence' | 'county' | 'decision'
+type View =
+  'areas' | 'evidence' | 'county' | 'decision' | 'scenario' | 'question'
 const countyQuestions = [
   [
     'Communication',
@@ -75,6 +80,8 @@ export function StatewidePlanningConversation({
   const [turns, setTurns] = useState<Array<{ user: string; scope: string }>>([])
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
+  const [scenario, setScenario] = useState(defaultScenario)
+  const [question, setQuestion] = useState<PlanningQuestion | null>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const answer = useRef<HTMLElement>(null)
   const candidates = useMemo(() => (area ? [area] : []), [area])
@@ -96,6 +103,9 @@ export function StatewidePlanningConversation({
     ? 'All Hawaiʻi islands'
     : `${area?.island} · ${area?.name}`
   const scopeKey = `${statewideOverview ? 'statewide' : selectedAreaId}:${hazard}`
+  useEffect(() => {
+    setScenario((previous) => ({ ...previous, hazard }))
+  }, [hazard])
   useEffect(() => {
     setView(statewideOverview ? 'areas' : 'evidence')
     setIslandChoice(null)
@@ -139,6 +149,32 @@ export function StatewidePlanningConversation({
       record(
         `Focus on ${planningAreas.find((item) => item.id === intent.id)!.name}`,
       )
+    } else if (intent.type === 'outage') {
+      setScenario((previous) => ({ ...previous, outageDays: intent.days }))
+      setView('scenario')
+      record(`Model an outage lasting ${intent.days} days`)
+    } else if (intent.type === 'scenario-driver') {
+      setScenario((previous) => ({
+        ...previous,
+        [intent.driver]: intent.value,
+      }))
+      setView('scenario')
+      const driverNames = {
+        warningHours: 'warning hours',
+        shelterUptake: 'shelter uptake %',
+        supportDays: 'support days',
+      }
+      record(`Model ${driverNames[intent.driver]}: ${intent.value}`)
+    } else if (intent.type === 'scenario-hazard') {
+      setScenario((previous) => ({ ...previous, hazard: intent.hazard }))
+      setView('scenario')
+      record(`Model ${intent.hazard}`)
+    } else if (intent.type === 'planning-question') {
+      setQuestion(intent.indicator === 'gaps' ? { ...intent, hazard } : intent)
+      setView('question')
+      record(
+        `${intent.island}: ${intent.indicator === 'gaps' ? 'review missing evidence' : `${intent.indicator} indicators and ${intent.hazard} screening`}`,
+      )
     } else {
       setView(
         intent.prompt === prompts[0]
@@ -147,7 +183,9 @@ export function StatewidePlanningConversation({
             ? 'evidence'
             : intent.prompt === prompts[2]
               ? 'county'
-              : 'decision',
+              : intent.prompt === prompts[3]
+                ? 'decision'
+                : 'scenario',
       )
       record(intent.prompt)
     }
@@ -219,6 +257,35 @@ export function StatewidePlanningConversation({
           aria-label="Current planning response"
           key={scopeKey}
         >
+          {view === 'question' && question && (
+            <PlanningQuestionResponse
+              question={question}
+              onSelect={setSelectedAreaId}
+            />
+          )}
+          {view === 'scenario' &&
+            (statewideOverview ? (
+              <>
+                <h3>Choose a community to model needs</h3>
+                <p>
+                  No statewide total is inferred. Select a community, then ask
+                  “Try a what-if scenario”. Your scenario assumptions are
+                  retained in this session only.
+                </p>
+                <button type="button" onClick={() => setView('areas')}>
+                  Choose a planning area
+                </button>
+              </>
+            ) : (
+              <WhatIfScenario
+                key={selectedAreaId}
+                place={area?.name ?? 'Unknown community'}
+                island={area?.island ?? ''}
+                profile={profiles[selectedAreaId]?.profile}
+                scenario={scenario}
+                onChange={setScenario}
+              />
+            ))}
           {view === 'decision' && (
             <section
               aria-label="Suggested planning step"
@@ -386,6 +453,29 @@ export function StatewidePlanningConversation({
             </button>
           ))}
         </div>
+        <details className="statewide-chat-example">
+          <summary>More planning questions</summary>
+          <p>
+            Supported examples; substitute a configured island or County and
+            tsunami, wildfire, flood or hurricane:
+          </p>
+          {[
+            'Which Maui communities have the most kūpuna and high tsunami exposure?',
+            'Which Honolulu County communities have the most households without vehicles and high flood exposure?',
+            'Which Kauai communities have the most people with disabilities and high wildfire exposure?',
+            'Which Maui communities have the most limited English speakers and high hurricane exposure?',
+            'What changes if the outage lasts 5 days?',
+            'Set shelter uptake to 20%',
+            'Set support to 5 days',
+            'Set warning lead time to 2 hours',
+            'Model tsunami',
+            'What’s missing for Hawaiʻi Island?',
+          ].map((text) => (
+            <button key={text} type="button" onClick={() => submit(text)}>
+              {text}
+            </button>
+          ))}
+        </details>
         <details className="statewide-chat-example">
           <summary>Illustrative walkthrough</summary>
           <p>
