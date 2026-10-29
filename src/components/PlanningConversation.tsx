@@ -93,7 +93,6 @@ export function PlanningConversation({
   const latest = useRef<HTMLDivElement>(null)
   const proposalHeading = useRef<HTMLHeadingElement>(null)
   const composer = useRef<HTMLTextAreaElement>(null)
-  const viewport = useRef<HTMLDivElement>(null)
   const insights = evaluatePlanningEvidence(scenario, contributions, now)
   const { result } = evaluateTiming(timing)
   const question =
@@ -112,15 +111,11 @@ export function PlanningConversation({
     : null
 
   useEffect(() => {
-    const scroll = viewport.current
     const response = latest.current
-    if (active && turns.length > 0 && scroll && response)
-      scroll.scrollTo({
-        top:
-          scroll.scrollTop +
-          response.getBoundingClientRect().top -
-          scroll.getBoundingClientRect().top -
-          16,
+    if (active && turns.length > 0 && response)
+      response.scrollIntoView({
+        block: 'start',
+        inline: 'nearest',
         behavior: 'instant',
       })
   }, [active, turns.at(-1)?.id, pending, view])
@@ -285,6 +280,8 @@ export function PlanningConversation({
       )
       return
     }
+    if (window.matchMedia('(max-width: 1000px)').matches)
+      composer.current?.blur()
     if ('arrival' in intent) timingProposal('arrival', intent.arrival)
     else ask(intent.prompt)
   }
@@ -457,7 +454,6 @@ export function PlanningConversation({
       </header>
       <div
         className="conversation-scroll"
-        ref={viewport}
         role="region"
         tabIndex={0}
         aria-label="Planning conversation"

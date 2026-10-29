@@ -79,13 +79,16 @@ test('desktop selects an island response zone and creates local steps', async ({
   await page.getByRole('button', { name: 'Confirm' }).click()
 
   await page.getByRole('button', { name: 'Open response workspace' }).click()
+  const responseWorkspace = page.locator('.planning-sheet:visible')
   await expect(
-    page.getByRole('heading', {
+    responseWorkspace.getByRole('heading', {
       name: 'Mass care plan for East Honolulu',
     }),
   ).toBeVisible()
   await expect(
-    page.getByRole('heading', { name: 'Local resource inventory' }),
+    responseWorkspace.getByRole('heading', {
+      name: 'Local resource inventory',
+    }),
   ).toBeVisible()
   const hotspotPanel = page.getByTestId('afn-planning-hotspots')
   await expect(hotspotPanel).toBeVisible()
