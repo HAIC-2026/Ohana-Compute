@@ -2,14 +2,19 @@ import { useEffect, useState } from 'react'
 import { backendGet, backendPost } from './backend-api'
 import { getCommunityProfile } from './community-profile'
 import type { CoordinationEvidence } from './coordination-plan'
+import type { HazardId } from './mock-data'
 import { areas } from './mock-data'
 import type { PartnerMatchResponse } from './partner-matching'
 import type { PlanningAreaSnapshot } from './planning-areas'
-import { createResourceDemandRequest } from './resource-demand'
+import {
+  createResourceDemandRequest,
+  resourceDemandIslandId,
+} from './resource-demand'
 
 export function useCoordinationEvidence(
   catalog: PlanningAreaSnapshot | null,
   revision: number,
+  hazard: HazardId,
 ) {
   const [rows, setRows] = useState<CoordinationEvidence[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,13 +71,25 @@ export function useCoordinationEvidence(
             '/api/v1/planning/resource-demand',
             createResourceDemandRequest({
               areaId: area.id,
+              countyId: county.id,
+              islandId: resourceDemandIslandId(area.island),
+              hazard,
               population: row.profile?.acs?.population,
               populationSource: row.profile?.acs?.source,
               medicalPower: row.profile?.empower?.power_dependent_dme,
+              medicalPowerSourceDate:
+                row.profile?.empower?.source.upstream_last_modified ??
+                row.profile?.empower?.source.retrieved_at,
+              households: row.profile?.acs?.households,
+              limitedEnglish: row.profile?.acs?.limited_english_population,
+              disability: row.profile?.acs?.population_with_disability,
+              belowPoverty: row.profile?.acs?.population_below_poverty,
+              noVehicleHouseholds: row.profile?.acs?.no_vehicle_households,
               resources: [],
               confirmedResourceIds: [],
               serviceDays: 3,
               shelterStandard: 'evacuation',
+              outageHours: 24,
             }),
           )
         } catch {
@@ -100,6 +117,6 @@ export function useCoordinationEvidence(
     return () => {
       active = false
     }
-  }, [catalog, revision])
+  }, [catalog, hazard, revision])
   return { rows, loading }
 }

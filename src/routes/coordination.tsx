@@ -26,9 +26,13 @@ function Coordination() {
   const plans = useCountyShelterPlans()
   const triggers = useEventTriggers()
   const [revision, setRevision] = useState(0)
-  const { rows, loading } = useCoordinationEvidence(catalog.snapshot, revision)
   const [countyId, setCountyId] = useState('honolulu')
   const [hazard, setHazard] = useState<HazardId>('hurricane')
+  const { rows, loading } = useCoordinationEvidence(
+    catalog.snapshot,
+    revision,
+    hazard,
+  )
   const [triggerId, setTriggerId] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [canSpeak, setCanSpeak] = useState(false)
