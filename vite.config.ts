@@ -7,6 +7,26 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 
 const config = defineConfig({
+  server: {
+    proxy: {
+      '/api/v1/staff': {
+        target: process.env.STAFF_PROXY_TARGET || 'http://127.0.0.1:8080',
+      },
+      '/api/v1/operations': {
+        target: process.env.STAFF_PROXY_TARGET || 'http://127.0.0.1:8080',
+      },
+    },
+  },
+  preview: {
+    proxy: {
+      '/api/v1/staff': {
+        target: process.env.STAFF_PROXY_TARGET || 'http://127.0.0.1:8080',
+      },
+      '/api/v1/operations': {
+        target: process.env.STAFF_PROXY_TARGET || 'http://127.0.0.1:8080',
+      },
+    },
+  },
   resolve: { tsconfigPaths: true },
   plugins: [
     tanstackStart(),

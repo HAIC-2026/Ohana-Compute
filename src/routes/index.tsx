@@ -385,6 +385,9 @@ function Home() {
         </div>
 
         <div className="header-actions">
+          <Link className="case-entry-link" to="/operations">
+            Staff response
+          </Link>
           <Link className="case-entry-link" to="/coordination">
             Coordinate plan
           </Link>

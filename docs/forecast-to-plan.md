@@ -4,6 +4,12 @@ Open **Coordinate plan** from `/`, or visit `/coordination`. This is a County
 review surface, not an emergency instruction, approved annex or live operations
 dashboard.
 
+For authenticated shared requests, provider acceptance, destination confirmation,
+escalation and preparedness tasks, use **Staff response workspace** at
+`/operations`. See [staff response coordination](operational-coordination.md).
+The evidence/annex surface documented here remains separate; its export is not
+automatically an operational request.
+
 ## Timeline and authority
 
 Choose a County and hazard. The default is explicitly **Practice scenario — not

@@ -13,6 +13,7 @@
     "backend:run": "cd backend && go run ./cmd/server",
     "backend:test": "cd backend && go test ./...",
     "test:integration": "playwright test --config=playwright.integration.config.ts",
+    "test:operations": "VITE_BACKEND_API_URL=http://127.0.0.1:8196 npm run build && playwright test --config=playwright.operations.config.ts",
     "test:matrix": "PLAYWRIGHT_FRONTEND_COMMAND='npm run preview -- --host 127.0.0.1 --port 3000' playwright test tests/planning-matrix.spec.ts --project=desktop-chromium --workers=1",
     "preview": "vite preview",
     "lint": "eslint",

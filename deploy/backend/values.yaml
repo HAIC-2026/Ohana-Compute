@@ -31,6 +31,19 @@ identity:
     clientID: ''
     rolesClaim: roles
 
+staffAuth:
+  mode: disabled
+  publicURL: ''
+  issuer: ''
+  clientID: ''
+  sessionLifetime: 8h
+  clientSecret:
+    name: ''
+    key: client-secret
+  directorySecret:
+    name: ''
+    key: directory.json
+
 collaboration:
   persistence: disabled
   sqlite:

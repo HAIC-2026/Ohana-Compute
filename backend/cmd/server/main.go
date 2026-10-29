@@ -59,6 +59,11 @@ func main() {
 		logger.Error("initialize identity boundary", "error", err)
 		os.Exit(1)
 	}
+	staffService, err := staffServiceFromEnvironment()
+	if err != nil {
+		logger.Error("invalid staff authentication configuration", "error", err)
+		os.Exit(1)
+	}
 	collaborationStore, err := collaborationStoreFromEnvironment()
 	if err != nil {
 		logger.Error("invalid collaboration persistence configuration", "error", err)
@@ -147,6 +152,7 @@ func main() {
 		EventTriggers:     eventTriggerService,
 		OperationalStatus: operationalStatusService,
 		Identity:          identityService,
+		Staff:             staffService,
 		Collaboration:     collaborationStore,
 		GroundedPlanning: groundedplanning.NewService(groundedplanning.Config{
 			Provider: groundedPlanningProvider,
@@ -158,7 +164,7 @@ func main() {
 		TelemetryRate:  telemetryRate,
 	})
 	httpServer := &http.Server{
-		Addr:              ":" + port,
+		Addr:              envOrDefault("LISTEN_ADDRESS", ":"+port),
 		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,

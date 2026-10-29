@@ -6,6 +6,7 @@ export default defineConfig({
     'planner-integration.spec.ts',
     'collaborative-plans.spec.ts',
     'grounded-planning.spec.ts',
+    'staff-operations.spec.ts',
   ],
   fullyParallel: true,
   reporter: 'line',

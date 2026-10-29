@@ -29,6 +29,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/resourcedemand"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/shelterplans"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/staffidentity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/transportation"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -109,6 +110,7 @@ type Config struct {
 	OperationalStatus OperationalStatusReader
 	Identity          identity.Authenticator
 	Collaboration     collaboration.Store
+	Staff             *staffidentity.Service
 	GroundedPlanning  *groundedplanning.Service
 	AllowedOrigins    []string
 	Logger            *slog.Logger
@@ -200,6 +202,23 @@ func NewServer(config Config) *Server {
 		logger,
 		metrics,
 	)
+	var operations OperationsStore
+	if config.Collaboration != nil {
+		operations, _ = config.Collaboration.(OperationsStore)
+		if reader, ok := config.Collaboration.(operationsMetricReader); ok {
+			registry.MustRegister(newOperationsCollector(reader))
+		}
+	}
+	var staff operationsIdentity
+	if config.Staff != nil {
+		config.Staff.Register(mux)
+		staff = config.Staff
+	} else {
+		mux.HandleFunc("GET /api/v1/staff/session", func(w http.ResponseWriter, r *http.Request) {
+			writeSensitiveJSON(w, http.StatusOK, map[string]bool{"enabled": false, "authenticated": false})
+		})
+	}
+	registerOperationsRoutes(mux, operations, staff, logger)
 	if config.GroundedPlanning == nil {
 		config.GroundedPlanning = groundedplanning.NewService(
 			groundedplanning.Config{Store: config.Collaboration},

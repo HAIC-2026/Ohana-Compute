@@ -14,8 +14,10 @@ events:
 - Tsunami
 - Wildfire
 
-It intentionally uses no personal data and does not identify individuals or
-households.
+The public planner uses aggregate data and does not identify individuals or
+households. The separately configured staff pilot stores restricted operational
+references and staff audit identities, not resident names, addresses or clinical
+records.
 
 > **Prototype notice:** Named events, exposure estimates, destinations,
 > resource capacity, and operational recommendations are practice data unless
@@ -23,6 +25,17 @@ households.
 > instructions with local authorities before acting.
 
 ## What works
+
+- **[Shared staff response and preparedness](docs/operational-coordination.md)**:
+  **Staff response** (`/operations`) connects independent County, transport and
+  receiving-partner accounts through verified assistance requests, explicit
+  offers/acceptance, receiving confirmation, pickup/arrival acknowledgments and
+  County closure. Declines, overdue work and explicit State support requests
+  stay visible; blockers become owned preparedness tasks requiring evidence and
+  County review. Organizational OIDC, server-controlled jurisdiction membership
+  and durable SQLite storage must be configured. This is a staff pilot, not a
+  dispatch/paging integration or official adoption. Evaluate using labeled
+  synthetic EXERCISE records until participating agencies validate the workflow.
 
 - **[Forecast-to-plan coordination](docs/forecast-to-plan.md)**: **Coordinate
   plan** (`/coordination`) turns a labeled practice scenario, or an explicitly

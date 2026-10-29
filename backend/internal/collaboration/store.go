@@ -54,6 +54,10 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.initializeOperations(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("collaboration: initialize operations: %w", err)
+	}
 	return store, nil
 }
 

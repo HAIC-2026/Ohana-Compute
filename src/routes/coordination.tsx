@@ -92,6 +92,7 @@ function Coordination() {
     <main className="coordination-page" data-hydrated={hydrated}>
       <header className="coordination-header">
         <Link to="/">← Planning map</Link>
+        <Link to="/operations">Staff response workspace</Link>
         <span>County-led · State ESF-6 support · Nothing auto-sent</span>
       </header>
       <div className="coordination-title">

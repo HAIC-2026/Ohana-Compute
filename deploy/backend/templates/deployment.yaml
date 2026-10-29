@@ -4,6 +4,12 @@
 {{- if not (has .Values.collaboration.persistence (list "disabled" "sqlite")) }}
 {{- fail "collaboration.persistence must be disabled or sqlite" }}
 {{- end }}
+{{- if not (has .Values.staffAuth.mode (list "disabled" "oidc")) }}
+{{- fail "staffAuth.mode must be disabled or oidc" }}
+{{- end }}
+{{- if and (eq .Values.staffAuth.mode "oidc") (ne .Values.collaboration.persistence "sqlite") }}
+{{- fail "staffAuth requires durable collaboration.persistence=sqlite" }}
+{{- end }}
 {{- if and (eq .Values.collaboration.persistence "sqlite") (ne (int .Values.replicaCount) 1) }}
 {{- fail "SQLite collaboration persistence requires replicaCount=1" }}
 {{- end }}
@@ -36,6 +42,10 @@ spec:
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: backend
+{{- if eq .Values.staffAuth.mode "oidc" }}
+      securityContext:
+        fsGroup: 65532
+{{- end }}
       containers:
         - name: backend
           image: '{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}'
@@ -50,6 +60,22 @@ spec:
               value: {{ .Values.telemetry.rateLimitPerMinute | quote }}
             - name: IDENTITY_MODE
               value: {{ .Values.identity.mode | quote }}
+            - name: STAFF_AUTH_MODE
+              value: {{ .Values.staffAuth.mode | quote }}
+{{- if eq .Values.staffAuth.mode "oidc" }}
+            - name: STAFF_PUBLIC_URL
+              value: {{ required "staffAuth.publicURL is required" .Values.staffAuth.publicURL | quote }}
+            - name: STAFF_OIDC_ISSUER
+              value: {{ required "staffAuth.issuer is required" .Values.staffAuth.issuer | quote }}
+            - name: STAFF_OIDC_CLIENT_ID
+              value: {{ required "staffAuth.clientID is required" .Values.staffAuth.clientID | quote }}
+            - name: STAFF_SESSION_LIFETIME
+              value: {{ .Values.staffAuth.sessionLifetime | quote }}
+            - name: STAFF_OIDC_CLIENT_SECRET_FILE
+              value: /run/staff-client/client-secret
+            - name: STAFF_DIRECTORY_FILE
+              value: /run/staff-directory/directory.json
+{{- end }}
             - name: COLLABORATION_PERSISTENCE
               value: {{ .Values.collaboration.persistence | quote }}
             - name: GROUNDED_AI_MODE
@@ -106,6 +132,14 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
           volumeMounts:
+{{- if eq .Values.staffAuth.mode "oidc" }}
+            - name: staff-client
+              mountPath: /run/staff-client
+              readOnly: true
+            - name: staff-directory
+              mountPath: /run/staff-directory
+              readOnly: true
+{{- end }}
             - name: secrets-store
               mountPath: /mnt/secrets-store
               readOnly: true
@@ -114,6 +148,22 @@ spec:
               mountPath: {{ dir .Values.collaboration.sqlite.path | quote }}
 {{- end }}
       volumes:
+{{- if eq .Values.staffAuth.mode "oidc" }}
+        - name: staff-client
+          secret:
+            secretName: {{ required "staffAuth.clientSecret.name is required" .Values.staffAuth.clientSecret.name | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.staffAuth.clientSecret.key | quote }}
+                path: client-secret
+        - name: staff-directory
+          secret:
+            secretName: {{ required "staffAuth.directorySecret.name is required" .Values.staffAuth.directorySecret.name | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.staffAuth.directorySecret.key | quote }}
+                path: directory.json
+{{- end }}
         - name: secrets-store
           csi:
             driver: secrets-store.csi.k8s.io

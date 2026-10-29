@@ -6,6 +6,13 @@ in a portal.
 
 ## Current slice
 
+The authenticated staff pilot adds `/api/v1/staff/*` sign-in/session routes and
+`/api/v1/operations/*` shared response/readiness records. It uses separately
+configured organization/jurisdiction membership and the existing SQLite database,
+not the public evidence APIs or legacy planning-role authorization.
+See [operational coordination](../docs/operational-coordination.md) for workflow,
+deployment, privacy boundaries and persistent handoff metrics.
+
 - `GET /healthz`
 - `GET /api/v1/identity/session`
 - `POST /api/v1/identity/authorization-check`

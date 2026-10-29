@@ -47,6 +47,7 @@ self.addEventListener('fetch', (event) => {
   if (
     request.method !== 'GET' ||
     url.origin !== self.location.origin ||
+    url.pathname.startsWith('/api/') ||
     request.headers.has('Authorization')
   )
     return
