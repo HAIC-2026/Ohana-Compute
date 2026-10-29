@@ -368,6 +368,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     ].filter((preference): preference is string => Boolean(preference))
 
     downloadFieldBriefing({
+      publicArea: { name: area.name, island: area.island },
       place: displayPlace,
       island: area.island,
       hazard: selectedHazard.label,

@@ -21,6 +21,9 @@ in a portal.
 - `POST /api/v1/collaboration/plans/{planID}/planning-drafts/{draftID}/apply`
 - `POST /api/v1/collaboration/plans/{planID}/planning-drafts/{draftID}/reject`
 - `GET /api/v1/sources`
+- `GET /api/v1/sources/health` — bounded process-local public-source retrieval
+  health, freshness and catalog coverage/gaps; no upstream probes or private data.
+  See the [operator runbook](../docs/offline-exercises-source-health.md).
 - `GET /api/v1/events`
 - `GET /api/v1/events/hurricanes`
 - `GET /api/v1/events/tsunami`

@@ -33,6 +33,17 @@ households.
   groups, accessible formats and offline channels inform a reviewed reach plan.
   Download a structured, unsent County AFN annex draft; no message, activation,
   dispatch or approval is sent or recorded.
+- **[Offline continuity, operator health and tabletop exercises](docs/offline-exercises-source-health.md)**:
+  open **Examples → Offline planning**, **Data-source health**, or **Tabletop
+  exercise**. Production builds provide an installable, offline-capable shell,
+  dated public planning snapshots and the five most recent generated public
+  field-packet copies. Offline content is never presented as live; resident
+  locations, support preferences, identity and collaboration are not cached.
+  Source health lists every catalog source with real process-observed retrieval
+  status, cache freshness and known gaps (unqueried is unknown). Two separately
+  labeled, timed EXERCISE scenarios rehearse County-led MAP → MODEL → MATCH
+  without changing live planning state or activating resources.
+
 - **Statewide conversation-first entry**: the default map shows Hawaiʻi's
   islands, not a fictional person. Choose a supported island/community in
   the local guide, inspect source-backed screening and prepare five CMIST

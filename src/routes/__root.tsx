@@ -1,7 +1,9 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 
 import { BrowserTelemetry } from '../lib/browser-telemetry'
+import { ConnectivityStatus } from '../components/ConnectivityStatus'
 import appCss from '../styles.css?url'
+import operationsCss from '../operations.css?url'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -27,6 +29,9 @@ export const Route = createRootRoute({
         rel: 'stylesheet',
         href: appCss,
       },
+      { rel: 'stylesheet', href: operationsCss },
+      { rel: 'manifest', href: '/manifest.webmanifest' },
+      { rel: 'icon', href: '/planner-icon.svg', type: 'image/svg+xml' },
     ],
   }),
   shellComponent: RootDocument,
@@ -50,6 +55,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <BrowserTelemetry />
+        <ConnectivityStatus />
         <div
           hidden
           dangerouslySetInnerHTML={{

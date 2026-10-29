@@ -23,6 +23,7 @@ func operationalStatusHandler(
 			func(observation operationalstatus.SourceObservation) {
 				source := boundedOperationalSource(observation.Source)
 				outcome := boundedOperationalOutcome(observation.Outcome)
+				observeSourceFailure(writer, observation.Source, outcome)
 				metrics.operationalSourceRequests.WithLabelValues(source, outcome).Inc()
 				metrics.operationalSourceDuration.
 					WithLabelValues(source, outcome).

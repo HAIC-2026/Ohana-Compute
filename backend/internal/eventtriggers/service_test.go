@@ -17,6 +17,31 @@ type nwsStub struct {
 	err      error
 }
 
+func TestEmptyFeedsRetainSuccessfulRetrievalProvenance(t *testing.T) {
+	now := time.Now().UTC()
+	service := NewService(Config{
+		NWS: nwsStub{snapshot: nws.Snapshot{Source: nws.SourceStatus{
+			Status: "fresh", RetrievedAt: now, FreshUntil: now.Add(time.Minute),
+		}}},
+		PTWC: ptwcStub{snapshot: ptwc.Snapshot{Source: ptwc.SourceStatus{
+			Status: "fresh", RetrievedAt: now, FreshUntil: now.Add(time.Minute),
+		}}},
+		ComCat: comCatStub{snapshot: usgs.Snapshot{Source: usgs.SourceStatus{
+			Status: "fresh", RetrievedAt: now, FreshUntil: now.Add(time.Minute),
+		}}},
+		HANS: hansStub{snapshot: hans.Snapshot{Status: "unavailable"}},
+	})
+	snapshot, err := service.Snapshot(context.Background())
+	if err != nil || len(snapshot.SourceStates) != 3 {
+		t.Fatalf("empty but successful feeds lost retrieval health: %#v %v", snapshot.SourceStates, err)
+	}
+	for _, source := range snapshot.SourceStates {
+		if source.Status != "fresh" || !source.RetrievedAt.Equal(now) {
+			t.Fatalf("incorrect source provenance: %#v", source)
+		}
+	}
+}
+
 func (stub nwsStub) ActiveAlerts(context.Context) (nws.Snapshot, error) {
 	return stub.snapshot, stub.err
 }

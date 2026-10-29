@@ -175,6 +175,8 @@ func NewServer(config Config) *Server {
 	telemetryLimiter := newTelemetryRateLimiter(config.TelemetryRate, time.Minute)
 
 	mux := http.NewServeMux()
+	sourceHealth := newSourceHealth()
+	mux.Handle("GET /api/v1/sources/health", sourceHealth)
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
@@ -326,7 +328,7 @@ func NewServer(config Config) *Server {
 
 	handler := requestLogger(
 		logger,
-		instrumentHTTP(metrics, cors(config.AllowedOrigins, mux)),
+		instrumentHTTP(metrics, cors(config.AllowedOrigins, sourceHealth.observeRequests(mux))),
 	)
 	return &Server{handler: handler}
 }
@@ -649,6 +651,9 @@ func partnerMatchHandler(
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
+	if observer, ok := writer.(*healthWriter); ok {
+		observer.observe(status, value)
+	}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
