@@ -350,7 +350,7 @@ export function useGeographicEvidenceExpiry(
     ].filter((expiry) => Number.isFinite(expiry) && expiry > now)
     if (!expiries.length) return
     const timeout = window.setTimeout(
-      () => revalidate((version) => version + 1),
+      () => revalidate((currentVersion) => currentVersion + 1),
       Math.min(Math.min(...expiries) - now + 1, 2_147_483_647),
     )
     return () => window.clearTimeout(timeout)

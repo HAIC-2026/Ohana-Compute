@@ -255,18 +255,25 @@ test('planner completes the Map Model Match journey through the Go API', async (
   await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
 
-  const afnContext = page.getByTestId('afn-context')
+  const planningRegion = page.getByLabel('Emergency response planning')
+  const afnContext = planningRegion.getByTestId('afn-context')
   await expect(
     afnContext.getByText('Official public sources available'),
   ).toBeVisible()
   await expect(afnContext).toContainText('4 of 4')
-  await expect(page.getByTestId('afn-disability')).toContainText('320 (13.6%)')
-  await expect(page.getByTestId('afn-language')).toContainText('210 (8.9%)')
-  await expect(page.getByTestId('afn-transportation')).toContainText(
+  await expect(planningRegion.getByTestId('afn-disability')).toContainText(
+    '320 (13.6%)',
+  )
+  await expect(planningRegion.getByTestId('afn-language')).toContainText(
+    '210 (8.9%)',
+  )
+  await expect(planningRegion.getByTestId('afn-transportation')).toContainText(
     '95 (10.1%)',
   )
-  await expect(page.getByTestId('afn-medical-power')).toContainText('27')
-  await expect(page.getByTestId('afn-risk-baseline')).toContainText(
+  await expect(planningRegion.getByTestId('afn-medical-power')).toContainText(
+    '27',
+  )
+  await expect(planningRegion.getByTestId('afn-risk-baseline')).toContainText(
     'National risk baseline: Relatively Moderate',
   )
 
