@@ -715,7 +715,7 @@ func TestResourceDemandEndpointRejectsInvalidAndOversizedBodies(t *testing.T) {
 		{
 			name:        "unknown field",
 			contentType: "application/json",
-			body:        `{"schema_version":"resource-demand-request.v1","unexpected":true}`,
+			body:        `{"schema_version":"resource-demand-request.v2","unexpected":true}`,
 			wantStatus:  http.StatusBadRequest,
 		},
 		{
@@ -1461,8 +1461,15 @@ func TestHTTPMetricsCoverEveryRegisteredEndpoint(t *testing.T) {
 
 func resourceDemandRequestBody() string {
 	return `{
-		"schema_version":"resource-demand-request.v1",
-		"geography":{"id":"oahu-town","kind":"planning_area"},
+		"schema_version":"resource-demand-request.v2",
+		"geography":{"id":"oahu-town","kind":"planning_area","county_id":"honolulu","island_id":"oahu"},
+		"community":{
+			"households":{"status":"available","estimate":900,"margin_of_error":80},
+			"limited_english_population":{"status":"available","estimate":150,"margin_of_error":40},
+			"population_with_disability":{"status":"available","estimate":220,"margin_of_error":50},
+			"population_below_poverty":{"status":"available","estimate":120,"margin_of_error":35},
+			"no_vehicle_households":{"status":"available","estimate":80,"margin_of_error":15}
+		},
 		"population":{
 			"status":"available",
 			"estimate":2361,
@@ -1474,7 +1481,7 @@ func resourceDemandRequestBody() string {
 			"masked":true,
 			"source_id":"hhs-empower"
 		},
-		"scenario":{"service_days":3,"shelter_standard":"evacuation"},
+		"scenario":{"service_days":3,"shelter_standard":"evacuation","hazard":"hurricane","outage_hours":24},
 		"practice_supplies":[
 			{
 				"category":"shelter_spaces",

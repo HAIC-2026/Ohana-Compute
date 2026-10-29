@@ -580,8 +580,7 @@ test('statewide planning catalog failure does not substitute Oahu content', asyn
 
 test('resource demand uses bounded aggregate inputs and explicit unavailable lines', async ({
   page,
-}, testInfo) => {
-  test.skip(!testInfo.project.name.startsWith('desktop'))
+}) => {
   const requests: Array<Record<string, unknown>> = []
   await page.route('**/api/v1/planning/resource-demand', async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>
@@ -599,7 +598,13 @@ test('resource demand uses bounded aggregate inputs and explicit unavailable lin
 
   await openLocalPlanning(page)
   await expect(page.locator('main[data-hydrated="true"]')).toBeVisible()
-  await page.getByRole('button', { name: 'Open response workspace' }).click()
+  if ((page.viewportSize()?.width ?? 1440) <= 900) {
+    await page
+      .getByRole('button', { name: 'Response plan', exact: true })
+      .click()
+  } else {
+    await page.getByRole('button', { name: 'Open response workspace' }).click()
+  }
 
   const planningSheet = page.locator('.planning-sheet:visible')
   const demandPanel = planningSheet.getByTestId('resource-demand')
@@ -608,10 +613,14 @@ test('resource demand uses bounded aggregate inputs and explicit unavailable lin
       name: 'Quantitative resource demand',
     }),
   ).toBeVisible()
-  await expect(demandPanel).toContainText('mass-care-demand-v0.1')
+  await expect(demandPanel).toContainText('mass-care-demand-v0.2')
   await expect(demandPanel).toContainText('Planning service population')
   await expect(demandPanel).toContainText('Unavailable is not zero')
   await expect(demandPanel).toContainText('Medical equipment power continuity')
+  await expect(demandPanel).toContainText('CMIST need matrix')
+  await expect(demandPanel).toContainText('Communication')
+  await expect(demandPanel).toContainText('Transportation')
+  await expect(demandPanel).toContainText('County-published shelter capacity')
 
   await demandPanel.getByLabel('Service duration').selectOption('7')
   await expect(demandPanel).toContainText('7-day meals')

@@ -56,6 +56,7 @@ type SourceStatus struct {
 type Profile struct {
 	Geography              Geography    `json:"geography"`
 	Population             Metric       `json:"population"`
+	Households             Metric       `json:"households"`
 	NoVehicleHouseholds    Metric       `json:"no_vehicle_households"`
 	LimitedEnglish         Metric       `json:"limited_english_population"`
 	Disability             Metric       `json:"population_with_disability"`
@@ -227,6 +228,13 @@ func (client *Client) profileFromValues(geography Geography, detailed, subject m
 			detailed,
 			"B01003_001E",
 			"B01003_001M",
+			"",
+			"",
+		),
+		Households: metric(
+			detailed,
+			"B11001_001E",
+			"B11001_001M",
 			"",
 			"",
 		),

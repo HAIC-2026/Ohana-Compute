@@ -17,8 +17,10 @@ import type {
 type Props = {
   state: ResourceDemandState
   serviceDays: number
+  outageHours: number
   shelterStandard: ResourceDemandStandard
   onServiceDaysChange: (days: number) => void
+  onOutageHoursChange: (hours: number) => void
   onShelterStandardChange: (standard: ResourceDemandStandard) => void
 }
 
@@ -28,6 +30,7 @@ const unitLabels: Record<string, string> = {
   cots: 'cots',
   meals: 'meals',
   liters: 'L',
+  beneficiary_hours: 'beneficiary-hours',
 }
 
 function rangeText(
@@ -42,8 +45,10 @@ function rangeText(
 export function ResourceDemandPanel({
   state,
   serviceDays,
+  outageHours,
   shelterStandard,
   onServiceDaysChange,
+  onOutageHoursChange,
   onShelterStandardChange,
 }: Props) {
   const response = state.response
@@ -54,8 +59,19 @@ export function ResourceDemandPanel({
   const shelterSpaces = findResourceDemandLine(response, 'shelter_spaces')
   const meals = findResourceDemandLine(response, 'meals')
   const water = findResourceDemandLine(response, 'potable_water_liters')
+  const capacityGap = findResourceDemandLine(response, 'shelter_capacity_gap')
+  const addedLines = [
+    'stranded_visitors',
+    'pit_homeless_support',
+    'pet_sheltering',
+    'power_continuity_beneficiary_hours',
+  ]
+  const cohortLines =
+    response?.lines.filter((line) => addedLines.includes(line.id)) ?? []
   const modeledLines =
-    response?.lines.filter((line) => line.status === 'modeled') ?? []
+    response?.lines.filter(
+      (line) => line.status === 'modeled' && !addedLines.includes(line.id),
+    ) ?? []
   const unavailableLines =
     response?.lines.filter((line) => line.status === 'unavailable') ?? []
   const appliedSupply =
@@ -122,6 +138,20 @@ export function ResourceDemandPanel({
           >
             <option value="evacuation">Evacuation · 20 sq ft/person</option>
             <option value="short_term">Short-term · 40–60 sq ft/person</option>
+          </select>
+        </label>
+        <label>
+          <span>Power outage planning window</span>
+          <select
+            value={outageHours}
+            onChange={(event) =>
+              onOutageHoursChange(Number(event.currentTarget.value))
+            }
+          >
+            <option value={12}>12 hours</option>
+            <option value={24}>24 hours</option>
+            <option value={72}>72 hours</option>
+            <option value={168}>7 days</option>
           </select>
         </label>
       </div>
@@ -211,6 +241,77 @@ export function ResourceDemandPanel({
             </span>
           </div>
 
+          <section
+            className="resource-demand-cmist"
+            aria-label="CMIST need estimates"
+          >
+            <h3>CMIST need matrix · {response.scenario.hazard}</h3>
+            <p>
+              Hazard-adjusted planning ranges use aggregate indicators and
+              explicit assumptions. Categories overlap and are not additive.
+            </p>
+            <div>
+              {response.cmist.map((need) => (
+                <article key={need.domain}>
+                  <strong>{need.label}</strong>
+                  <span>
+                    {need.demand
+                      ? rangeText(need.demand, need.unit)
+                      : `Unavailable · ${need.unavailable_reason?.replaceAll('_', ' ') ?? 'source missing'}`}
+                  </span>
+                  <small>{need.basis}</small>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section
+            className="resource-demand-cohorts"
+            aria-label="Additional demand lines"
+          >
+            <h3>Additional demand lines</h3>
+            <div className="resource-demand-lines">
+              {cohortLines.map((line) => (
+                <article key={line.id}>
+                  <div>
+                    <span>{line.label}</span>
+                    <strong>
+                      {line.demand
+                        ? line.demand.planning.toLocaleString()
+                        : 'Unavailable'}
+                    </strong>
+                  </div>
+                  <small>
+                    {line.demand
+                      ? rangeText(line.demand, line.unit)
+                      : line.unavailable_reason?.replaceAll('_', ' ')}
+                  </small>
+                  <em>{line.basis}</em>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section
+            className="resource-demand-capacity"
+            aria-label="County shelter capacity"
+          >
+            <div>
+              <strong>County-published shelter capacity</strong>
+              <span>
+                {response.county_capacity.status === 'published' &&
+                response.county_capacity.capacity !== undefined
+                  ? `${response.county_capacity.capacity.toLocaleString()} ${unitLabels[response.county_capacity.unit] ?? response.county_capacity.unit}`
+                  : 'Not published'}
+              </span>
+            </div>
+            <p>
+              {capacityGap?.unavailable_reason === 'capacity_not_published'
+                ? 'A numeric capacity gap is withheld until a public, current County capacity source exists; practice supply is not County capacity.'
+                : 'Published capacity is compared with modeled demand.'}
+            </p>
+          </section>
+
           <div className="resource-demand-lines">
             {modeledLines.map((line) => (
               <article key={line.id}>
@@ -232,6 +333,15 @@ export function ResourceDemandPanel({
               </article>
             ))}
           </div>
+
+          <section className="resource-demand-service-animals">
+            <strong>Service-animal provisions</strong>
+            <ul>
+              {response.service_animal_provisions.map((provision) => (
+                <li key={provision}>{provision}</li>
+              ))}
+            </ul>
+          </section>
 
           <div className="resource-demand-unavailable">
             <div>
@@ -268,6 +378,7 @@ export function ResourceDemandPanel({
                     <a href={source.url} target="_blank" rel="noreferrer">
                       {source.title}
                     </a>
+                    <small>{source.data_date}</small>
                     <span>{source.use}</span>
                   </li>
                 ))}

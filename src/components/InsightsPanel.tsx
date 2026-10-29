@@ -79,6 +79,7 @@ import {
 import { usePlanningStore } from '../store/planning-store'
 import {
   createResourceDemandRequest,
+  resourceDemandIslandId,
   useResourceDemand,
 } from '../lib/resource-demand'
 import type { ResourceDemandStandard } from '../lib/resource-demand'
@@ -149,6 +150,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
   const [brief, setBrief] = useState<PlanningBrief | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [resourceDemandDays, setResourceDemandDays] = useState(3)
+  const [resourceDemandOutageHours, setResourceDemandOutageHours] = useState(24)
   const [resourceDemandStandard, setResourceDemandStandard] =
     useState<ResourceDemandStandard>('evacuation')
   const eventTriggerState = useEventTriggers()
@@ -246,23 +248,50 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
     () =>
       createResourceDemandRequest({
         areaId: area.id,
+        countyId: countyIdForIsland(area.island),
+        islandId: resourceDemandIslandId(area.island),
+        hazard,
         population: communityProfileState.profile?.acs?.population,
         populationSource: communityProfileState.profile?.acs?.source,
         medicalPower:
           communityProfileState.profile?.empower?.power_dependent_dme,
+        medicalPowerSourceDate:
+          communityProfileState.profile?.empower?.source
+            .upstream_last_modified ??
+          communityProfileState.profile?.empower?.source.retrieved_at,
+        households: communityProfileState.profile?.acs?.households,
+        limitedEnglish:
+          communityProfileState.profile?.acs?.limited_english_population,
+        disability:
+          communityProfileState.profile?.acs?.population_with_disability,
+        belowPoverty:
+          communityProfileState.profile?.acs?.population_below_poverty,
+        noVehicleHouseholds:
+          communityProfileState.profile?.acs?.no_vehicle_households,
         resources: resourceInventory,
         confirmedResourceIds,
         serviceDays: resourceDemandDays,
         shelterStandard: resourceDemandStandard,
+        outageHours: resourceDemandOutageHours,
       }),
     [
       area.id,
+      area.island,
+      hazard,
       communityProfileState.profile?.acs?.population,
       communityProfileState.profile?.acs?.source,
       communityProfileState.profile?.empower?.power_dependent_dme,
+      communityProfileState.profile?.empower?.source.upstream_last_modified,
+      communityProfileState.profile?.empower?.source.retrieved_at,
+      communityProfileState.profile?.acs?.households,
+      communityProfileState.profile?.acs?.limited_english_population,
+      communityProfileState.profile?.acs?.population_with_disability,
+      communityProfileState.profile?.acs?.population_below_poverty,
+      communityProfileState.profile?.acs?.no_vehicle_households,
       confirmedResourceIds,
       resourceDemandDays,
       resourceDemandStandard,
+      resourceDemandOutageHours,
       resourceInventory,
     ],
   )
@@ -742,8 +771,10 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
       <ResourceDemandPanel
         state={resourceDemandState}
         serviceDays={resourceDemandDays}
+        outageHours={resourceDemandOutageHours}
         shelterStandard={resourceDemandStandard}
         onServiceDaysChange={setResourceDemandDays}
+        onOutageHoursChange={setResourceDemandOutageHours}
         onShelterStandardChange={setResourceDemandStandard}
       />
 
@@ -1044,8 +1075,8 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   ) ?? []),
                 ]
                   .filter(
-                    (source, index, sources) =>
-                      sources.indexOf(source) === index,
+                    (source, index, sourceIds) =>
+                      sourceIds.indexOf(source) === index,
                   )
                   .slice(0, 30),
                 outputs: [
@@ -1057,7 +1088,7 @@ export function InsightsPanel({ compact = false }: { compact?: boolean }) {
                   },
                   {
                     stage: 'model',
-                    reference: 'resource-demand.v1',
+                    reference: 'resource-demand.v2',
                     status:
                       resourceDemandState.status === 'ready'
                         ? 'available'

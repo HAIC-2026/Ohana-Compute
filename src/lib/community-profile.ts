@@ -32,6 +32,7 @@ export type CommunityProfile = {
     }
     warnings?: string[]
     population: AggregateMetric
+    households: AggregateMetric
     no_vehicle_households: AggregateMetric
     limited_english_population: AggregateMetric
     population_with_disability: AggregateMetric

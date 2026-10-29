@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises'
 
 import { expect, test } from '@playwright/test'
 
-const backendURL = 'http://127.0.0.1:18080'
+const backendURL =
+  process.env.PLAYWRIGHT_BACKEND_URL ?? 'http://127.0.0.1:18080'
 
 test('anonymous planning stays local while server writes require identity', async ({
   page,
@@ -571,10 +572,35 @@ test('resource demand stays bounded and reproducible', async ({
 }) => {
   const privateValue = 'integration-private-demand-value'
   const modelRequest = {
-    schema_version: 'resource-demand-request.v1',
+    schema_version: 'resource-demand-request.v2',
     geography: {
       id: 'oahu-town',
       kind: 'planning_area',
+      county_id: 'honolulu',
+      island_id: 'oahu',
+    },
+    community: {
+      households: { status: 'available', estimate: 900, margin_of_error: 80 },
+      limited_english_population: {
+        status: 'available',
+        estimate: 150,
+        margin_of_error: 40,
+      },
+      population_with_disability: {
+        status: 'available',
+        estimate: 220,
+        margin_of_error: 50,
+      },
+      population_below_poverty: {
+        status: 'available',
+        estimate: 120,
+        margin_of_error: 35,
+      },
+      no_vehicle_households: {
+        status: 'available',
+        estimate: 80,
+        margin_of_error: 15,
+      },
     },
     population: {
       status: 'available',
@@ -593,6 +619,8 @@ test('resource demand stays bounded and reproducible', async ({
     scenario: {
       service_days: 3,
       shelter_standard: 'evacuation',
+      hazard: 'hurricane',
+      outage_hours: 24,
     },
     practice_supplies: [
       {
@@ -625,11 +653,20 @@ test('resource demand stays bounded and reproducible', async ({
   const second = await secondResponse.json()
   expect(second).toEqual(first)
   expect(first).toMatchObject({
-    schema_version: 'resource-demand-response.v1',
-    model_version: 'mass-care-demand-v0.1',
-    assumption_version: 'hawaii-mass-care-scenario-v0.1',
+    schema_version: 'resource-demand-response.v2',
+    model_version: 'mass-care-demand-v0.2',
+    assumption_version: 'hawaii-mass-care-scenario-v0.2',
     status: 'partial',
   })
+  expect(first.cmist).toHaveLength(5)
+  expect(first.cmist.map((need: { label: string }) => need.label)).toEqual([
+    'Communication',
+    'Medical',
+    'Independence',
+    'Safety & support',
+    'Transportation',
+  ])
+  expect(first.county_capacity).toMatchObject({ status: 'not_published' })
 
   const shelter = first.lines.find(
     (line: { id: string }) => line.id === 'shelter_spaces',
@@ -682,9 +719,12 @@ test('resource demand stays bounded and reproducible', async ({
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const planningSheet = page.locator('.planning-sheet:visible')
   const demandPanel = planningSheet.getByTestId('resource-demand')
-  await expect(demandPanel).toContainText('mass-care-demand-v0.1')
+  await expect(demandPanel).toContainText('mass-care-demand-v0.2')
   await expect(demandPanel).toContainText('Planning service population')
   await expect(demandPanel).toContainText('Unavailable is not zero')
+  await expect(demandPanel).toContainText('CMIST need matrix · hurricane')
+  await expect(demandPanel).toContainText('County-published shelter capacity')
+  await expect(demandPanel).toContainText('Not published')
   const serviceDuration = demandPanel.getByLabel('Service duration')
   await serviceDuration.selectOption('7')
   await serviceDuration.focus()
@@ -705,8 +745,8 @@ test('resource demand stays bounded and reproducible', async ({
   const downloadedPath = await download.path()
   const packet = await readFile(downloadedPath, 'utf8')
   expect(packet).toContain('Quantitative resource demand')
-  expect(packet).toContain('mass-care-demand-v0.1')
-  expect(packet).toContain('hawaii-mass-care-scenario-v0.1')
+  expect(packet).toContain('mass-care-demand-v0.2')
+  expect(packet).toContain('hawaii-mass-care-scenario-v0.2')
   expect(packet).toContain('Unavailable is not zero')
   expect(packet).not.toContain(privateValue)
 

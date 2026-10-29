@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test'
+import type { ResourceDemandRequest } from '../src/lib/resource-demand'
 
 export const communityProfile = {
   acs: {
@@ -8,6 +9,10 @@ export const communityProfile = {
     population: {
       estimate: 2361,
       margin_of_error: 140,
+    },
+    households: {
+      estimate: 900,
+      margin_of_error: 80,
     },
     no_vehicle_households: {
       estimate: 80,
@@ -738,37 +743,7 @@ export const planningAreaCatalog = {
   unsupported_areas: ['Molokaʻi', 'Lānaʻi', 'Niʻihau', 'Kalawao'],
 }
 
-export function resourceDemandFixture(request: {
-  geography: { id: string; kind: 'planning_area' }
-  population:
-    | {
-        status: 'available'
-        estimate: number
-        margin_of_error?: number
-        source: { id: 'acs-5-year'; freshness: 'fresh' | 'stale' }
-      }
-    | {
-        status: 'unavailable'
-        source: { id: 'unavailable'; freshness: 'unavailable' }
-      }
-  medical_power: {
-    status: 'available' | 'unavailable'
-    masked: boolean
-    value?: number
-    source_id: 'hhs-empower' | 'unavailable'
-  }
-  scenario: {
-    service_days: number
-    shelter_standard: 'evacuation' | 'short_term'
-  }
-  practice_supplies: Array<{
-    category: string
-    unit: string
-    quantity: number
-    geography_id: string
-    validation_status: string
-  }>
-}) {
+export function resourceDemandFixture(request: ResourceDemandRequest) {
   const unavailableLine = (
     id: string,
     label: string,
@@ -780,16 +755,14 @@ export function resourceDemandFixture(request: {
     status: 'unavailable',
     unit: 'local_planning_factor',
     basis,
-    evidence: ['mass-care-scenario-v0.1'],
+    evidence: ['mass-care-scenario-v0.2'],
     notes: [],
     unavailable_reason: reason,
   })
   const assessments = request.practice_supplies.map((supply) => {
     const status =
       supply.validation_status === 'practice_confirmed' &&
-      supply.geography_id === request.geography.id &&
-      supply.category === 'shelter_spaces' &&
-      supply.unit === 'people'
+      supply.geography_id === request.geography.id
         ? 'applied'
         : 'excluded'
     return {
@@ -802,9 +775,7 @@ export function resourceDemandFixture(request: {
             reason:
               supply.validation_status !== 'practice_confirmed'
                 ? 'not_confirmed'
-                : supply.geography_id !== request.geography.id
-                  ? 'geography_mismatch'
-                  : 'unit_mismatch',
+                : 'geography_mismatch',
           }
         : {}),
     }
@@ -818,15 +789,38 @@ export function resourceDemandFixture(request: {
 
   if (request.population.status === 'unavailable') {
     return {
-      schema_version: 'resource-demand-response.v1',
-      model_version: 'mass-care-demand-v0.1',
-      assumption_version: 'hawaii-mass-care-scenario-v0.1',
+      schema_version: 'resource-demand-response.v2',
+      model_version: 'mass-care-demand-v0.2',
+      assumption_version: 'hawaii-mass-care-scenario-v0.2',
       calculation_id: 'fixture-unavailable',
       status: 'unavailable',
       geography: request.geography,
       population: request.population,
+      community: request.community,
       scenario: request.scenario,
       assumptions: [],
+      cmist: [
+        ['communication', 'Communication'],
+        ['medical', 'Medical'],
+        ['independence', 'Independence'],
+        ['safety_support', 'Safety & support'],
+        ['transportation', 'Transportation'],
+      ].map(([domain, label]) => ({
+        domain,
+        label,
+        status: 'unavailable',
+        unit: 'people',
+        basis: 'No aggregate input.',
+        evidence: [],
+        unavailable_reason: 'population_unavailable',
+      })),
+      county_capacity: {
+        status: 'not_published',
+        unit: 'people',
+        source_id: 'county-shelter-capacity',
+        notes: [],
+      },
+      service_animal_provisions: ['Plan access with the handler.'],
       lines: [
         unavailableLine(
           'service_population',
@@ -895,17 +889,18 @@ export function resourceDemandFixture(request: {
       high: Math.max(0, demand.high - supply),
     },
     basis: 'Versioned deterministic fixture.',
-    evidence: ['mass-care-scenario-v0.1'],
+    evidence: ['mass-care-scenario-v0.2'],
     notes: [],
   })
 
   return {
-    schema_version: 'resource-demand-response.v1',
-    model_version: 'mass-care-demand-v0.1',
-    assumption_version: 'hawaii-mass-care-scenario-v0.1',
+    schema_version: 'resource-demand-response.v2',
+    model_version: 'mass-care-demand-v0.2',
+    assumption_version: 'hawaii-mass-care-scenario-v0.2',
     calculation_id: `fixture-${request.geography.id}-${request.scenario.service_days}-${appliedShelterSupply}`,
     status: 'partial',
     geography: request.geography,
+    community: request.community,
     population: {
       ...request.population,
       range: population,
@@ -918,7 +913,7 @@ export function resourceDemandFixture(request: {
         unit: 'share_of_aggregate_population',
         values: [0.11, 0.23, 0.35],
         basis: 'Versioned scenario assumption.',
-        evidence: ['mass-care-scenario-v0.1'],
+        evidence: ['mass-care-scenario-v0.2'],
       },
     ],
     lines: [
@@ -929,7 +924,7 @@ export function resourceDemandFixture(request: {
         unit: 'people',
         demand: servicePopulation,
         basis: 'Versioned deterministic fixture.',
-        evidence: ['mass-care-scenario-v0.1'],
+        evidence: ['mass-care-scenario-v0.2'],
         notes: [],
       },
       withGap(
@@ -956,6 +951,36 @@ export function resourceDemandFixture(request: {
       withGap('cots', 'Cots or sleeping places', 'cots', servicePopulation),
       withGap('meals', 'Meal equivalents', 'meals', meals),
       withGap('potable_water_liters', 'Potable water', 'liters', water),
+      withGap(
+        'stranded_visitors',
+        'Visitor shelter and feeding stress test',
+        'people',
+        servicePopulation,
+      ),
+      withGap(
+        'pit_homeless_support',
+        'Point-in-Time homelessness shelter and feeding stress test',
+        'people',
+        servicePopulation,
+      ),
+      withGap(
+        'pet_sheltering',
+        'Pet-sheltering demand stress test',
+        'animal_spaces',
+        servicePopulation,
+      ),
+      withGap(
+        'power_continuity_beneficiary_hours',
+        'Power-dependent DME continuity planning',
+        'beneficiary_hours',
+        servicePopulation,
+      ),
+      unavailableLine(
+        'shelter_capacity_gap',
+        'County-published shelter capacity gap',
+        'capacity_not_published',
+        'No current County capacity source.',
+      ),
       unavailableLine(
         'sanitation_support',
         'Sanitation support',
@@ -989,11 +1014,39 @@ export function resourceDemandFixture(request: {
         'Facility loads and duration are required.',
       ),
       unavailableLine(
-        'pet_service_animal_spaces',
-        'Pet and service-animal spaces',
-        'coefficient_unavailable',
-        'No authorized aggregate factor is available.',
+        'service_animal_population_estimate',
+        'Service-animal population estimate',
+        'service_animal_count_not_published',
+        'No aggregate service-animal count is available.',
       ),
+    ],
+    cmist: [
+      ['communication', 'Communication', 'people', 50],
+      ['medical', 'Medical', 'people', 25],
+      ['independence', 'Independence', 'people', 65],
+      ['safety_support', 'Safety & support', 'people', 18],
+      ['transportation', 'Transportation', 'households', 28],
+    ].map(([domain, label, unit, planning]) => ({
+      domain,
+      label,
+      status: 'modeled',
+      unit,
+      demand: {
+        low: Math.floor(Number(planning) / 2),
+        planning: Number(planning),
+        high: Number(planning) * 2,
+      },
+      basis: 'Explicit hazard-specific aggregate planning assumption.',
+      evidence: ['cmist-planning-assumptions'],
+    })),
+    county_capacity: {
+      status: 'not_published',
+      unit: 'people',
+      source_id: 'county-shelter-capacity',
+      notes: ['Current capacity is not published.'],
+    },
+    service_animal_provisions: [
+      'Plan access and co-location with the handler.',
     ],
     supply_assessments: assessments,
     sources: [
@@ -1002,15 +1055,17 @@ export function resourceDemandFixture(request: {
         title: 'State Emergency Support Function #6 Annex',
         authority: 'Hawaiʻi Emergency Management Agency',
         url: 'https://example.test/sesf6.pdf',
+        data_date: '2025-09-30',
         reviewed_at: '2026-10-26',
         fresh_until: '2027-01-24',
         use: 'Mass-care scope and roles; not a demand forecast.',
       },
       {
-        id: 'mass-care-scenario-v0.1',
+        id: 'mass-care-scenario-v0.2',
         title: 'Hawaiʻi Mass Care Planner scenario assumptions',
         authority: 'Planner model',
         url: 'https://example.test/model',
+        data_date: '2026-10-29',
         reviewed_at: '2026-10-26',
         fresh_until: '2027-01-24',
         use: 'Explicit versioned stress-test assumptions.',

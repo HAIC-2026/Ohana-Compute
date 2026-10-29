@@ -370,6 +370,7 @@ func run() error {
 		GroundedPlanning:  groundedPlanningService,
 		AllowedOrigins: []string{
 			"http://127.0.0.1:3000",
+			"http://127.0.0.1:3102",
 			"http://127.0.0.1:13000",
 			"http://127.0.0.1:13001",
 			os.Getenv("E2E_FRONTEND_ORIGIN"),
@@ -426,6 +427,7 @@ func fixtureProfile() community.Profile {
 				TractFIPS: "15003000120",
 			},
 			Population:          metric(2_361, 100),
+			Households:          metric(900, 80),
 			Disability:          metricWithPercent(320, 40, 13.6),
 			LimitedEnglish:      metricWithPercent(210, 35, 8.9),
 			NoVehicleHouseholds: metricWithPercent(95, 15, 10.1),

@@ -71,6 +71,7 @@ export function buildCommunityProfile(
         estimate: population,
         margin_of_error: 0,
       },
+      households: metric(4_000, 100),
       no_vehicle_households: metric(population, noVehiclePercent),
       limited_english_population: metric(population, limitedEnglishPercent),
       population_with_disability: metric(population, disabilityPercent),

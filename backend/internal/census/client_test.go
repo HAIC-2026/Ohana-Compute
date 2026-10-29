@@ -45,8 +45,8 @@ func TestCommunityProfileCombinesDetailedAndSubjectData(t *testing.T) {
 			}
 
 			_, _ = writer.Write([]byte(`[
-				["NAME","B01003_001E","B01003_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","B16001_099E","B16001_099M","state","county","tract"],
-				["Census Tract 1.20","2361","150","900","80","15","12","84","25","15","003","000120"]
+				["NAME","B01003_001E","B01003_001M","B11001_001E","B11001_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","B16001_099E","B16001_099M","state","county","tract"],
+				["Census Tract 1.20","2361","150","900","80","900","80","15","12","84","25","15","003","000120"]
 			]`))
 		case "/subject":
 			dataRequests.Add(1)
@@ -84,6 +84,10 @@ func TestCommunityProfileCombinesDetailedAndSubjectData(t *testing.T) {
 	if first.Geography.TractFIPS != "15003000120" ||
 		first.Population.Estimate == nil ||
 		*first.Population.Estimate != 2361 ||
+		first.Households.Estimate == nil ||
+		*first.Households.Estimate != 900 ||
+		first.Households.MarginOfError == nil ||
+		*first.Households.MarginOfError != 80 ||
 		first.NoVehicleHouseholds.Percent == nil ||
 		*first.NoVehicleHouseholds.Percent < 1.66 ||
 		second.Source.Status != "fresh" {
@@ -121,8 +125,8 @@ func TestCommunityProfileCoalescesConcurrentCacheMisses(t *testing.T) {
 		case "/detailed":
 			dataRequests.Add(1)
 			_, _ = writer.Write([]byte(`[
-				["NAME","B01003_001E","B01003_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","state","county","tract"],
-				["Census Tract 1.20","2361","150","900","80","15","12","15","003","000120"]
+				["NAME","B01003_001E","B01003_001M","B11001_001E","B11001_001M","B08201_001E","B08201_001M","B08201_002E","B08201_002M","state","county","tract"],
+				["Census Tract 1.20","2361","150","900","80","36","15","12","15","15","003","000120"]
 			]`))
 		case "/subject":
 			dataRequests.Add(1)

@@ -320,17 +320,19 @@ the browser does not substitute an Oʻahu resource or route. Molokaʻi, Lānaʻi
 Niʻihau, and Kalawao remain explicit coverage gaps rather than inferred local
 workflows.
 
-`POST /api/v1/planning/resource-demand` turns an aggregate ACS population,
-its margin of error, a bounded service duration, a shelter standard, and
-unit-matched practice supply into deterministic low/planning/high ranges. The
-versioned v0.1 model covers mass-care service population, shelter spaces and
-floor area, cots, meals, and potable water. Sanitation, role-specific staffing,
-accessible transportation, medical power, refrigeration, oxygen, backup
-power, and animal support remain explicit unavailable or local-assumption
-lines where no defensible statewide coefficient exists. Privacy-masked HHS
-emPOWER values are never converted into numeric demand, and missing evidence is
-never treated as zero. Requests are strict JSON, limited to 64 KiB, use bounded
-enums and quantities, and return `Cache-Control: no-store`.
+`POST /api/v1/planning/resource-demand` extends the existing mass-care model
+with hazard- and county-scoped CMIST stress-test ranges, separate visitor and
+Point-in-Time homelessness demand lines, a national-assumption pet-sheltering
+estimate, and emPOWER outage-duration planning. Dated citations, formulas,
+assumptions, privacy limits, and County-capacity gaps are visible in the
+response workspace; the model never reports unpublished capacity as zero.
+The estimates are not exposure forecasts or allocations, and CMIST categories
+overlap. Sanitation, staffing, exact clinical equipment, and validated
+accessible-vehicle availability remain local planning gaps.
+See [`docs/resource-demand-model.md`](./docs/resource-demand-model.md) for
+source vintages, formulas, and geography limits. Requests use the strict
+`resource-demand-request.v2` contract, are limited to 64 KiB, and return
+`Cache-Control: no-store`.
 
 `GET /api/v1/planning/partner-matches` maps bounded mass-care capability
 enums to curated Hawaiʻi State, County, nonprofit, and coordination roles.
