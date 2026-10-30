@@ -15,7 +15,7 @@ export function OperationsLayout({
         <nav aria-label="Planning tools">
           <Link to="/offline">Offline planning</Link>
           <Link to="/source-health">Source health</Link>
-          <Link to="/exercise">Exercise</Link>
+          <Link to="/lifecycle">Practice lifecycle</Link>
         </nav>
       </header>
       <div className="operations-content">

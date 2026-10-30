@@ -1,4 +1,4 @@
-# Offline continuity, source health and tabletop exercises
+# Offline continuity, source health and practice lifecycle
 
 These features use public aggregate data and synthetic planning scenarios. They
 do not establish a registry, activate a resource, issue an evacuation order, or
@@ -22,8 +22,9 @@ replace County authority. Open them from **Examples** in the planner header.
    connectivity. Browser site-data eviction or clearing removes local copies.
 
 The service worker caches **only** build assets and state-free `/offline` and
-`/exercise` documents. Failed navigation falls back to the offline page, never a
-cached live planner. It does not intercept API data, authenticated responses,
+`/lifecycle` documents. `/exercise` redirects to `/lifecycle` in worker logic
+and redirect responses are never cached. Failed navigation falls back to the
+offline page, never a cached live planner. It does not intercept API data, authenticated responses,
 mutations, map tiles, route searches, free text, identity or collaboration.
 Public views and packets use separate bounded Cache Storage entries. No resident
 coordinates or identifiers are saved. Offline source status is historical, not a
@@ -80,25 +81,24 @@ only timestamps and bounded status. It never stores response bodies, resident
 data, coordinates, request URLs, raw upstream errors or identities. Health
 responses use `Cache-Control: no-store`; no automatic upstream polling is added.
 
-## Exercise facilitation
+## Practice lifecycle facilitation
 
-Open `/exercise`. Choose either **Hurricane approaching Hawaiʻi Island** or
-**Little-notice wildfire on Maui**, then **Start exercise**. Injects arrive at
-T+0 (MAP), T+60s (MODEL), and T+120s (MATCH); the clock pauses at three minutes.
-Use **Pause**, **Resume**, or **Release next inject now** for a facilitated or
-short video walkthrough. Changing scenarios or resetting clears page-only choices.
+Open `/lifecycle`; `/exercise` resolves to the same workspace. The facilitator
+works through 10 Before, 10 During, and 10 After capabilities with one explicit
+T± practice clock. Injects reveal only when the facilitator advances that clock.
+H1, H2, and H3 are immutable local handoffs, not approvals or operating-status
+changes.
 
-Discuss the five CMIST checks, adjust the explicitly synthetic service-duration
-assumption, rehearse the County → State ESF-6 → community-partner handoff and
-identify who verifies the next decision. Supply is unknown, not zero; the example
-water arithmetic is a discussion assumption, not a validated operational standard.
-The exercise never requests live APIs, changes planner state, sends messages,
-creates approvals or activates resources. No individual names or free-text notes
-are accepted. Download the clearly labeled **EXERCISE** discussion record for an
-after-action conversation. Do not use it as an operational plan.
+The workspace accepts only bounded numbers and fixed choices. Unknown aggregate
+need is never zero. Practice partners can record hold, decline, or unknown;
+these categories do not represent capacity, assignment, or resource movement.
+All guidance versions, strict records, and packets remain
+**PRACTICE · UNSENT**. See
+[`practice-lifecycle.md`](practice-lifecycle.md) for all 30 capability IDs,
+boundaries, validation behavior, and the exact demo sequence.
 
-Video beats: `/exercise` → start → CMIST checks → release MODEL → change days →
-release MATCH → County boundary. `/offline` → save public views → disconnect and
+Video beats: `/lifecycle` Before handoff → deterministic During queue and inject
+→ After gates and H3 → strict record / packet → reload persistence →
+`/exercise` compatibility. `/offline` → save public views → disconnect and
 reload → dated **not live** snapshot. `/source-health` → expand a source → last
-successful retrieval / freshness / known gaps. Use deterministic fixture data for
-demos and describe it as such.
+successful retrieval / freshness / known gaps.

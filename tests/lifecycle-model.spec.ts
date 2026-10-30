@@ -1,0 +1,678 @@
+import { expect, test } from '@playwright/test'
+
+import {
+  applyLifecycleAction,
+  capabilityIds,
+  cmistDomains,
+  createInitialLifecycleState,
+  exportLifecycleRecord,
+  generateCloseoutPacket,
+  guidanceBlocks,
+  h1Gates,
+  lifecycleDigest,
+  lifecycleGates,
+  lifecycleGatesMet,
+  parseLifecycleComparison,
+  practiceStamp,
+  restoreLifecycleState,
+  serviceRecordNeedsRecheck,
+} from '../src/lib/practice-lifecycle'
+import type {
+  LifecycleAction,
+  LifecycleState,
+} from '../src/lib/practice-lifecycle'
+
+function apply(state: LifecycleState, action: LifecycleAction) {
+  return applyLifecycleAction(state, action)
+}
+
+function completeLifecycle(startNextCycle = true) {
+  let state = createInitialLifecycleState()
+  state = apply(state, {
+    type: 'lock-event',
+    eventId: 'hurricane-amber',
+  })
+  state = apply(state, {
+    type: 'carry-gap',
+    gapId: 'transportation',
+    owner: 'Planning lead',
+    dueBand: 'T+30',
+  })
+  state = apply(state, {
+    type: 'carry-gap',
+    gapId: 'communication',
+    owner: 'Outreach partner',
+    dueBand: 'T+60',
+  })
+  state = apply(state, {
+    type: 'set-objectives',
+    objectiveIds: ['timing', 'outreach', 'shift'],
+  })
+  state = apply(state, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  state = apply(state, {
+    type: 'choose-assumption',
+    choice: 'comparison',
+    uptakePercent: 20,
+    supportDays: 5,
+  })
+  state = apply(state, {
+    type: 'set-format',
+    format: 'Plain language',
+    state: 'planned',
+    channel: 'trusted voice',
+  })
+  state = apply(state, {
+    type: 'record-evidence',
+    gapId: 'transportation',
+    state: 'practice-reported criteria present',
+    partner: 'Practice Partner A',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Transportation support',
+    state: 'simulated',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Community outreach',
+    state: 'simulated',
+  })
+  state = apply(state, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+  state = apply(state, { type: 'seal-h1' })
+  state = apply(state, { type: 'start-during' })
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Transportation support',
+    state: 'unknown',
+    recheckMinutes: 30,
+  })
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Community outreach',
+    state: 'unavailable',
+    recheckMinutes: 30,
+  })
+  state = apply(state, {
+    type: 'ask-partner',
+    supportItemId: state.supportItems[0].id,
+    partner: 'Practice Partner A',
+    response: 'hold',
+  })
+  state = apply(state, {
+    type: 'ask-partner',
+    supportItemId: state.supportItems[1].id,
+    partner: 'Practice Partner B',
+    response: 'decline',
+  })
+  state = apply(state, {
+    type: 'escalate-item',
+    supportItemId: state.supportItems[1].id,
+    reason: 'all responses declined',
+    owner: 'Mass-care lead',
+    deadlineMinutes: 30,
+  })
+  state = apply(state, {
+    type: 'add-r2',
+    uptakePercent: 25,
+    supportDays: 5,
+  })
+  state = apply(state, { type: 'create-guidance' })
+  state = apply(state, {
+    type: 'freeze-shift',
+    outgoing: 'Facilitator',
+    incoming: 'Recovery lead',
+  })
+  const stale = state.evidence.find((item) => item.state === 'stale')
+  expect(stale).toBeTruthy()
+  state = apply(state, {
+    type: 'replace-evidence',
+    evidenceId: stale!.id,
+    state: 'practice-reported criteria present',
+  })
+  state = apply(state, {
+    type: 'set-support-disposition',
+    supportItemId: state.supportItems[0].id,
+    disposition: 'carried',
+  })
+  state = apply(state, {
+    type: 'set-support-disposition',
+    supportItemId: state.supportItems[1].id,
+    disposition: 'set aside',
+  })
+  state = apply(state, { type: 'seal-h2' })
+  state = apply(state, {
+    type: 'configure-recovery-row',
+    supportItemId: state.recoveryRows[0].supportItemId,
+    horizon: 'next day',
+    state: 'follow-up-ready',
+  })
+  for (const [index, domain] of cmistDomains.entries()) {
+    state = apply(state, {
+      type: 'set-unmet-need',
+      domain,
+      band: index === 0 ? 'Unknown — not zero' : '1–9 aggregate',
+      basis: index === 0 ? 'unknown basis' : 'practice observation',
+      owner: index === 0 ? 'Recovery lead' : null,
+    })
+  }
+  state = apply(state, { type: 'review-holds' })
+  for (const area of state.serviceRecords.map((record) => record.area)) {
+    state = apply(state, {
+      type: 'plan-recheck',
+      area,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+  }
+  for (const [index, block] of guidanceBlocks.entries()) {
+    state = apply(state, {
+      type: 'classify-guidance',
+      block,
+      classification: index % 2 ? 'unknown' : 'carried into recovery draft r1',
+    })
+  }
+  for (const [index, objectiveId] of state.objectives.entries()) {
+    state = apply(state, {
+      type: 'review-objective',
+      objectiveId,
+      disposition: index === 0 ? 'carry-forward' : 'note-only',
+    })
+  }
+  expect(lifecycleGatesMet(state)).toBe(true)
+  state = apply(state, { type: 'decide-gates', decision: 'gates-met' })
+  const beforePin = exportLifecycleRecord(state)
+  state = apply(state, { type: 'pin-comparison', text: beforePin })
+  expect(exportLifecycleRecord(state)).toBe(beforePin)
+  state = apply(state, {
+    type: 'select-packet-sections',
+    sections: [
+      'cycle summary',
+      'handoffs',
+      'recovery register',
+      'objective review',
+    ],
+  })
+  const packet = generateCloseoutPacket(state)
+  expect(packet.text).toContain(practiceStamp)
+  expect(packet.filename).toContain(lifecycleDigest(state))
+  if (startNextCycle) state = apply(state, { type: 'start-next-cycle' })
+  return state
+}
+
+function readyBefore(choice: 'r1' | 'comparison' = 'comparison') {
+  let state = createInitialLifecycleState()
+  state = apply(state, { type: 'lock-event', eventId: 'hurricane-amber' })
+  state = apply(state, {
+    type: 'carry-gap',
+    gapId: 'transportation',
+    owner: 'Planning lead',
+    dueBand: 'T+30',
+  })
+  state = apply(state, {
+    type: 'carry-gap',
+    gapId: 'communication',
+    owner: 'Outreach partner',
+    dueBand: 'T+60',
+  })
+  state = apply(state, { type: 'set-objectives', objectiveIds: ['timing'] })
+  state = apply(state, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  state = apply(state, {
+    type: 'choose-assumption',
+    choice,
+    uptakePercent: 20,
+    supportDays: 5,
+  })
+  state = apply(state, {
+    type: 'record-evidence',
+    gapId: 'transportation',
+    state: 'practice-reported criteria present',
+    partner: 'Practice Partner A',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Transportation support',
+    state: 'simulated',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Community outreach',
+    state: 'simulated',
+  })
+  return apply(state, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+}
+
+function startDuring(choice: 'r1' | 'comparison' = 'comparison') {
+  return apply(apply(readyBefore(choice), { type: 'seal-h1' }), {
+    type: 'start-during',
+  })
+}
+
+function sealH2(state: LifecycleState) {
+  let next = state
+  for (const [index, item] of state.supportItems.entries())
+    next = apply(next, {
+      type: 'set-support-disposition',
+      supportItemId: item.id,
+      disposition: index === 0 ? 'carried' : 'set aside',
+    })
+  return apply(next, { type: 'seal-h2' })
+}
+
+test('all 30 capabilities form one deterministic immutable practice chain', () => {
+  const state = completeLifecycle()
+  expect(state.cycle).toBe(2)
+  expect(state.phase).toBe('before')
+  expect(state.previousCycle?.cycle).toBe(1)
+  expect(state.capabilityMarkers).toEqual(
+    expect.arrayContaining([...capabilityIds]),
+  )
+  expect(new Set(state.capabilityMarkers).size).toBe(30)
+  for (const id of capabilityIds) {
+    expect(state.ledger.some((event) => event.capability === id)).toBe(true)
+  }
+  expect(state.carriedGaps.map((gap) => gap.gapId)).toContain('transportation')
+  expect(state.objectives).toEqual(['timing'])
+})
+
+test('phase actions cannot bypass or mutate sealed handoffs', () => {
+  let state = createInitialLifecycleState()
+  expect(() =>
+    apply(state, {
+      type: 'set-unmet-need',
+      domain: 'Communication',
+      band: 'Unknown — not zero',
+      basis: 'unknown basis',
+      owner: 'Recovery lead',
+    }),
+  ).toThrow(/belongs to the after phase/)
+
+  state = apply(state, {
+    type: 'lock-event',
+    eventId: 'hurricane-amber',
+  })
+  state = apply(state, {
+    type: 'carry-gap',
+    gapId: 'transportation',
+    owner: 'Planning lead',
+    dueBand: 'T+30',
+  })
+  state = apply(state, {
+    type: 'set-objectives',
+    objectiveIds: ['timing'],
+  })
+  state = apply(state, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  state = apply(state, {
+    type: 'choose-assumption',
+    choice: 'r1',
+    uptakePercent: 10,
+    supportDays: 3,
+  })
+  state = apply(state, {
+    type: 'set-format',
+    format: 'Plain language',
+    state: 'planned',
+    channel: 'trusted voice',
+  })
+  state = apply(state, {
+    type: 'record-evidence',
+    gapId: 'transportation',
+    state: 'practice-reported criteria present',
+    partner: 'Practice Partner A',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Transportation support',
+    state: 'simulated',
+  })
+  state = apply(state, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+  state = apply(state, { type: 'seal-h1' })
+  const sealedDigest = state.h1?.digest
+  expect(() =>
+    apply(state, {
+      type: 'set-objectives',
+      objectiveIds: ['outreach'],
+    }),
+  ).toThrow(/H1 is immutable/)
+  expect(state.h1?.digest).toBe(sealedDigest)
+
+  state = apply(state, { type: 'start-during' })
+  expect(() =>
+    apply(state, {
+      type: 'set-timing',
+      warningMinutes: 30,
+      preparationMinutes: 30,
+    }),
+  ).toThrow(/belongs to the before phase/)
+})
+
+test('strict persistence and comparison reject extra and duplicate fields', () => {
+  const state = completeLifecycle()
+  const restored = restoreLifecycleState(JSON.stringify(state))
+  expect(restored).toEqual(state)
+
+  const exported = exportLifecycleRecord(state)
+  expect(parseLifecycleComparison(exported).digest).toBe(lifecycleDigest(state))
+  expect(() =>
+    parseLifecycleComparison(
+      exported.replace('"schema"', '"schema":"bad","schema"'),
+    ),
+  ).toThrow(/Duplicate JSON fields/)
+  expect(() =>
+    parseLifecycleComparison(
+      JSON.stringify({
+        ...JSON.parse(exported),
+        extra: 'not allowed',
+      }),
+    ),
+  ).toThrow(/exact schema/)
+  const nestedExtra = JSON.parse(exported)
+  nestedExtra.carriedGaps[0].extra = 'not allowed'
+  expect(() => parseLifecycleComparison(JSON.stringify(nestedExtra))).toThrow(
+    /exact schema/,
+  )
+})
+
+test('exports and packets preserve practice boundaries', () => {
+  const state = completeLifecycle(false)
+  const output = `${exportLifecycleRecord(state)}\n${generateCloseoutPacket(state).text}`
+  expect(output).toContain(practiceStamp)
+  expect(output).toContain('Unknown — not zero')
+  expect(output).not.toMatch(
+    /\b(open|passable|restored|normal|contained|resumed|approved|verified|confirmed|activated|dispatched|accepted|acknowledged|released|closed|cleared|all-clear)\b/i,
+  )
+  expect(output).not.toMatch(
+    /(Hawaiʻi County|Maui County|Honolulu|HI-EMA|DHS|Red Cross)/,
+  )
+  expect(output).not.toMatch(/(name|address|phone|email|latitude|longitude)/i)
+})
+
+test('superseded evidence stays traceable as the practice clock advances', () => {
+  let state = apply(startDuring(), { type: 'advance-clock', minutes: 60 })
+  const original = state.evidence[0]
+  expect(original.state).toBe('stale')
+  state = apply(state, {
+    type: 'replace-evidence',
+    evidenceId: original.id,
+    state: 'unknown',
+  })
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  const [superseded, replacement] = state.evidence
+  expect(superseded).toMatchObject({ id: original.id, state: 'superseded' })
+  expect(replacement).toMatchObject({ supersedes: original.id, state: 'stale' })
+  expect(() =>
+    apply(state, {
+      type: 'replace-evidence',
+      evidenceId: original.id,
+      state: 'unknown',
+    }),
+  ).toThrow(/stale current evidence/)
+  state = apply(state, {
+    type: 'replace-evidence',
+    evidenceId: replacement.id,
+    state: 'practice-reported criteria present',
+  })
+  expect(state.evidence.map((item) => item.state)).toEqual([
+    'superseded',
+    'superseded',
+    'practice-reported criteria present',
+  ])
+})
+
+test('held items that were set aside do not block hold review', () => {
+  let state = startDuring()
+  for (const item of state.supportItems)
+    state = apply(state, {
+      type: 'ask-partner',
+      supportItemId: item.id,
+      partner: 'Practice Partner A',
+      response: 'hold',
+    })
+  state = apply(sealH2(state), { type: 'review-holds' })
+  const carriedId = state.recoveryRows[0].supportItemId
+  expect(state.holdReview.refusedItemIds).toEqual([carriedId])
+  state = apply(state, {
+    type: 'configure-recovery-row',
+    supportItemId: carriedId,
+    horizon: 'next day',
+    state: 'follow-up-ready',
+  })
+  state = apply(state, { type: 'review-holds' })
+  expect(state.holdReview.refusedItemIds).toEqual([])
+  expect(lifecycleGates(state).holds).toBe(true)
+})
+
+test('the recovery draft gate needs every guidance block classified', () => {
+  let state = sealH2(apply(startDuring(), { type: 'create-guidance' }))
+  const reversed = [...guidanceBlocks].reverse()
+  state = apply(state, {
+    type: 'classify-guidance',
+    block: reversed[0],
+    classification: 'withdrawn',
+  })
+  expect(state.recoveryDraft?.classifications).toEqual({
+    [reversed[0]]: 'withdrawn',
+  })
+  expect(lifecycleGates(state).recoveryDraft).toBe(false)
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+  for (const block of reversed.slice(1))
+    state = apply(state, {
+      type: 'classify-guidance',
+      block,
+      classification: 'unknown',
+    })
+  expect(Object.keys(state.recoveryDraft?.classifications ?? {})).toEqual([
+    ...guidanceBlocks,
+  ])
+  expect(lifecycleGates(state).recoveryDraft).toBe(true)
+})
+
+test('escalation needs a blocked or overdue item with a matching reason', () => {
+  let state = startDuring()
+  const [first, second] = state.supportItems
+  const escalate = (
+    current: LifecycleState,
+    supportItemId: string,
+    reason: Extract<LifecycleAction, { type: 'escalate-item' }>['reason'],
+  ) =>
+    apply(current, {
+      type: 'escalate-item',
+      supportItemId,
+      reason,
+      owner: 'Mass-care lead',
+      deadlineMinutes: 30,
+    })
+  expect(() => escalate(state, first.id, 'evidence needs review')).toThrow(
+    /blocked or overdue/,
+  )
+  expect(() => escalate(state, first.id, 'overdue')).toThrow(
+    /blocked or overdue/,
+  )
+  state = apply(state, {
+    type: 'ask-partner',
+    supportItemId: second.id,
+    partner: 'Practice Partner B',
+    response: 'decline',
+  })
+  expect(() => escalate(state, second.id, 'overdue')).toThrow(
+    /blocked or overdue/,
+  )
+  expect(
+    escalate(state, second.id, 'all responses declined').supportItems[1]
+      .escalation?.reason,
+  ).toBe('all responses declined')
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  expect(first.dueMinute).toBeLessThan(state.practiceMinute)
+  expect(
+    escalate(state, first.id, 'overdue').supportItems[0].escalation
+      ?.deadlineMinute,
+  ).toBe(state.practiceMinute + 30)
+  expect(
+    escalate(state, first.id, 'evidence needs review').supportItems[0]
+      .escalation?.reason,
+  ).toBe('evidence needs review')
+})
+
+test('condition reports become stale and then need a recheck', () => {
+  let state = startDuring()
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Transportation support',
+    state: 'condition reported',
+    recheckMinutes: 30,
+  })
+  expect(
+    serviceRecordNeedsRecheck(state.serviceRecords[0], state.practiceMinute),
+  ).toBe(false)
+  state = apply(state, { type: 'advance-clock', minutes: 30 })
+  expect(
+    serviceRecordNeedsRecheck(state.serviceRecords[0], state.practiceMinute),
+  ).toBe(true)
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Community outreach',
+    state: 'condition reported',
+    recheckMinutes: 60,
+  })
+  state = sealH2(state)
+  expect(lifecycleGates(state).rechecks).toBe(false)
+  expect(() =>
+    apply(state, {
+      type: 'plan-recheck',
+      area: 'Community outreach',
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    }),
+  ).toThrow(/stale, unknown, or unavailable/)
+  state = apply(state, {
+    type: 'plan-recheck',
+    area: 'Transportation support',
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(lifecycleGates(state).rechecks).toBe(true)
+  expect(state.serviceRecords.map((record) => record.state)).toEqual([
+    'condition reported',
+    'condition reported',
+  ])
+})
+
+test('injects in unavailable areas block the Before handoff', () => {
+  let state = apply(readyBefore(), {
+    type: 'schedule-inject',
+    stage: 'MODEL',
+    minute: 30,
+    area: 'Community outreach',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Community outreach',
+    state: 'unavailable',
+  })
+  expect(h1Gates(state).inject).toBe(false)
+  expect(() => apply(state, { type: 'seal-h1' })).toThrow(/Before handoff gate/)
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Community outreach',
+    state: 'simulated',
+  })
+  expect(h1Gates(state).inject).toBe(true)
+  expect(apply(state, { type: 'seal-h1' }).h1).not.toBeNull()
+})
+
+test('r2 is compared with the sealed assumption revision', () => {
+  for (const [choice, delta] of [
+    ['comparison', 375],
+    ['r1', 1425],
+  ] as const) {
+    let state = apply(startDuring(choice), {
+      type: 'advance-clock',
+      minutes: 15,
+    })
+    state = apply(state, { type: 'add-r2', uptakePercent: 25, supportDays: 5 })
+    expect(state.assumptions.r2?.demandDeltaFromSealed).toBe(delta)
+    expect(state.ledger.at(-1)?.summary).toContain(`sealed ${choice}`)
+  }
+})
+
+test('packet sections are canonical regardless of selection order', () => {
+  const state = completeLifecycle(false)
+  const forward = apply(state, {
+    type: 'select-packet-sections',
+    sections: ['handoffs', 'objective review'],
+  })
+  const reverse = apply(state, {
+    type: 'select-packet-sections',
+    sections: ['objective review', 'handoffs', 'handoffs'],
+  })
+  expect(reverse.packetSections).toEqual(['handoffs', 'objective review'])
+  expect(lifecycleDigest(reverse)).toBe(lifecycleDigest(forward))
+  expect(generateCloseoutPacket(reverse).filename).toBe(
+    `practice-closeout-${lifecycleDigest(forward)}-PRACTICE-UNSENT.txt`,
+  )
+  expect(() =>
+    apply(state, { type: 'select-packet-sections', sections: [] }),
+  ).toThrow(/at least one/)
+})
+
+test('H3 refuses a gates-met decision after gate inputs regress', () => {
+  let state = completeLifecycle(false)
+  state = apply(state, {
+    type: 'configure-recovery-row',
+    supportItemId: state.recoveryRows[0].supportItemId,
+    horizon: 'next day',
+    state: 'pending',
+  })
+  expect(lifecycleGatesMet(state)).toBe(false)
+  expect(() => apply(state, { type: 'start-next-cycle' })).toThrow(
+    /record the gate decision again/,
+  )
+  state = apply(state, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  expect(apply(state, { type: 'start-next-cycle' }).cycle).toBe(2)
+})
+
+test('restore rejects malformed ledger and comparison metadata', () => {
+  const saved = JSON.parse(JSON.stringify(completeLifecycle(false)))
+  expect(saved.comparison).not.toBeNull()
+  const reject = (patch: Record<string, unknown>) =>
+    expect(() =>
+      restoreLifecycleState(JSON.stringify({ ...saved, ...patch })),
+    ).toThrow(/failed validation/)
+  reject({ ledger: 'not a ledger' })
+  reject({ ledger: [{ ...saved.ledger[0], extra: true }] })
+  reject({ ledger: [{ ...saved.ledger[0], capability: 'Z99' }] })
+  reject({ comparison: { ...saved.comparison, digest: 1 } })
+  reject({ comparison: { ...saved.comparison, extra: true } })
+  expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
+})

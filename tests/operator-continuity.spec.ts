@@ -49,10 +49,11 @@ test('public views survive offline reload without presenting live data', async (
   ).toBeVisible()
   await page.goto('/exercise')
   await expect(
-    page.getByText('EXERCISE ONLY · SYNTHETIC SCENARIO · NOT LIVE', {
-      exact: true,
+    page.getByRole('heading', {
+      name: 'Practice the complete event lifecycle',
     }),
   ).toBeVisible()
+  await expect(page).toHaveURL(/\/lifecycle$/)
   const cachedURLs = await page.evaluate(async () =>
     (
       await Promise.all(
@@ -74,7 +75,7 @@ test('public views survive offline reload without presenting live data', async (
   })
 })
 
-test('timed exercises isolate synthetic choices and preserve County authority', async ({
+test('practice lifecycle isolates local choices and uses deterministic time', async ({
   page,
 }) => {
   const apiCalls: string[] = []
@@ -85,57 +86,25 @@ test('timed exercises isolate synthetic choices and preserve County authority', 
     )
       apiCalls.push(request.url())
   })
-  await page.clock.install()
   await page.goto('/exercise')
-  await expect(
-    page.getByRole('heading', { name: 'Practice before the next disaster' }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Start exercise' }).click()
-  await expect(
-    page.getByRole('heading', { name: 'MAP: Locate needs and barriers' }),
-  ).toBeVisible()
-  await page.getByLabel(/C: identify trusted/).check()
-  await page.clock.fastForward(61_000)
-  await expect(
-    page.getByRole('heading', { name: 'MODEL: Make assumptions visible' }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: 'Pause exercise' }).click()
-  const clock = await page.getByLabel('Exercise clock').innerText()
-  await page.clock.fastForward(61_000)
-  await expect(page.getByLabel('Exercise clock')).toHaveText(clock)
-  await page.getByLabel('Exercise service duration').selectOption('7')
-  await expect(page.getByText('2520 gallons for discussion')).toBeVisible()
-  await page.getByRole('button', { name: 'Release next inject now' }).click()
+  await expect(page).toHaveURL(/\/lifecycle$/)
   await expect(
     page.getByRole('heading', {
-      name: 'MATCH: Coordinate without overpromising',
+      name: 'Practice the complete event lifecycle',
     }),
   ).toBeVisible()
-  await page.getByLabel(/We have identified County authority/).check()
-  const downloadPromise = page.waitForEvent('download')
   await page
-    .getByRole('button', { name: 'Download EXERCISE discussion record' })
+    .locator('[data-capability="B01"]')
+    .getByRole('button', { name: 'Lock practice event' })
     .click()
-  const download = await downloadPromise
-  expect(download.suggestedFilename()).toContain('EXERCISE-hurricane-hawaii')
-  const record = await readFile(await download.path(), 'utf8')
-  expect(record).toContain('NOT AN ORDER OR DISPATCH')
-  expect(record).toContain('Verified supply is unknown')
-  await page
-    .getByRole('combobox', { name: 'Exercise scenario', exact: true })
-    .selectOption('1')
+  await expect(page.getByText('Cycle 1 · Practice Event Amber')).toBeVisible()
   await expect(
-    page.getByRole('button', { name: 'Start exercise' }),
+    page.getByLabel('Lifecycle status').getByText('T-60'),
   ).toBeVisible()
-  await page.getByRole('button', { name: 'Start exercise' }).click()
-  await expect(
-    page.getByText(/Fictional smoke threatens a West Maui/),
-  ).toBeVisible()
-  await expect(page.getByLabel(/C: prepare plain-language/)).not.toBeChecked()
-  await page.getByRole('button', { name: 'Release next inject now' }).click()
-  await expect(page.getByLabel('Exercise service duration')).toHaveValue('3')
   expect(apiCalls).toEqual([])
-  expect(await page.evaluate(() => localStorage.length)).toBe(0)
+  expect(
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v1')),
+  ).not.toBeNull()
   await expect(page.locator('body')).toHaveJSProperty(
     'scrollWidth',
     await page.locator('body').evaluate((body) => body.clientWidth),
