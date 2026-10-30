@@ -492,3 +492,23 @@ test('lifecycle has no forbidden controls, free-text operational fields, or real
     page.getByRole('region', { name: 'FEMA-reported shelter context' }),
   ).toContainText('Honolulu')
 })
+
+test('reset removes failed v3 migration state durably', async ({ page }) => {
+  await page.goto('/lifecycle')
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('practice-lifecycle.v3', '{"schema":"broken"}')
+  })
+  await page.reload()
+  await expect(
+    page.getByText(/Reset to start a new local practice cycle/),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Reset lifecycle' }).click()
+  expect(
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+  ).toBeNull()
+  await page.reload()
+  await expect(
+    page.getByText(/Reset to start a new local practice cycle/),
+  ).toHaveCount(0)
+})

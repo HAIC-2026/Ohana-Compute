@@ -1741,6 +1741,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               window.localStorage.removeItem(lifecycleStorageKey)
               window.localStorage.removeItem(legacyLifecycleStorageKey)
               window.localStorage.removeItem(v2LifecycleStorageKey)
+              window.localStorage.removeItem(v3LifecycleStorageKey)
               setRestoreFailed(false)
               stateRef.current = initial
               setState(initial)

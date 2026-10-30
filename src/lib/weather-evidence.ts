@@ -353,7 +353,9 @@ function projectedEvaluation(
     algorithmVersion: reading.algorithmVersion,
     applicability: applicability.result,
     reason: applicability.reason,
-    basis: product.applicability_basis ?? 'none',
+    basis:
+      product.applicability_basis ??
+      (product.geometry.status === 'absent' ? 'none' : 'inline_geometry'),
     coverage: applicability.coverage,
     zones,
   }
@@ -383,6 +385,171 @@ function projectedValidity(
   if (sent > now || expires <= sent || expires <= effective) return 'unknown'
   if (now >= expires) return 'expired'
   return now < effective ? 'not_yet_effective' : 'current'
+}
+
+function projectedRelationship(
+  messageType: string | null,
+): NWSProduct['relationship'] {
+  switch (messageType) {
+    case 'Alert':
+      return 'initial'
+    case 'Update':
+      return 'update'
+    case 'Cancel':
+      return 'cancel'
+    case 'Ack':
+      return 'acknowledgement'
+    case 'Error':
+      return 'error'
+    default:
+      return 'unknown'
+  }
+}
+
+function projectedEligibility(
+  product: WeatherProductRevision,
+): NWSProduct['eligibility'] {
+  if (product.status !== 'Actual')
+    return ['Test', 'Exercise', 'Draft', 'System'].includes(
+      product.status ?? '',
+    )
+      ? 'non_actual'
+      : 'unknown'
+  if (product.scope !== 'Public')
+    return ['Restricted', 'Private'].includes(product.scope ?? '')
+      ? 'non_public'
+      : 'unknown'
+  if (product.messageType === 'Cancel') return 'cancellation'
+  if (['Ack', 'Error'].includes(product.messageType ?? '')) return 'protocol'
+  if (
+    ['Alert', 'Update'].includes(product.messageType ?? '') &&
+    product.id &&
+    product.url
+  )
+    return 'eligible'
+  return 'unknown'
+}
+
+function storedZoneApplicability(evaluation: WeatherEvaluation, now: number) {
+  let inside = false
+  let boundary = false
+  let incomplete = false
+  let pending = false
+  let completeOutside = true
+  for (const zone of evaluation.zones) {
+    if (zone.state === 'pending') {
+      pending = true
+      incomplete = true
+      completeOutside = false
+    } else if (!zoneFresh(zone, now)) {
+      incomplete = true
+      completeOutside = false
+    } else if (zone.result === 'inside' && zone.reason === 'strict_interior') {
+      inside = true
+      completeOutside = false
+    } else if (zone.result === 'unknown' && zone.reason === 'boundary') {
+      boundary = true
+      completeOutside = false
+    } else if (zone.result !== 'outside' || zone.reason !== 'strict_exterior') {
+      incomplete = true
+      completeOutside = false
+    }
+  }
+  if (inside)
+    return {
+      applicability: 'inside' as const,
+      reason: 'strict_interior' as const,
+      coverage: pending
+        ? ('pending' as const)
+        : incomplete
+          ? 'partial'
+          : 'complete',
+    }
+  if (completeOutside)
+    return {
+      applicability: 'outside' as const,
+      reason: 'strict_exterior' as const,
+      coverage: 'complete' as const,
+    }
+  if (!incomplete && boundary)
+    return {
+      applicability: 'unknown' as const,
+      reason: 'boundary' as const,
+      coverage: 'complete' as const,
+    }
+  return {
+    applicability: 'unknown' as const,
+    reason: pending ? ('zone_pending' as const) : ('zone_incomplete' as const),
+    coverage: pending ? ('pending' as const) : ('partial' as const),
+  }
+}
+
+function validStoredEvaluation(
+  product: WeatherProductRevision,
+  evaluation: WeatherEvaluation,
+  evaluatedAt: number,
+) {
+  if (
+    product.relationship !== projectedRelationship(product.messageType) ||
+    product.eligibility !== projectedEligibility(product)
+  )
+    return false
+  if (evaluation.basis === 'affected_zones') {
+    const affected = product.affectedZones.map(zoneIdentity)
+    const evaluated = evaluation.zones.map((zone) =>
+      zoneIdentity({ url: zone.url, id: zone.id, type: zone.type }),
+    )
+    const expected = storedZoneApplicability(evaluation, evaluatedAt)
+    return (
+      affected.length > 0 &&
+      affected.length === evaluated.length &&
+      affected.every((identity, index) => identity === evaluated[index]) &&
+      evaluation.applicability === expected.applicability &&
+      evaluation.reason === expected.reason &&
+      evaluation.coverage === expected.coverage
+    )
+  }
+  if (evaluation.zones.length || evaluation.coverage !== null) return false
+  if (evaluation.basis === 'none')
+    return (
+      product.geometry.status === 'absent' &&
+      evaluation.applicability === 'unknown' &&
+      evaluation.reason === 'no_polygon'
+    )
+  switch (evaluation.reason) {
+    case 'strict_interior':
+      return (
+        evaluation.applicability === 'inside' &&
+        product.geometry.status === 'valid'
+      )
+    case 'strict_exterior':
+      return (
+        evaluation.applicability === 'outside' &&
+        product.geometry.status === 'valid'
+      )
+    case 'boundary':
+      return (
+        evaluation.applicability === 'unknown' &&
+        product.geometry.status === 'valid'
+      )
+    case 'unsupported':
+      return (
+        evaluation.applicability === 'unknown' &&
+        ['unsupported', 'too_large'].includes(product.geometry.status)
+      )
+    case 'invalid_topology':
+      return (
+        evaluation.applicability === 'unknown' &&
+        ['valid', 'invalid'].includes(product.geometry.status)
+      )
+    case 'bad_point':
+      return (
+        evaluation.applicability === 'unknown' &&
+        product.geometry.status !== 'absent'
+      )
+    default:
+      return false
+  }
 }
 
 function evaluationDigest(evaluation: WeatherEvaluation) {
@@ -456,6 +623,19 @@ export function createAcceptedWeatherEvidence(
     reviewed.product,
     Date.parse(acceptedAt),
   )
+  const queryProduct = projectedProduct(matching[0])
+  const queryEvaluation = projectedEvaluation(
+    reviewed.reading,
+    matching[0],
+    Date.parse(acceptedAt),
+  )
+  if (
+    productDigest(product) !== productDigest(queryProduct) ||
+    evaluationDigest(evaluation) !== evaluationDigest(queryEvaluation)
+  )
+    throw new Error(
+      'The reviewed weather revision no longer matches the exact query revision.',
+    )
   const contents = {
     id: `WA-${cycle}-${index + 1}`,
     cycle,
@@ -497,8 +677,10 @@ function referenceMatches(
   accepted: AcceptedWeatherEvidence,
 ) {
   const identity =
-    reference.identifier === accepted.product.id ||
-    reference.url === accepted.product.url
+    (reference.identifier !== null || reference.url !== null) &&
+    (reference.identifier === null ||
+      reference.identifier === accepted.product.id) &&
+    (reference.url === null || reference.url === accepted.product.url)
   return (
     identity &&
     (reference.sender === null ||
@@ -512,8 +694,10 @@ function projectedReferenceMatches(
   accepted: AcceptedWeatherEvidence,
 ) {
   const identity =
-    reference.identifier === accepted.product.id ||
-    reference.url === accepted.product.url
+    (reference.identifier !== null || reference.url !== null) &&
+    (reference.identifier === null ||
+      reference.identifier === accepted.product.id) &&
+    (reference.url === null || reference.url === accepted.product.url)
   return (
     identity &&
     (reference.sender === null ||
@@ -1025,6 +1209,7 @@ export function validAcceptedWeatherEvidence(
     Date.parse(value.observation.freshUntil) <= Date.parse(value.acceptedAt) ||
     value.observation.validity !==
       projectedValidity(product, Date.parse(value.acceptedAt)) ||
+    !validStoredEvaluation(product, evaluation, Date.parse(value.acceptedAt)) ||
     value.productDigest !== productDigest(product) ||
     value.evaluationDigest !== evaluationDigest(evaluation)
   )
@@ -1112,6 +1297,11 @@ export function validWeatherRecords(
         ]) &&
           validWeatherProductRevision(row.observed.product) &&
           validWeatherEvaluation(row.observed.evaluation) &&
+          validStoredEvaluation(
+            row.observed.product,
+            row.observed.evaluation,
+            Date.parse(row.checkedAt),
+          ) &&
           row.observed.productDigest === productDigest(row.observed.product) &&
           row.observed.evaluationDigest ===
             evaluationDigest(row.observed.evaluation))
