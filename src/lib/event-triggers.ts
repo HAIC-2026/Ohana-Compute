@@ -217,6 +217,7 @@ export function currentEventTrigger(
   unavailable = false,
 ): EventTrigger {
   let lifecycle = trigger.lifecycle
+  let planningConsequence: string | undefined
   if (trigger.source === 'nws') {
     const validity = trigger.nws_product
       ? nwsProductValidity(trigger.nws_product, now)
@@ -224,22 +225,28 @@ export function currentEventTrigger(
     const eligibility = trigger.nws_product
       ? nwsEligibility(trigger.nws_product)
       : 'unknown'
+    const retrieval = retrievalState(
+      {
+        status: trigger.provenance.source_status,
+        retrieved_at: trigger.provenance.retrieved_at,
+        fresh_until: trigger.provenance.fresh_until,
+      },
+      now,
+      unavailable,
+    )
     lifecycle =
       validity === 'expired'
         ? 'expired'
         : validity !== 'current' || eligibility !== 'eligible'
           ? 'unavailable'
-          : retrievalState(
-                {
-                  status: trigger.provenance.source_status,
-                  retrieved_at: trigger.provenance.retrieved_at,
-                  fresh_until: trigger.provenance.fresh_until,
-                },
-                now,
-                unavailable,
-              ) === 'fresh'
+          : retrieval === 'fresh'
             ? trigger.lifecycle
             : 'stale'
+    planningConsequence =
+      `Retained NWS product validity: ${validity.replaceAll('_', ' ')}. ` +
+      `Message eligibility: ${eligibility.replaceAll('_', ' ')}. ` +
+      `Retrieval: ${retrieval}. Planning-location applicability: unknown. ` +
+      'Verify the official source; this is not an all-clear.'
   } else if (
     trigger.provenance.expires_at &&
     now >= Date.parse(trigger.provenance.expires_at)
@@ -259,7 +266,8 @@ export function currentEventTrigger(
     lifecycle,
     planning_state: 'unavailable',
     planning_consequence:
-      'Not a current warning for this location. Verify the official source; this is not an all-clear.',
+      planningConsequence ??
+      `Source evidence status: ${lifecycle}. Verify the official source; this is not an all-clear.`,
   }
 }
 

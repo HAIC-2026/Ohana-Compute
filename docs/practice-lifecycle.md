@@ -192,6 +192,10 @@ legal order, passability, restoration, containment, or all-clear is computed
 from NWS fields. The legacy event-trigger panel also re-evaluates wall-time
 expiry and eligibility, refreshes instead of caching forever, and retains
 validated last-known source facts when a later payload is malformed or fails.
+Its retained-product summary reports product validity, message eligibility,
+retrieval state, and unknown planning-location applicability separately.
+Offline, failed, or stale retrieval does not prove product expiration or local
+inapplicability; even an expired product is not a local all-clear.
 
 ### Deliberately blocked domains and next slices
 

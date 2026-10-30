@@ -170,7 +170,9 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
                   <span>
                     {trigger.lifecycle === 'active'
                       ? planningLabels[trigger.planning_state]
-                      : `Not current · ${trigger.lifecycle}`}
+                      : trigger.source === 'nws'
+                        ? 'Retained product'
+                        : `Not current · ${trigger.lifecycle}`}
                   </span>
                 </button>
               )
@@ -181,7 +183,9 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
             <div className="event-trigger-title">
               <div>
                 <span className={`is-${selected.lifecycle}`}>
-                  {selected.lifecycle}
+                  {selected.source === 'nws' && selected.lifecycle !== 'active'
+                    ? 'Retained product'
+                    : selected.lifecycle}
                 </span>
                 <span>{selected.hazard_event_kind.replaceAll('_', ' ')}</span>
               </div>

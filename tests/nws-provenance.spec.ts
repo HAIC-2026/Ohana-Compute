@@ -107,6 +107,65 @@ test('actual public Alert/Update eligibility is never conferred by warning title
   expect(currentEventTrigger(trigger, now, true).lifecycle).toBe('stale')
 })
 
+for (const retrieval of ['unavailable', 'stale'] as const) {
+  test(`retained current product wording separates ${retrieval} retrieval from unknown applicability`, () => {
+    const snapshot = weatherLegacySnapshot({
+      ...nwsProduct(),
+      expires: '2026-10-30T19:00:00Z',
+    })
+    const parsed = parseEventTriggerSnapshotJSON(JSON.stringify(snapshot))
+    const trigger = currentEventTrigger(
+      parsed.triggers[0],
+      retrieval === 'stale' ? now + 300_000 : now,
+      retrieval === 'unavailable',
+    )
+    expect(trigger.lifecycle).toBe('stale')
+    expect(trigger.planning_state).toBe('unavailable')
+    expect(trigger.planning_consequence).toContain(
+      'Retained NWS product validity: current.',
+    )
+    expect(trigger.planning_consequence).toContain(`Retrieval: ${retrieval}.`)
+    expect(trigger.planning_consequence).toContain(
+      'Planning-location applicability: unknown.',
+    )
+    expect(trigger.planning_consequence).not.toMatch(
+      /Not current|Not a current warning for this location/i,
+    )
+    expect(trigger.nws_product).toEqual(snapshot.triggers[0].nws_product)
+    expect(trigger.provenance).toEqual(snapshot.triggers[0].provenance)
+    expect(parsed).toEqual(snapshot)
+  })
+}
+
+test('retained expired product wording is product-specific, never a negative local-warning claim', () => {
+  const parsed = parseEventTriggerSnapshotJSON(
+    JSON.stringify(weatherLegacySnapshot()),
+  )
+  for (const unavailable of [false, true]) {
+    const trigger = currentEventTrigger(
+      parsed.triggers[0],
+      now + 120_000,
+      unavailable,
+    )
+    expect(trigger.lifecycle).toBe('expired')
+    expect(trigger.planning_state).toBe('unavailable')
+    expect(trigger.planning_consequence).toContain(
+      'Retained NWS product validity: expired.',
+    )
+    expect(trigger.planning_consequence).toContain(
+      `Retrieval: ${unavailable ? 'unavailable' : 'fresh'}.`,
+    )
+    expect(trigger.planning_consequence).toContain(
+      'Planning-location applicability: unknown.',
+    )
+    expect(trigger.planning_consequence).toContain('this is not an all-clear')
+    expect(trigger.planning_consequence).not.toContain(
+      'Not a current warning for this location',
+    )
+    expect(trigger.provenance).toEqual(parsed.triggers[0].provenance)
+  }
+})
+
 test('ordered references, same-ID changes, query scope and unknown geography survive projection', () => {
   const product = nwsProduct()
   const parsed = parseLifecycleEvidence(weatherSnapshot(product)).event_triggers

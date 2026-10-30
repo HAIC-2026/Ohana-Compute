@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { parseLifecycleEvidence } from '../src/lib/lifecycle-evidence'
 import {
+  nwsProduct,
   weatherLegacySnapshot,
   weatherSnapshot,
   weatherTime,
@@ -261,7 +262,8 @@ test('legacy warning panel ages products without refetch and retains validated f
   await expect(panel).toContainText('Official warning product')
   await page.clock.setSystemTime(new Date(Date.parse(weatherTime) + 120_000))
   await page.clock.runFor(1000)
-  await expect(panel).toContainText('Not current')
+  await expect(panel).toContainText('Retained product')
+  await expect(panel).toContainText('Retained NWS product validity: expired.')
   await expect(panel).not.toContainText('Official warning product')
   mode = 'malformed'
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
@@ -272,3 +274,110 @@ test('legacy warning panel ages products without refetch and retains validated f
   await expect(panel).toContainText('Message eligibility: cancellation')
   await expect(panel).not.toContainText('Official warning product')
 })
+
+for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
+  test(`legacy panel keeps unexpired validity and unknown applicability with ${retrieval} retrieval`, async ({
+    page,
+    context,
+  }, testInfo) => {
+    const snapshot = weatherLegacySnapshot({
+      ...nwsProduct(),
+      expires: '2026-10-30T19:00:00Z',
+    })
+    let failed = false
+    let requests = 0
+    const writes: string[] = []
+    page.on('request', (request) => {
+      if (
+        request.url().includes('/api/') &&
+        !['GET', 'OPTIONS'].includes(request.method()) &&
+        !request.url().includes('/telemetry/')
+      )
+        writes.push(request.url())
+    })
+    await page.clock.install({ time: new Date(weatherTime) })
+    await page.route('**/api/v1/planning/event-triggers', (route) => {
+      requests++
+      return failed
+        ? route.fulfill({ status: 503, body: 'Source unavailable' })
+        : route.fulfill({ json: snapshot })
+    })
+    await page.goto('/')
+    if (testInfo.project.name === 'mobile-chromium')
+      await page
+        .getByRole('button', { name: /Change planning area or active event/ })
+        .click()
+    await page
+      .getByText('Official triggers & practice scenarios', { exact: true })
+      .click()
+    const panel = page.getByTestId('event-trigger-panel').first()
+    const consequence = panel.locator('.event-trigger-detail > p').first()
+    await expect(panel).toContainText('Official warning product')
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
+    const saved = await page.evaluate(() =>
+      localStorage.getItem('practice-lifecycle.v3'),
+    )
+    if (retrieval === 'offline') {
+      await context.setOffline(true)
+    } else if (retrieval === 'unavailable') {
+      failed = true
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    } else {
+      const before = requests
+      await page.clock.setSystemTime(
+        new Date(Date.parse(weatherTime) + 300_000),
+      )
+      await page.clock.runFor(1000)
+      expect(requests).toBe(before)
+    }
+    const expectedRetrieval = retrieval === 'stale' ? 'stale' : 'unavailable'
+    if (retrieval !== 'stale') await expect(panel).toContainText('LAST KNOWN')
+    await expect(consequence).toContainText(
+      'Retained NWS product validity: current.',
+    )
+    await expect(consequence).toContainText(`Retrieval: ${expectedRetrieval}.`)
+    await expect(consequence).toContainText(
+      'Planning-location applicability: unknown.',
+    )
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
+    await expect(panel.locator('.nws-product-state')).toContainText(
+      `Retrieval: ${expectedRetrieval}`,
+    )
+    await expect(panel.locator('.event-trigger-selector')).toContainText(
+      'Retained product',
+    )
+    await expect(panel.locator('.event-trigger-title')).toContainText(
+      'Retained product',
+    )
+    await expect(panel).not.toContainText('Not current')
+    await expect(panel).not.toContainText(
+      'Not a current warning for this location',
+    )
+    await expect(panel).not.toContainText('Official warning product')
+    await panel.locator('.nws-product summary').click()
+    await expect(panel.locator('.nws-product-facts')).toContainText(weatherTime)
+    await expect(panel.locator('.nws-product-facts')).toContainText(
+      '2026-10-30T18:05:00Z',
+    )
+    const beforeExpiry = requests
+    await page.clock.setSystemTime(new Date('2026-10-30T19:00:00Z'))
+    await page.clock.runFor(1000)
+    await expect(consequence).toContainText(
+      'Retained NWS product validity: expired.',
+    )
+    await expect(consequence).toContainText(`Retrieval: ${expectedRetrieval}.`)
+    await expect(consequence).toContainText(
+      'Planning-location applicability: unknown.',
+    )
+    await expect(consequence).toContainText('this is not an all-clear')
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('expired')
+    await expect(panel).not.toContainText(
+      'Not a current warning for this location',
+    )
+    expect(requests).toBe(beforeExpiry)
+    expect(
+      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+    ).toBe(saved)
+    expect(writes).toEqual([])
+  })
+}
