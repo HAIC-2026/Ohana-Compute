@@ -12,6 +12,7 @@ import {
   lifecycleDigest,
   lifecycleGates,
   lifecycleGatesMet,
+  maxLifecycleImportBytes,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
   parseLifecycleComparison,
@@ -57,7 +58,22 @@ function evidenceReference(
 }
 
 function apply(state: LifecycleState, action: LifecycleAction) {
-  return applyLifecycleAction(state, action)
+  const next = applyLifecycleAction(state, action)
+  assertBoundedRoundTrip(next)
+  return next
+}
+
+function assertBoundedRoundTrip(state: LifecycleState) {
+  const persisted = JSON.stringify(state)
+  const exported = exportLifecycleRecord(state)
+  expect(new TextEncoder().encode(persisted).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(new TextEncoder().encode(exported).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(restoreLifecycleState(persisted)).toEqual(state)
+  expect(parseLifecycleComparison(exported).digest).toBe(lifecycleDigest(state))
 }
 
 function completeLifecycle(startNextCycle = true) {
@@ -844,6 +860,78 @@ function acceptSource(state = readyBefore(), displayed = displayedSource()) {
     gapId: 'transportation',
     displayed,
     acceptedAt: sourceTestTime,
+  })
+}
+
+test('post-action size guard includes the appended source ledger row and preserves valid input', () => {
+  const state = readyBefore()
+  const action: LifecycleAction = {
+    type: 'accept-source',
+    gapId: 'transportation',
+    displayed: displayedSource(),
+    acceptedAt: sourceTestTime,
+  }
+  const next = apply(state, action)
+  const delta =
+    new TextEncoder().encode(JSON.stringify(next)).byteLength -
+    new TextEncoder().encode(JSON.stringify(state)).byteLength
+  const padded = structuredClone(state)
+  const size = new TextEncoder().encode(JSON.stringify(padded)).byteLength
+  padded.ledger[0].summary += 'x'.repeat(
+    maxLifecycleImportBytes - delta + 1 - size,
+  )
+  assertBoundedRoundTrip(padded)
+  const previous = JSON.stringify(padded)
+  expect(() => applyLifecycleAction(padded, action)).toThrow(/128 KiB/)
+  expect(JSON.stringify(padded)).toBe(previous)
+  assertBoundedRoundTrip(padded)
+})
+
+for (const withHistory of [false, true]) {
+  test(`post-action size guard bounds repeated pins${withHistory ? ' with multi-cycle source history' : ''}`, () => {
+    let state = createInitialLifecycleState()
+    if (withHistory) {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        state = readyBefore('comparison', state)
+        for (let revision = 0; revision < 8; revision++)
+          state = acceptSource(
+            state,
+            displayedSource(sourceClaim(`REVISION-${revision}`)),
+          )
+        state = sealH2(
+          apply(apply(state, { type: 'seal-h1' }), { type: 'start-during' }),
+        )
+        state = apply(state, {
+          type: 'decide-gates',
+          decision: 'gates-unmet-carry-forward',
+        })
+        state = apply(state, { type: 'start-next-cycle' })
+      }
+      expect(state.sourceHistory).toHaveLength(2)
+    }
+    const history = structuredClone(state.sourceHistory)
+    for (let index = 0; index < 1000; index++) {
+      const previous = JSON.stringify(state)
+      let next: LifecycleState
+      try {
+        next = applyLifecycleAction(state, {
+          type: 'pin-evidence',
+          reference: evidenceReference('before', `size-pin-${index}`),
+        })
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).toContain('128 KiB')
+        expect(JSON.stringify(state)).toBe(previous)
+        expect(state.sourceHistory).toEqual(history)
+        assertBoundedRoundTrip(state)
+        return
+      }
+      assertBoundedRoundTrip(next)
+      state = next
+    }
+    throw new Error(
+      'Expected the common byte limit to refuse a pin before 1000 actions.',
+    )
   })
 }
 

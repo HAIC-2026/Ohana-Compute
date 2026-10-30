@@ -263,3 +263,51 @@ test('wall-clock expiry, 304, malformed, cancelled, and offline refresh preserve
   await expect(panel).toContainText('Offline; evidence was not checked')
   await expect(shelters).toContainText('Reported shelter A')
 })
+
+test('offline remount reconciles cached transport without an extra fetch', async ({
+  page,
+  context,
+}) => {
+  await page.clock.install({ time: new Date(sourceTestTime) })
+  let requests = 0
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) => {
+    requests++
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { ETag: 'W/"source-a"' },
+      body: JSON.stringify(sourceSnapshot()),
+    })
+  })
+  await page.goto('/lifecycle')
+  const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
+  const shelters = page.getByRole('region', {
+    name: 'FEMA-reported shelter context',
+  })
+  await expect(shelters).toContainText('Reported shelter A')
+  await expect(shelters.getByRole('status')).toContainText('Retrieval: fresh')
+  const before = await saved(page)
+  await page
+    .getByRole('link', { name: 'Source health', exact: true })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/\/source-health$/)
+  await expect(panel).toHaveCount(0)
+  const checksBeforeUnmount = requests
+  await context.setOffline(true)
+  expect(await page.evaluate(() => navigator.onLine)).toBe(false)
+  await page
+    .getByRole('link', { name: 'Practice lifecycle', exact: true })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/\/lifecycle$/)
+  await expect(shelters).toContainText('Reported shelter A')
+  await expect(panel).toContainText('LAST KNOWN')
+  await expect(panel).toContainText('Offline; evidence was not checked')
+  await expect(shelters.getByRole('status')).toContainText(
+    'Retrieval: unavailable',
+  )
+  await expect(shelters).not.toContainText('Retrieval: fresh')
+  expect(requests).toBe(checksBeforeUnmount)
+  expect(await saved(page)).toEqual(before)
+})

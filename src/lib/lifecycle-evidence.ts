@@ -462,7 +462,7 @@ export function useLifecycleEvidence(
     const entry = entryFor(key)
     const listener = () => render((value) => value + 1)
     entry.listeners.add(listener)
-    if (!entry.snapshot && !entry.request) refresh()
+    if (!navigator.onLine || (!entry.snapshot && !entry.request)) refresh()
 
     const refreshIfActive = () => {
       setNow(Date.now())
@@ -492,18 +492,21 @@ export function useLifecycleEvidence(
   }, [key, refresh])
 
   const entry = entryFor(key)
+  const error =
+    typeof navigator !== 'undefined' && !navigator.onLine
+      ? 'Offline; evidence was not checked.'
+      : entry.error
   return {
-    status:
-      entry.loading && !entry.snapshot
+    status: error
+      ? 'error'
+      : entry.loading && !entry.snapshot
         ? 'loading'
-        : entry.error
-          ? 'error'
-          : 'ready',
+        : 'ready',
     snapshot: entry.snapshot,
-    error: entry.error,
+    error,
     checkedAt: entry.checkedAt,
     lastShelterSnapshot: entry.lastShelterSnapshot,
-    lastKnown: Boolean(entry.snapshot && entry.error),
+    lastKnown: Boolean(entry.snapshot && error),
     refreshing: Boolean(entry.snapshot && entry.loading),
     now,
     refresh,

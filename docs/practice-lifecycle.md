@@ -60,6 +60,9 @@ persistence uses the strict `practice-lifecycle.v3` schema and an explicit
 reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
+Every reducer action checks both persisted-state and canonical-export UTF-8 bytes
+after all effects, including ledger additions. Overflow rejects the action and
+preserves the previous valid state, including retained source history.
 
 Saved `practice-lifecycle.v1` and original `practice-lifecycle.v2` state migrate
 explicitly into v3 with empty source-bound records. V1 also receives empty pinned
@@ -118,6 +121,8 @@ age remains **unknown**, even after a successful retrieval. Transient errors kee
 validated last-known facts with an unavailable label. Lifecycle evidence JSON
 is bounded and runtime-validated before entering the cache; an invalid payload
 does not replace validated data.
+Every mount reconciles offline transport, including cache hits after navigation:
+validated facts remain last-known/unavailable without issuing another request.
 
 The projection contains at most 20 unique items, each at most 4 KiB, with
 bounded typed fields and no resident/contact/address fields. Missing capacity

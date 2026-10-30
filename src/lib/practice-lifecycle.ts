@@ -943,13 +943,6 @@ function sourceLedger(
     throw new Error(
       'Source records failed validation or exceeded the bounded record limit.',
     )
-  if (
-    new TextEncoder().encode(JSON.stringify(state)).length >
-      maxLifecycleImportBytes ||
-    new TextEncoder().encode(exportLifecycleRecord(state)).length >
-      maxLifecycleImportBytes
-  )
-    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
   return {
     ...state,
     ledger: [
@@ -1938,6 +1931,23 @@ export function applyLifecycleAction(
   state: LifecycleState,
   action: LifecycleAction,
 ): LifecycleState {
+  const next = reduceLifecycleAction(state, action)
+  if (
+    new TextEncoder().encode(JSON.stringify(next)).byteLength >
+      maxLifecycleImportBytes ||
+    new TextEncoder().encode(exportLifecycleRecord(next)).byteLength >
+      maxLifecycleImportBytes
+  )
+    throw new Error(
+      'Lifecycle record exceeds the 128 KiB limit. Export before an explicit reset.',
+    )
+  return next
+}
+
+function reduceLifecycleAction(
+  state: LifecycleState,
+  action: LifecycleAction,
+): LifecycleState {
   if (state.phase === 'complete')
     throw new Error('Cycle 1 is read-only. Start the next practice cycle.')
   const expectedPhase = requiredPhase(action)
@@ -2725,21 +2735,11 @@ export function applyLifecycleAction(
       next.objectives = carriedObjectiveIds
       next.capabilityMarkers = [...state.capabilityMarkers]
       next.ledger = [...state.ledger]
-      const rolled = recordCapability(
+      return recordCapability(
         next,
         'A10',
         `Sealed H3 ${digest} and started practice cycle ${next.cycle}.`,
       )
-      if (
-        new TextEncoder().encode(JSON.stringify(rolled)).length >
-          maxLifecycleImportBytes ||
-        new TextEncoder().encode(exportLifecycleRecord(rolled)).length >
-          maxLifecycleImportBytes
-      )
-        throw new Error(
-          'Source history exceeds 128 KiB. Export before an explicit reset.',
-        )
-      return rolled
     }
   }
 }
