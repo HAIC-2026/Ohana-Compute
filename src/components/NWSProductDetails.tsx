@@ -3,8 +3,71 @@ import {
   nwsProductValidity,
   retrievalState,
 } from '../lib/nws-product'
-import type { NWSProduct, Retrieval } from '../lib/nws-product'
+import type { NWSProduct, NWSZoneEvidence, Retrieval } from '../lib/nws-product'
 import type { LifecycleEvidenceState } from '../lib/lifecycle-evidence'
+
+function freshZoneRow(row: NWSZoneEvidence['zones'][number], now: number) {
+  return (
+    row.state === 'fresh' &&
+    row.fresh_until !== null &&
+    Date.parse(row.fresh_until) > now
+  )
+}
+
+function currentZoneApplicability(product: NWSProduct, now: number) {
+  const evidence = product.zone_evidence
+  if (product.applicability_basis !== 'affected_zones' || !evidence)
+    return {
+      result: product.applicability,
+      reason: product.applicability_reason,
+      coverage: evidence?.coverage,
+    }
+
+  let inside = false
+  let boundary = false
+  let incomplete = false
+  let pending = false
+  for (const row of evidence.zones) {
+    if (row.state === 'pending') {
+      pending = true
+      incomplete = true
+      continue
+    }
+    if (!freshZoneRow(row, now)) {
+      incomplete = true
+      continue
+    }
+    if (row.result === 'inside' && row.reason === 'strict_interior')
+      inside = true
+    else if (row.result === 'unknown' && row.reason === 'boundary')
+      boundary = true
+    else if (row.result !== 'outside' || row.reason !== 'strict_exterior')
+      incomplete = true
+  }
+  if (inside)
+    return {
+      result: 'inside' as const,
+      reason: 'strict_interior',
+      coverage: incomplete ? ('partial' as const) : ('complete' as const),
+    }
+  if (incomplete)
+    return {
+      result: 'unknown' as const,
+      reason: pending ? 'zone_pending' : 'zone_incomplete',
+      coverage: pending ? ('pending' as const) : ('partial' as const),
+    }
+  if (boundary)
+    return {
+      result: 'unknown' as const,
+      reason: 'boundary',
+      coverage: 'complete' as const,
+    }
+  return {
+    result: 'outside' as const,
+    reason: 'strict_exterior',
+    coverage: 'complete' as const,
+  }
+}
 
 export function NWSProductDetails({
   product,
@@ -19,16 +82,29 @@ export function NWSProductDetails({
 }) {
   const validity = nwsProductValidity(product, now)
   const eligibility = nwsEligibility(product)
+  const currentApplicability = currentZoneApplicability(product, now)
   const applicability = {
     inside:
-      'Inside the retained source polygon. This does not establish impact, authority, an order, or an instruction.',
+      product.applicability_basis === 'affected_zones'
+        ? `Inside at least one official NWS zone boundary. ${
+            currentApplicability.coverage === 'complete'
+              ? 'All referenced zones were evaluated.'
+              : 'Some referenced zones were unavailable, but one valid zone contains the point.'
+          } Zone boundaries are area-level and do not establish address-level impact, authority, an order, or an instruction.`
+        : 'Inside the retained source polygon. This does not establish impact, authority, an order, or an instruction.',
     outside:
-      'Outside the retained source polygon. This is not an all-clear and does not establish that the location is unaffected.',
+      product.applicability_basis === 'affected_zones'
+        ? 'Outside every referenced official NWS zone boundary after complete valid coverage. This is not an all-clear and does not establish that the location is unaffected.'
+        : 'Outside the retained source polygon. This is not an all-clear and does not establish that the location is unaffected.',
     unknown:
-      product.applicability_reason === 'no_polygon'
-        ? 'Unknown because this product has no retained source polygon. Coverage is limited to products that include polygons.'
-        : `Unknown (${product.applicability_reason.replaceAll('_', ' ')}). No local-impact conclusion is available.`,
-  }[product.applicability]
+      currentApplicability.reason === 'zone_pending'
+        ? 'Unknown while official NWS zone boundaries are being checked. No local-impact conclusion is available.'
+        : currentApplicability.reason === 'zone_incomplete'
+          ? 'Unknown because one or more referenced official NWS zone boundaries were unavailable, stale, invalid, or not bound to this product time. Partial coverage cannot establish outside.'
+          : currentApplicability.reason === 'no_polygon'
+            ? 'Unknown because this product has no retained source polygon. Coverage is limited to products that include polygons.'
+            : `Unknown (${currentApplicability.reason.replaceAll('_', ' ')}). No local-impact conclusion is available.`,
+  }[currentApplicability.result]
   return (
     <div className="nws-product" data-nws-product={product.id ?? 'unknown'}>
       <p className="nws-product-state">
@@ -45,8 +121,8 @@ export function NWSProductDetails({
       </p>
       <p>
         Planning-location applicability:{' '}
-        <strong data-nws-applicability={product.applicability}>
-          {product.applicability}
+        <strong data-nws-applicability={currentApplicability.result}>
+          {currentApplicability.result}
         </strong>
         . {applicability}
       </p>
@@ -142,9 +218,33 @@ export function NWSProductDetails({
           <dt>Source geometry</dt>
           <dd>
             {product.geometry.status.replaceAll('_', ' ')} ·{' '}
-            {product.geometry.type ?? 'Type not reported'}. Applicability
-            reason: {product.applicability_reason.replaceAll('_', ' ')}.
+            {product.geometry.type ?? 'Type not reported'}. Applicability basis:{' '}
+            {(product.applicability_basis ?? 'not evaluated').replaceAll(
+              '_',
+              ' ',
+            )}
+            . Reason: {currentApplicability.reason.replaceAll('_', ' ')}.
           </dd>
+          {product.zone_evidence && (
+            <>
+              <dt>Official NWS zone coverage</dt>
+              <dd>
+                {currentApplicability.coverage} ·{' '}
+                {product.zone_evidence.zones
+                  .map(
+                    (zone) =>
+                      `${zone.id}: ${
+                        zone.state === 'fresh' && !freshZoneRow(zone, now)
+                          ? 'stale'
+                          : zone.state
+                      }/${zone.result} (${zone.reason.replaceAll('_', ' ')})`,
+                  )
+                  .join('; ')}
+                . Boundaries are area-level source geometry; no zone result is
+                an order, impact determination, or all-clear.
+              </dd>
+            </>
+          )}
           <dt>Explicit references (source order)</dt>
           <dd>
             {product.references === null ? (
@@ -227,8 +327,9 @@ export function LifecycleWeatherContext({
           ' · NWS source reported an error; facts may be incomplete.'}
       </p>
       <p>
-        Statewide Hawaiʻi query; only retained source polygons are evaluated
-        against the displayed planning point. Products without polygons remain
+        Statewide Hawaiʻi query; retained source polygons take precedence.
+        Products with absent polygons may use cached official NWS affected-zone
+        boundaries; missing, stale, invalid, or incomplete zone coverage remains
         unknown. Product expiry uses wall time, never practice T+ or the last
         successful check. B04 remains manual.
       </p>

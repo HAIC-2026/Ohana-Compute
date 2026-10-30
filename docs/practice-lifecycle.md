@@ -177,10 +177,13 @@ browser evidence limit remains in force. Unsupported `expiredReferences` are
 not projected.
 
 The NWS query is statewide Hawaiʻi. Query membership, reported area names,
-issuing office, county membership, and missing geometry never establish local
-impact. The lifecycle-evidence handler evaluates only retained Polygon and
-MultiPolygon source geometry against its validated request point, on a
-per-request copy. The location-less event-trigger feed remains
+issuing office, and county membership never establish local impact. The
+lifecycle-evidence handler first evaluates retained Polygon and MultiPolygon
+source geometry against its validated request point, on a per-request copy.
+When retained geometry is absent and canonical `affectedZones` are present, it
+may instead use separately cached official NWS zone boundaries. A present
+invalid, unsupported, or oversized inline geometry never silently falls back
+to zones. The location-less event-trigger feed remains
 `unknown/not_evaluated`.
 
 Applicability uses `rfc7946-planar-rational-v1`: original JSON coordinate and
@@ -206,9 +209,55 @@ algorithm version, and those fields participate in the semantic snapshot hash.
 The browser rejects evidence for a different requested point rather than
 recomputing applicability.
 
+A separate backend-only zone cache reconstructs requests from validated
+`forecast`, `county`, or `fire` identifiers on `api.weather.gov`; product data
+cannot choose a host, query, credentials, or redirect target. Fetches require
+GeoJSON, a User-Agent, a 10-second timeout, at most four concurrent requests, a
+2 MiB response limit, 8,192 vertices, and a 5,000,000-operation exact topology
+budget. Polygon, MultiPolygon, and one-level GeometryCollection members made
+only of those shapes are supported without simplification, rounding, or
+truncation. Bounding-box pruning preserves exact classification while bounding
+unnecessary pair checks. Preparation happens asynchronously when alert
+snapshots are ingested; lifecycle requests only read prepared cache state.
+
+Validated zone responses must bind feature `id`, `properties.@id`, and
+`properties.id` to the requested canonical zone and provide a valid
+effective/expiration interval containing the product `sent` time. A canonical
+digest of identity, dates, and exact geometry is the zone source revision.
+Validated entries use the smaller of the configured wall-clock maximum and
+source `max-age`/`Age` or `Expires` freshness, with conditional ETag or
+Last-Modified revalidation. A 304 updates supplied cache headers and otherwise
+inherits the prior source policy, including `no-cache`; alert 304 responses
+also retry eligible expired zone-cache entries. Validators are retained only
+with a valid body.
+Cold, stale, failed, malformed, oversized, too-complex, unsupported, or
+time-mismatched members remain reason-coded unknown; last-known geometry cannot
+produce a definitive result after expiry.
+
+The 2026-10-30 read-only compatibility probe accepted 88 of the 90 current
+Hawaiʻi forecast, county, and fire resources. County zones `HIC001` and
+`HIC009` exceeded the exact topology-work budget and therefore remain explicit
+`unknown/too_complex`; they are not simplified or silently truncated. This is a
+point-in-time compatibility observation, not a promise that every future zone
+revision will fit the bounds.
+
+Multiple affected zones are evaluated as a union without creating a merged
+polygon. Any fresh valid strict interior establishes `inside`; otherwise any
+boundary is unknown. `outside` is allowed only after every unique referenced
+zone is fresh, valid, source-time-bound, and strictly exterior. A failed member
+therefore cannot create false outside. Per-zone identity, source revision,
+freshness, result, and reason are projected, but zone coordinates never reach
+the browser. These fields and the result participate in the semantic snapshot
+hash. The browser ages the projected per-zone `fresh_until` values: a displayed
+`inside` or `outside` becomes reason-coded unknown once its required zone
+evidence expires, without recomputing geometry.
+
 A successful empty query means **no products returned**, not no hazard or
 order. `outside` is never an all-clear or proof the location is unaffected;
 `inside` is never a claim of impact, authority, an order, or an instruction.
+Official zone boundaries are area-level and do not claim individual-address
+precision. An Update that drops a zone and a Cancel that still references one
+remain message facts; neither is an all-clear.
 Partial retrieval and failures remain explicit; unrelated source failures do
 not change the NWS source's own retrieval state.
 
@@ -227,25 +276,23 @@ inapplicability; even an expired product is not a local all-clear.
 
 ### Deliberately blocked domains and next slices
 
-1. **Affected-zone geometry:** source-backed zone fetches remain a separate
-   slice because their size, caching, and fetch-failure contracts differ from
-   retained product polygons. Area descriptions and zone names remain
-   non-geometric.
-2. **PTWC jurisdiction:** no attachable Hawaiʻi-applicable claim until a
+1. **PTWC jurisdiction:** no attachable Hawaiʻi-applicable claim until a
    deterministic jurisdiction rule is implemented and tested. A ComCat tsunami
    flag remains an earthquake fact, never a tsunami alert or order.
-3. **Operational authority:** shelter admission/current beds/accessibility,
+2. **Operational authority:** shelter admission/current beds/accessibility,
    legal orders, road passability, utility restoration, wildfire containment,
    observed unmet need, and partner commitments require authoritative external
    contracts and appropriate verification. None is inferred from this chain.
 
 The real-backend browser proof uses `cmd/e2e-server` with its test-only
-`X-NWS-Fixture` header. The baseline and cancellation fixtures contain the
-planning point, the update fixture shrinks to exclude it, and invalid or absent
-geometry exercises reason-coded unknown. The production handler has no such
-control. Requests are continued to the real Go endpoint rather than fulfilled
-by browser mocks. Separate mocked boundary tests cover malformed JSON,
-point-mismatched responses, offline behavior, and expired 304 behavior. Run
+`X-NWS-Fixture` header. Inline fixtures cover containment, exclusion, Update,
+Cancel, invalid topology, and absent geometry. Zone fixtures cover inside,
+complete outside, boundary, a failed member, invalid topology, stale/offline
+cache state, pending preparation, Update zone changes, and Cancel. The
+production handler has no such control. Requests are continued to the real Go
+endpoint rather than fulfilled by browser mocks. Separate mocked boundary tests
+cover malformed JSON, point-mismatched responses, offline behavior, and expired
+304 behavior. Run
 `npm run test:e2e` before `npm run test:operations`, never in parallel; both
 rebuild `dist/`. Confirm all test ports are free or belong to this
 worktree before starting.

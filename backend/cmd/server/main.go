@@ -87,15 +87,21 @@ func main() {
 		",",
 	)
 	cacheTTL := durationOrDefault("NWS_CACHE_TTL", 5*time.Minute, logger)
+	zoneCacheTTL := durationOrDefault("NWS_ZONE_CACHE_TTL", 24*time.Hour, logger)
 	telemetryRate := positiveIntOrDefault(
 		"TELEMETRY_RATE_LIMIT_PER_MINUTE",
 		1200,
 		logger,
 	)
 
-	alerts := nws.NewClient(nws.Config{
+	zones := nws.NewZoneClient(nws.ZoneConfig{
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
-		CacheTTL:   cacheTTL,
+		CacheTTL:   zoneCacheTTL,
+	})
+	alerts := nws.NewClient(nws.Config{
+		HTTPClient:     &http.Client{Timeout: 10 * time.Second},
+		CacheTTL:       cacheTTL,
+		ZonePrefetcher: zones,
 	})
 	arcGISClient := arcgis.NewClient(arcgis.Config{
 		HTTPClient: &http.Client{Timeout: 12 * time.Second},
@@ -150,6 +156,7 @@ func main() {
 		ResourceDemand:    resourceDemandCalculator,
 		PartnerMatching:   partnerMatcher,
 		EventTriggers:     eventTriggerService,
+		ZoneApplicability: zones,
 		OperationalStatus: operationalStatusService,
 		Identity:          identityService,
 		Staff:             staffService,

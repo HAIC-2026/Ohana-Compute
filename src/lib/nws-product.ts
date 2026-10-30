@@ -7,6 +7,30 @@ export type NWSReference = {
   sent: string | null
 }
 
+export type NWSZoneEvidence = {
+  result: 'inside' | 'outside' | 'unknown'
+  reason:
+    | 'strict_interior'
+    | 'strict_exterior'
+    | 'boundary'
+    | 'zone_incomplete'
+    | 'zone_pending'
+  coverage: 'complete' | 'partial' | 'pending'
+  zones: Array<{
+    url: string
+    id: string
+    type: 'forecast' | 'county' | 'fire'
+    source_revision: string | null
+    effective: string | null
+    expires: string | null
+    retrieved_at: string | null
+    fresh_until: string | null
+    state: 'fresh' | 'stale' | 'unavailable' | 'pending'
+    result: 'inside' | 'outside' | 'unknown'
+    reason: string
+  }>
+}
+
 export type NWSProduct = {
   id: string | null
   url: string | null
@@ -56,7 +80,11 @@ export type NWSProduct = {
     | 'invalid_topology'
     | 'bad_point'
     | 'unsupported'
+    | 'zone_incomplete'
+    | 'zone_pending'
     | 'not_evaluated'
+  applicability_basis?: 'inline_geometry' | 'affected_zones' | 'none'
+  zone_evidence?: NWSZoneEvidence
   eligibility:
     | 'eligible'
     | 'non_actual'
@@ -197,10 +225,100 @@ function validGeometry(value: unknown) {
   )
 }
 
+function validZoneReason(value: unknown) {
+  return (
+    stringIn(value, [
+      'strict_interior',
+      'strict_exterior',
+      'boundary',
+      'invalid_topology',
+      'bad_point',
+      'unsupported',
+      'zone_incomplete',
+      'zone_pending',
+      'source_time_mismatch',
+      'request_failed',
+      'invalid_content_type',
+      'invalid_payload',
+      'too_complex',
+      'too_large',
+    ]) ||
+    (typeof value === 'string' && /^http_[1-5]\d\d$/.test(value))
+  )
+}
+
+function validZoneEvidence(value: unknown): value is NWSZoneEvidence {
+  return (
+    exactObject(value, ['result', 'reason', 'coverage', 'zones']) &&
+    stringIn(value.result, ['inside', 'outside', 'unknown']) &&
+    stringIn(value.reason, [
+      'strict_interior',
+      'strict_exterior',
+      'boundary',
+      'zone_incomplete',
+      'zone_pending',
+    ]) &&
+    stringIn(value.coverage, ['complete', 'partial', 'pending']) &&
+    Array.isArray(value.zones) &&
+    value.zones.length > 0 &&
+    value.zones.length <= 64 &&
+    value.zones.every(
+      (row) =>
+        exactObject(row, [
+          'url',
+          'id',
+          'type',
+          'source_revision',
+          'effective',
+          'expires',
+          'retrieved_at',
+          'fresh_until',
+          'state',
+          'result',
+          'reason',
+        ]) &&
+        stringIn(row.type, ['forecast', 'county', 'fire']) &&
+        typeof row.id === 'string' &&
+        (row.type === 'county'
+          ? /^[A-Z]{2}C\d{3}$/.test(row.id)
+          : /^[A-Z]{2}Z\d{3}$/.test(row.id)) &&
+        row.url === `https://api.weather.gov/zones/${row.type}/${row.id}` &&
+        (row.source_revision === null ||
+          (typeof row.source_revision === 'string' &&
+            /^[a-f0-9]{64}$/.test(row.source_revision))) &&
+        [row.effective, row.expires, row.retrieved_at, row.fresh_until].every(
+          (timestamp) => timestamp === null || validSourceTime(timestamp),
+        ) &&
+        stringIn(row.state, ['fresh', 'stale', 'unavailable', 'pending']) &&
+        stringIn(row.result, ['inside', 'outside', 'unknown']) &&
+        validZoneReason(row.reason),
+    ) &&
+    value.result ===
+      (value.reason === 'strict_interior'
+        ? 'inside'
+        : value.reason === 'strict_exterior'
+          ? 'outside'
+          : 'unknown') &&
+    (value.result !== 'outside' ||
+      (value.coverage === 'complete' &&
+        value.zones.every(
+          (row) =>
+            row.state === 'fresh' &&
+            row.result === 'outside' &&
+            row.reason === 'strict_exterior',
+        ))) &&
+    (value.coverage !== 'pending' ||
+      value.zones.some((row) => row.state === 'pending'))
+  )
+}
+
 export function validNWSProduct(
   value: unknown,
   evaluatedAt?: number,
 ): value is NWSProduct {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false
+  const candidate = value as Record<string, unknown>
   const valid =
     exactObject(value, [
       'id',
@@ -229,6 +347,10 @@ export function validNWSProduct(
       'query_scope',
       'applicability',
       'applicability_reason',
+      ...(candidate.applicability_basis !== undefined
+        ? ['applicability_basis']
+        : []),
+      ...(candidate.zone_evidence !== undefined ? ['zone_evidence'] : []),
       'eligibility',
       'validity',
       'relationship',
@@ -294,8 +416,18 @@ export function validNWSProduct(
       'invalid_topology',
       'bad_point',
       'unsupported',
+      'zone_incomplete',
+      'zone_pending',
       'not_evaluated',
     ]) &&
+    (value.applicability_basis === undefined ||
+      stringIn(value.applicability_basis, [
+        'inline_geometry',
+        'affected_zones',
+        'none',
+      ])) &&
+    (value.zone_evidence === undefined ||
+      validZoneEvidence(value.zone_evidence)) &&
     stringIn(value.eligibility, [
       'eligible',
       'non_actual',
@@ -331,11 +463,28 @@ export function validNWSProduct(
         'invalid_topology',
         'bad_point',
         'unsupported',
+        'zone_incomplete',
+        'zone_pending',
         'not_evaluated',
       ]))
   )
     return false
   const product = value as NWSProduct
+  if (
+    (product.applicability_basis === 'affected_zones' &&
+      (product.geometry.status !== 'absent' ||
+        !product.zone_evidence ||
+        product.zone_evidence.result !== product.applicability ||
+        product.zone_evidence.reason !== product.applicability_reason)) ||
+    (product.applicability_basis !== 'affected_zones' &&
+      product.zone_evidence !== undefined) ||
+    (product.applicability_basis === 'none' &&
+      (product.applicability !== 'unknown' ||
+        product.applicability_reason !== 'no_polygon')) ||
+    (product.applicability_basis === 'inline_geometry' &&
+      product.geometry.status === 'absent')
+  )
+    return false
   return (
     product.eligibility === nwsEligibility(product) &&
     product.relationship === nwsRelationship(product.message_type) &&

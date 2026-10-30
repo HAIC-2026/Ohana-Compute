@@ -38,6 +38,7 @@ test('lifecycle projection retains source product provenance rather than only a 
   const lifecycleNullable = {
     ...nullable,
     applicability_reason: 'no_polygon' as const,
+    applicability_basis: 'none' as const,
   }
   expect(
     parseLifecycleEvidence(weatherSnapshot(nullable)).event_triggers.data!
@@ -188,6 +189,7 @@ test('ordered references, same-ID changes, query scope and unknown geography sur
   const lifecycleChanged = {
     ...changed,
     applicability_reason: 'no_polygon' as const,
+    applicability_basis: 'none' as const,
   }
   expect(
     parseLifecycleEvidence(weatherSnapshot(changed)).event_triggers.data!
@@ -375,6 +377,7 @@ test('lifecycle applicability reasons agree with retained geometry status', () =
         geometry: polygon,
         applicability: 'unknown',
         applicability_reason: 'no_polygon',
+        applicability_basis: 'inline_geometry',
       }),
     ),
   ).toThrow(/Malformed/)
@@ -385,6 +388,7 @@ test('lifecycle applicability reasons agree with retained geometry status', () =
         geometry: polygon,
         applicability: 'unknown',
         applicability_reason: 'invalid_topology',
+        applicability_basis: 'inline_geometry',
       }),
     ).event_triggers.data!.triggers[0].nws_product?.applicability_reason,
   ).toBe('invalid_topology')

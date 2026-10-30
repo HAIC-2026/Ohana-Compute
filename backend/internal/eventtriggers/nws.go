@@ -18,12 +18,14 @@ type NWSQueryScope struct {
 // eligibility and wall-time validity. None establishes a planning-location match.
 type NWSProduct struct {
 	nws.Product
-	QueryScope          NWSQueryScope `json:"query_scope"`
-	Applicability       string        `json:"applicability"`
-	ApplicabilityReason string        `json:"applicability_reason"`
-	Eligibility         string        `json:"eligibility"`
-	Validity            string        `json:"validity"`
-	Relationship        string        `json:"relationship"`
+	QueryScope          NWSQueryScope          `json:"query_scope"`
+	Applicability       string                 `json:"applicability"`
+	ApplicabilityReason string                 `json:"applicability_reason"`
+	ApplicabilityBasis  string                 `json:"applicability_basis,omitempty"`
+	ZoneEvidence        *nws.ZoneApplicability `json:"zone_evidence,omitempty"`
+	Eligibility         string                 `json:"eligibility"`
+	Validity            string                 `json:"validity"`
+	Relationship        string                 `json:"relationship"`
 }
 
 var nwsTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-](0\d|1\d|2[0-3]):[0-5]\d)$`)

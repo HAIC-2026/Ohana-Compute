@@ -19,6 +19,20 @@ import (
 
 func evidenceString(value string) *string { return &value }
 
+type zoneApplicabilityStub struct {
+	result nws.ZoneApplicability
+	calls  int
+}
+
+func (stub *zoneApplicabilityStub) EvaluateZones(
+	_ []nws.Zone,
+	_ *string,
+	_ geoapplicability.Point,
+) nws.ZoneApplicability {
+	stub.calls++
+	return stub.result
+}
+
 func nwsEvidenceFixtures(now time.Time) (eventtriggers.Snapshot, operationalstatus.Snapshot) {
 	events, operations := lifecycleEvidenceFixtures(now)
 	events.Triggers[0].NWSProduct = &eventtriggers.NWSProduct{
@@ -190,6 +204,7 @@ func TestLifecycleEvidenceBindsExactPointLexemes(t *testing.T) {
 		Status: "valid", Type: &kind,
 		Shape: json.RawMessage(`{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}`),
 	}
+
 	handler := lifecycleEvidenceHandler(
 		slog.New(slog.NewTextHandler(io.Discard, nil)), nil,
 		eventTriggerReaderStub{snapshot: events}, operationalStatusReaderStub{snapshot: operations},
@@ -220,5 +235,98 @@ func TestLifecycleEvidenceBindsExactPointLexemes(t *testing.T) {
 		) ||
 		inside.Header().Get("ETag") == boundary.Header().Get("ETag") {
 		t.Fatalf("exact request point was not preserved: inside=%s boundary=%s", inside.Body.String(), boundary.Body.String())
+	}
+}
+
+func TestLifecycleEvidenceUsesBoundedZoneEvidenceOnlyForAbsentInlineGeometry(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	events, operations := nwsEvidenceFixtures(now)
+	revision := strings.Repeat("a", 64)
+	retrieved := "2026-10-29T19:55:00Z"
+	freshUntil := "2026-10-30T19:55:00Z"
+	effective := "2026-01-01T00:00:00Z"
+	expires := "2200-01-01T00:00:00Z"
+	zones := &zoneApplicabilityStub{result: nws.ZoneApplicability{
+		Result: "inside", Reason: "strict_interior", Coverage: "partial",
+		Zones: []nws.ZoneEvidence{{
+			URL: "https://api.weather.gov/zones/forecast/HIZ006",
+			ID:  "HIZ006", Type: "forecast", SourceRevision: &revision,
+			Effective: &effective, Expires: &expires, RetrievedAt: &retrieved,
+			FreshUntil: &freshUntil, State: "fresh", Result: "inside",
+			Reason: "strict_interior",
+		}},
+	}}
+	snapshot := loadLifecycleEvidence(
+		context.Background(), context.Background(), eventTriggerReaderStub{snapshot: events},
+		operationalStatusReaderStub{snapshot: operations}, 21.45, -158.19,
+		geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now, zones,
+	)
+	product := snapshot.EventTriggers.Data.Triggers[0].NWSProduct
+	if zones.calls != 1 || product.Applicability != "inside" ||
+		product.ApplicabilityBasis != "affected_zones" ||
+		product.ZoneEvidence == nil || product.ZoneEvidence.Coverage != "partial" ||
+		product.Geometry.Status != "absent" {
+		t.Fatalf("zone-only applicability was not projected safely: %#v", product)
+	}
+	body, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsAll(
+		string(body),
+		`"applicability_basis":"affected_zones"`,
+		`"zone_evidence":{"result":"inside","reason":"strict_interior","coverage":"partial"`,
+		`"source_revision":"`+revision+`"`,
+	) || strings.Contains(string(body), `"coordinates"`) {
+		t.Fatalf("zone geometry escaped or evidence was omitted: %s", body)
+	}
+}
+
+func TestLifecycleEvidenceInlineGeometryPrecedesAffectedZones(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	events, operations := nwsEvidenceFixtures(now)
+	kind := "Polygon"
+	events.Triggers[0].NWSProduct.Geometry = nws.Geometry{
+		Status: "valid", Type: &kind,
+		Shape: json.RawMessage(`{"type":"Polygon","coordinates":[[[-159,21],[-158,21],[-158,22],[-159,22],[-159,21]]]}`),
+	}
+	zones := &zoneApplicabilityStub{result: nws.ZoneApplicability{
+		Result: "outside", Reason: "strict_exterior", Coverage: "complete",
+	}}
+	snapshot := loadLifecycleEvidence(
+		context.Background(), context.Background(), eventTriggerReaderStub{snapshot: events},
+		operationalStatusReaderStub{snapshot: operations}, 21.45, -158.19,
+		geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now, zones,
+	)
+	product := snapshot.EventTriggers.Data.Triggers[0].NWSProduct
+	if zones.calls != 0 || product.Applicability != "inside" ||
+		product.ApplicabilityBasis != "inline_geometry" || product.ZoneEvidence != nil {
+		t.Fatalf("affected zones overrode retained inline geometry: %#v", product)
+	}
+}
+
+func TestLifecycleEvidenceZoneRevisionChangesSemanticSnapshot(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	events, operations := nwsEvidenceFixtures(now)
+	snapshotFor := func(revision string) lifecycleEvidenceSnapshot {
+		zones := &zoneApplicabilityStub{result: nws.ZoneApplicability{
+			Result: "outside", Reason: "strict_exterior", Coverage: "complete",
+			Zones: []nws.ZoneEvidence{{
+				URL: "https://api.weather.gov/zones/forecast/HIZ006",
+				ID:  "HIZ006", Type: "forecast", SourceRevision: &revision,
+				State: "fresh", Result: "outside", Reason: "strict_exterior",
+			}},
+		}}
+		return loadLifecycleEvidence(
+			context.Background(), context.Background(), eventTriggerReaderStub{snapshot: events},
+			operationalStatusReaderStub{snapshot: operations}, 21.45, -158.19,
+			geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now, zones,
+		)
+	}
+	if left, right := snapshotFor(strings.Repeat("a", 64)), snapshotFor(strings.Repeat("b", 64)); left.SnapshotID == right.SnapshotID {
+		t.Fatal("zone source revision did not affect semantic snapshot identity")
 	}
 }

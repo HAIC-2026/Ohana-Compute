@@ -90,6 +90,15 @@ test('real Go NWS provenance stays read-only across source states on desktop and
     ['no-polygon', 'eligible', 'current', 'unknown'],
     ['invalid-geometry', 'eligible', 'current', 'unknown'],
     ['topology-invalid', 'eligible', 'current', 'unknown'],
+    ['zone-inside', 'eligible', 'current', 'inside'],
+    ['zone-outside', 'eligible', 'current', 'outside'],
+    ['zone-boundary', 'eligible', 'current', 'unknown'],
+    ['zone-partial', 'eligible', 'current', 'unknown'],
+    ['zone-invalid', 'eligible', 'current', 'unknown'],
+    ['zone-stale', 'eligible', 'current', 'unknown'],
+    ['zone-pending', 'eligible', 'current', 'unknown'],
+    ['zone-update', 'eligible', 'current', 'outside'],
+    ['zone-cancel', 'cancellation', 'current', 'inside'],
     ['stale', 'eligible', 'current', 'inside'],
     ['partial', 'eligible', 'current', 'inside'],
     ['empty', '', '', ''],
@@ -125,6 +134,36 @@ test('real Go NWS provenance stays read-only across source states on desktop and
       await expect(weather).toContainText(
         'Coverage is limited to products that include polygons.',
       )
+    if (scenario === 'zone-inside') {
+      await expect(weather).toContainText(
+        'Inside at least one official NWS zone boundary.',
+      )
+      await expect(weather).toContainText(
+        'do not establish address-level impact',
+      )
+    }
+    if (scenario === 'zone-outside' || scenario === 'zone-update')
+      await expect(weather).toContainText(
+        'Outside every referenced official NWS zone boundary after complete valid coverage. This is not an all-clear',
+      )
+    if (scenario === 'zone-boundary')
+      await expect(weather).toContainText('Unknown (boundary)')
+    if (['zone-partial', 'zone-invalid', 'zone-stale'].includes(scenario))
+      await expect(weather).toContainText(
+        'Partial coverage cannot establish outside.',
+      )
+    if (scenario === 'zone-pending')
+      await expect(weather).toContainText(
+        'Unknown while official NWS zone boundaries are being checked.',
+      )
+    if (scenario === 'zone-cancel') {
+      await expect(weather.locator('[data-nws-eligibility]')).toHaveText(
+        'cancellation',
+      )
+      await expect(weather).toContainText(
+        'no zone result is an order, impact determination, or all-clear',
+      )
+    }
     if (scenario === 'null-times') {
       await expect(
         weather
@@ -187,6 +226,33 @@ test('real Go NWS provenance stays read-only across source states on desktop and
     ),
   ).toBe(true)
   expect(writes).toEqual([])
+})
+
+test('zone applicability ages to unknown without browser geometry recomputation', async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date(weatherTime) })
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) =>
+    route.continue({
+      headers: {
+        ...route.request().headers(),
+        'X-NWS-Fixture': 'zone-outside',
+      },
+    }),
+  )
+  await page.goto('/lifecycle')
+  const weather = page.getByRole('region', { name: 'NWS product provenance' })
+  await expect(weather.locator('[data-nws-applicability]')).toHaveText(
+    'outside',
+  )
+  await page.clock.fastForward(24 * 60 * 60 * 1000)
+  await expect(weather.locator('[data-nws-applicability]')).toHaveText(
+    'unknown',
+  )
+  await expect(weather).toContainText(
+    'Partial coverage cannot establish outside.',
+  )
+  await expect(weather).toContainText('HIZ001: stale/outside')
 })
 
 test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed replacement', async ({

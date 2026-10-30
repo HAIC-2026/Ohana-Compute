@@ -70,6 +70,7 @@ export function weatherSnapshot(product = nwsProduct()) {
       ...product,
       applicability: 'unknown',
       applicability_reason: 'no_polygon',
+      applicability_basis: 'none',
     }
   }
   const snapshot = sourceSnapshot()
