@@ -1,7 +1,7 @@
 /* Only build assets and public, state-free shell documents are cached.
  * API requests, map tiles, identity, free text and mutations never enter this cache. */
 const shellCache = 'hmcp-shell-v1'
-const shellRoutes = ['/offline', '/exercise']
+const shellRoutes = ['/offline', '/lifecycle']
 const shellAssets = [
   '/manifest.webmanifest',
   '/planner-icon.svg',
@@ -54,9 +54,15 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith(
       (async () => {
+        if (url.pathname === '/exercise') {
+          return Response.redirect(
+            new URL('/lifecycle', self.location.origin).href,
+            302,
+          )
+        }
         try {
           const response = await fetch(request)
-          if (response.ok) return response
+          if (response.redirected || response.ok) return response
         } catch {
           // A failed navigation always falls back to explicitly labeled offline content.
         }
@@ -69,7 +75,7 @@ self.addEventListener('fetch', (event) => {
         const cache = await caches.open(shellCache)
         return (
           (await cache.match(
-            url.pathname === '/exercise' ? '/exercise' : '/offline',
+            url.pathname === '/lifecycle' ? '/lifecycle' : '/offline',
           )) ||
           new Response(
             'Offline shell unavailable. Open your downloaded field packet.',

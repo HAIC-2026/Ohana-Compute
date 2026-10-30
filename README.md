@@ -53,16 +53,24 @@ records.
   groups, accessible formats and offline channels inform a reviewed reach plan.
   Download a structured, unsent County AFN annex draft; no message, activation,
   dispatch or approval is sent or recorded.
-- **[Offline continuity, operator health and tabletop exercises](docs/offline-exercises-source-health.md)**:
-  open **Examples → Offline planning**, **Data-source health**, or **Tabletop
-  exercise**. Production builds provide an installable, offline-capable shell,
+- **[Complete practice event lifecycle](docs/practice-lifecycle.md)**:
+  open **Practice lifecycle** (`/lifecycle`) to rehearse 10 real interactions
+  before, 10 during, and 10 after a fictional event. One deterministic,
+  local-only `practice-lifecycle.v1` record carries immutable H1/H2/H3 handoffs,
+  fixed-choice evidence, bounded practice time, aggregate recovery review,
+  strict comparison-only exchange, and PRACTICE · UNSENT downloads into the next
+  cycle. Every capability has a stable marker and ledger event. `/exercise`
+  remains a compatibility path into this single workspace; there is no second
+  exercise clock or task backend.
+- **[Offline continuity and operator health](docs/offline-exercises-source-health.md)**:
+  open **Offline planning**, **Data-source health**, or **Practice lifecycle**.
+  Production builds provide an installable, offline-capable shell,
   dated public planning snapshots and the five most recent generated public
   field-packet copies. Offline content is never presented as live; resident
   locations, support preferences, identity and collaboration are not cached.
   Source health lists every catalog source with real process-observed retrieval
-  status, cache freshness and known gaps (unqueried is unknown). Two separately
-  labeled, timed EXERCISE scenarios rehearse County-led MAP → MODEL → MATCH
-  without changing live planning state or activating resources.
+  status, cache freshness and known gaps (unqueried is unknown). The lifecycle
+  shell works offline with explicit practice boundaries and no staff API writes.
 
 - **Statewide conversation-first entry**: the default map shows Hawaiʻi's
   islands, not a fictional person. Choose a supported island/community in

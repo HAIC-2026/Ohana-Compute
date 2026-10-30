@@ -438,8 +438,8 @@ function Home() {
           </button>
           <details className="planning-examples">
             <summary>Examples</summary>
-            <Link className="case-entry-link" to="/exercise">
-              Tabletop exercise
+            <Link className="case-entry-link" to="/lifecycle">
+              Practice lifecycle
             </Link>
             <Link className="case-entry-link" to="/offline">
               Offline planning

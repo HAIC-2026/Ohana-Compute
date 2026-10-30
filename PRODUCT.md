@@ -105,6 +105,24 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
 
 ## Capabilities and Constraints
 
+- The public **Practice lifecycle** workspace implements 30 state-changing
+  capabilities: B01–B10 before an event, D01–D10 during response practice, and
+  A01–A10 after the event. Immutable H1/H2/H3 handoffs carry one fictional cycle
+  into the next. Every capability has a stable browser marker and deterministic
+  local ledger event.
+- Lifecycle state is `practice-lifecycle.v1`, fixed-choice, bounded,
+  local-only, and driven by explicit T± practice minutes. It uses five
+  fictional roles and four lettered practice partners, accepts no resident PII
+  or operational free text, and never writes to restricted staff APIs.
+- Lifecycle imports are comparison-only, exact-key, duplicate-key rejecting,
+  and bounded to 128 KiB. Canonical exports exclude ledger and exchange
+  metadata. Every lifecycle draft, export, and closeout packet is
+  **PRACTICE · UNSENT**; closeout packets do not enter the offline field-packet
+  cache.
+- `/exercise` is only a compatibility path into `/lifecycle`. Production
+  service workers pre-cache the lifecycle shell, redirect legacy exercise
+  navigation in worker logic, pass online redirects through, and never cache a
+  redirect response.
 - Interactive Hawaiʻi map with selectable hazard, AFN indicator, shelter, and infrastructure layers.
 - Official aggregate AFN context for the selected planning area from Census ACS,
   CDC/ATSDR SVI, and HHS emPOWER, with partial-source and unavailable states.

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CoordinationRouteImport } from './routes/coordination'
 import { Route as ExerciseRouteImport } from './routes/exercise'
+import { Route as LifecycleRouteImport } from './routes/lifecycle'
 import { Route as OfflineRouteImport } from './routes/offline'
 import { Route as OperationsRouteImport } from './routes/operations'
 import { Route as SourceHealthRouteImport } from './routes/source-health'
@@ -30,6 +31,11 @@ const CoordinationRoute = CoordinationRouteImport.update({
 const ExerciseRoute = ExerciseRouteImport.update({
   id: '/exercise',
   path: '/exercise',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LifecycleRoute = LifecycleRouteImport.update({
+  id: '/lifecycle',
+  path: '/lifecycle',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OfflineRoute = OfflineRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
   '/exercise': typeof ExerciseRoute
+  '/lifecycle': typeof LifecycleRoute
   '/offline': typeof OfflineRoute
   '/operations': typeof OperationsRoute
   '/source-health': typeof SourceHealthRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
   '/exercise': typeof ExerciseRoute
+  '/lifecycle': typeof LifecycleRoute
   '/offline': typeof OfflineRoute
   '/operations': typeof OperationsRoute
   '/source-health': typeof SourceHealthRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/coordination': typeof CoordinationRoute
   '/exercise': typeof ExerciseRoute
+  '/lifecycle': typeof LifecycleRoute
   '/offline': typeof OfflineRoute
   '/operations': typeof OperationsRoute
   '/source-health': typeof SourceHealthRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/coordination'
     | '/exercise'
+    | '/lifecycle'
     | '/offline'
     | '/operations'
     | '/source-health'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/coordination'
     | '/exercise'
+    | '/lifecycle'
     | '/offline'
     | '/operations'
     | '/source-health'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/coordination'
     | '/exercise'
+    | '/lifecycle'
     | '/offline'
     | '/operations'
     | '/source-health'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CoordinationRoute: typeof CoordinationRoute
   ExerciseRoute: typeof ExerciseRoute
+  LifecycleRoute: typeof LifecycleRoute
   OfflineRoute: typeof OfflineRoute
   OperationsRoute: typeof OperationsRoute
   SourceHealthRoute: typeof SourceHealthRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/exercise'
       fullPath: '/exercise'
       preLoaderRoute: typeof ExerciseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lifecycle': {
+      id: '/lifecycle'
+      path: '/lifecycle'
+      fullPath: '/lifecycle'
+      preLoaderRoute: typeof LifecycleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/offline': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CoordinationRoute: CoordinationRoute,
   ExerciseRoute: ExerciseRoute,
+  LifecycleRoute: LifecycleRoute,
   OfflineRoute: OfflineRoute,
   OperationsRoute: OperationsRoute,
   SourceHealthRoute: SourceHealthRoute,
