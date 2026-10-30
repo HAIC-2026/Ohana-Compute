@@ -1,5 +1,27 @@
-export const lifecycleSchema = 'practice-lifecycle.v2' as const
-export const lifecycleStorageKey = 'practice-lifecycle.v2'
+import {
+  contentDigest,
+  fnvDigest,
+  rejectDuplicateKeys,
+  stableStringify,
+} from './record-digest'
+import {
+  maxSourceClaims,
+  maxSourceRechecks,
+  sourceObservationState,
+  sourceRecheckResult,
+  stringIn,
+  validSourceReading,
+  validSourceTime,
+} from './source-evidence'
+import type {
+  SourceFreshness,
+  SourceReading,
+  SourceRecheckResult,
+} from './source-evidence'
+
+export const lifecycleSchema = 'practice-lifecycle.v3' as const
+export const lifecycleStorageKey = 'practice-lifecycle.v3'
+export const v2LifecycleStorageKey = 'practice-lifecycle.v2'
 export const legacyLifecycleStorageKey = 'practice-lifecycle.v1'
 export const maxLifecycleImportBytes = 128 * 1024
 export const practiceStamp = 'PRACTICE · UNSENT'
@@ -118,7 +140,7 @@ type CmistDomain = (typeof cmistDomains)[number]
 
 export type LifecycleLedgerEvent = {
   sequence: number
-  capability: CapabilityId | 'EVIDENCE_PIN'
+  capability: CapabilityId | 'EVIDENCE_PIN' | 'SOURCE_ACCEPT' | 'SOURCE_RECHECK'
   cycle: number
   practiceMinute: number
   summary: string
@@ -134,8 +156,8 @@ export type PinnedEvidenceReference = {
   domainCount: number | null
   unavailableDomainCount: number | null
   eventUnavailableSourceCount: number | null
-  eventTriggerState: 'fresh' | 'stale' | 'unavailable'
-  operationalStatusState: 'fresh' | 'stale' | 'unavailable'
+  eventTriggerState: 'fresh' | 'stale' | 'unknown' | 'unavailable'
+  operationalStatusState: 'fresh' | 'stale' | 'unknown' | 'unavailable'
   eventTriggerStatus: 'complete' | 'partial' | 'unavailable'
   operationalStatusStatus: 'complete' | 'partial' | 'unavailable'
 }
@@ -155,6 +177,29 @@ export type PracticeEvidence = {
   partner: PracticePartner
   recordedMinute: number
   supersedes: string | null
+}
+
+export type AcceptedSourceEvidence = {
+  id: string
+  cycle: number
+  gapId: GapId
+  acceptedAt: string
+  acceptanceState: 'facilitator-selected planning context'
+  freshnessAtAcceptance: SourceFreshness
+  displayed: SourceReading
+  recordDigest: string
+}
+
+export type SourceRecheck = {
+  id: string
+  acceptedId: string
+  acceptedDigest: string
+  owner: PracticeRole
+  horizon: RecoveryRow['horizon']
+  checkedAt: string
+  result: SourceRecheckResult
+  reading: SourceReading
+  recordDigest: string
 }
 
 export type PracticeInject = {
@@ -243,6 +288,14 @@ export type LifecycleState = {
   channel: 'trusted voice' | 'printed handout' | 'local radio'
   evidence: PracticeEvidence[]
   pinnedEvidence: PinnedEvidenceReference[]
+  sourceEvidence: AcceptedSourceEvidence[]
+  sourceRechecks: SourceRecheck[]
+  sourceHistory: Array<NonNullable<LifecycleState['previousCycle']>>
+  legacySeals: null | {
+    h1: string | null
+    h2: string | null
+    integrity: string
+  }
   simulationScope: Record<ServiceArea, 'simulated' | 'unavailable'>
   injects: PracticeInject[]
   h1: null | {
@@ -304,6 +357,9 @@ export type LifecycleState = {
     carriedGapIds: GapId[]
     carriedObjectiveIds: ObjectiveId[]
     evidenceReferences: PinnedEvidenceReference[]
+    sourceEvidence: AcceptedSourceEvidence[]
+    sourceRechecks: SourceRecheck[]
+    sourceDigest: string
   }
   comparison: null | {
     digest: string
@@ -438,6 +494,20 @@ export type LifecycleAction =
   | { type: 'pin-comparison'; text: string }
   | { type: 'pin-evidence'; reference: PinnedEvidenceReference }
   | {
+      type: 'accept-source'
+      gapId: GapId
+      displayed: SourceReading
+      acceptedAt: string
+    }
+  | {
+      type: 'recheck-source'
+      acceptedId: string
+      reading: SourceReading
+      checkedAt: string
+      owner: PracticeRole
+      horizon: RecoveryRow['horizon']
+    }
+  | {
       type: 'select-packet-sections'
       sections: LifecycleState['packetSections']
     }
@@ -451,6 +521,7 @@ const beforeActionTypes = new Set<LifecycleAction['type']>([
   'choose-assumption',
   'set-format',
   'record-evidence',
+  'accept-source',
   'set-scope',
   'schedule-inject',
   'seal-h1',
@@ -532,6 +603,10 @@ export function createInitialLifecycleState(): LifecycleState {
     channel: 'trusted voice',
     evidence: [],
     pinnedEvidence: [],
+    sourceEvidence: [],
+    sourceRechecks: [],
+    sourceHistory: [],
+    legacySeals: null,
     simulationScope: { ...emptyScope },
     injects: [],
     h1: null,
@@ -596,29 +671,6 @@ function assumptionDemand(uptakePercent: number, supportDays: number) {
   return Math.ceil(500 * (uptakePercent / 100) * supportDays * 3)
 }
 
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value))
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .sort(([first], [second]) => first.localeCompare(second))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(value)
-}
-
-function fnvDigest(text: string) {
-  let first = 0x811c9dc5
-  let second = 0x9e3779b9
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index)
-    first = Math.imul(first ^ code, 0x01000193)
-    second = Math.imul(second ^ code, 0x85ebca6b)
-  }
-  return `${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`
-}
-
 function h1Digest(state: LifecycleState) {
   const sealedMinute = state.h1?.sealedMinute ?? state.practiceMinute
   return fnvDigest(
@@ -650,6 +702,17 @@ function h1Digest(state: LifecycleState) {
       pinnedEvidence: state.pinnedEvidence.filter(
         (item) => item.phase === 'before',
       ),
+      ...(state.sourceEvidence.length
+        ? { sourceEvidence: state.sourceEvidence }
+        : {}),
+      ...(state.previousCycle?.sourceEvidence.length
+        ? { previousSourceDigest: state.previousCycle.sourceDigest }
+        : {}),
+      ...(state.sourceHistory.length
+        ? {
+            sourceHistory: state.sourceHistory.map((item) => item.sourceDigest),
+          }
+        : {}),
     }),
   )
 }
@@ -664,6 +727,17 @@ function h2Digest(state: LifecycleState) {
       pinnedEvidence: state.pinnedEvidence.filter(
         (item) => item.phase === 'during',
       ),
+      ...(state.sourceEvidence.length
+        ? { sourceEvidence: state.sourceEvidence }
+        : {}),
+      ...(state.previousCycle?.sourceEvidence.length
+        ? { previousSourceDigest: state.previousCycle.sourceDigest }
+        : {}),
+      ...(state.sourceHistory.length
+        ? {
+            sourceHistory: state.sourceHistory.map((item) => item.sourceDigest),
+          }
+        : {}),
     }),
   )
 }
@@ -684,6 +758,10 @@ export function canonicalLifecycleRecord(state: LifecycleState) {
     channel: state.channel,
     evidence: state.evidence,
     pinnedEvidence: state.pinnedEvidence,
+    sourceEvidence: state.sourceEvidence,
+    sourceRechecks: state.sourceRechecks,
+    sourceHistory: state.sourceHistory,
+    legacySeals: state.legacySeals,
     simulationScope: state.simulationScope,
     injects: state.injects,
     h1: state.h1,
@@ -725,43 +803,9 @@ function exactKeys(
   )
 }
 
-function rejectDuplicateKeys(text: string) {
-  const objects: Array<Set<string> | null> = []
-  for (let index = 0; index < text.length; index++) {
-    const token = text[index]
-    if (token === '{') objects.push(new Set())
-    else if (token === '[') objects.push(null)
-    else if (token === '}' || token === ']') objects.pop()
-    else if (token === '"') {
-      const start = index++
-      while (index < text.length) {
-        if (text[index] === '\\') index += 2
-        else if (text[index] === '"') break
-        else index++
-      }
-      let next = index + 1
-      while (next < text.length && /\s/.test(text[next] ?? '')) next++
-      if (text[next] === ':') {
-        const key: string = JSON.parse(text.slice(start, index + 1))
-        const keys = objects[objects.length - 1]
-        if (keys?.has(key))
-          throw new Error('Duplicate JSON fields are not allowed.')
-        keys?.add(key)
-      }
-    }
-  }
-}
-
 const canonicalKeys = Object.keys(
   canonicalLifecycleRecord(createInitialLifecycleState()),
 )
-
-function stringIn<T extends readonly string[]>(
-  value: unknown,
-  choices: T,
-): value is T[number] {
-  return typeof value === 'string' && choices.includes(value)
-}
 
 function arrayOfExact(
   value: unknown,
@@ -772,6 +816,147 @@ function arrayOfExact(
     Array.isArray(value) &&
     value.every((row) => exactKeys(row, keys) && validate(row))
   )
+}
+
+function validSourceRecords(
+  evidence: unknown,
+  rechecks: unknown,
+  cycle: number,
+): evidence is AcceptedSourceEvidence[] {
+  if (
+    !Array.isArray(evidence) ||
+    !Array.isArray(rechecks) ||
+    evidence.length > maxSourceClaims ||
+    rechecks.length > maxSourceRechecks ||
+    new TextEncoder().encode(JSON.stringify([evidence, rechecks])).length >
+      32 * 1024
+  )
+    return false
+  const accepted: AcceptedSourceEvidence[] = []
+  for (const [index, row] of evidence.entries()) {
+    if (
+      !exactKeys(row, [
+        'id',
+        'cycle',
+        'gapId',
+        'acceptedAt',
+        'acceptanceState',
+        'freshnessAtAcceptance',
+        'displayed',
+        'recordDigest',
+      ]) ||
+      row.id !== `SA-${cycle}-${index + 1}` ||
+      row.cycle !== cycle ||
+      !stringIn(
+        row.gapId,
+        gapCatalog.map((gap) => gap.id),
+      ) ||
+      !validSourceTime(row.acceptedAt) ||
+      row.acceptanceState !== 'facilitator-selected planning context' ||
+      !validSourceReading(row.displayed) ||
+      !row.displayed.claim ||
+      row.freshnessAtAcceptance !==
+        sourceObservationState(row.displayed, Date.parse(row.acceptedAt)) ||
+      (row.displayed.checkedAt !== null &&
+        Date.parse(row.displayed.checkedAt) > Date.parse(row.acceptedAt))
+    )
+      return false
+    const { recordDigest, ...contents } = row
+    if (recordDigest !== contentDigest(contents)) return false
+    accepted.push(row as AcceptedSourceEvidence)
+  }
+  for (const [index, row] of rechecks.entries()) {
+    if (
+      !exactKeys(row, [
+        'id',
+        'acceptedId',
+        'acceptedDigest',
+        'owner',
+        'horizon',
+        'checkedAt',
+        'result',
+        'reading',
+        'recordDigest',
+      ]) ||
+      row.id !== `SR-${cycle}-${index + 1}` ||
+      !validSourceTime(row.checkedAt) ||
+      !stringIn(row.owner, practiceRoles) ||
+      !stringIn(row.horizon, [
+        'next shift',
+        'next day',
+        'next exercise',
+      ] as const) ||
+      !validSourceReading(row.reading) ||
+      row.reading.checkedAt !== row.checkedAt
+    )
+      return false
+    const prior = accepted.find((item) => item.id === row.acceptedId)
+    if (
+      !prior?.displayed.claim ||
+      row.acceptedDigest !== prior.recordDigest ||
+      Date.parse(row.checkedAt) < Date.parse(prior.acceptedAt) ||
+      (row.reading.claim &&
+        row.reading.claim.item_id !== prior.displayed.claim.item_id)
+    )
+      return false
+    if (
+      row.result !==
+      sourceRecheckResult(
+        prior.displayed.claim,
+        row.reading,
+        Date.parse(row.checkedAt),
+      )
+    )
+      return false
+    const { recordDigest, ...contents } = row
+    if (recordDigest !== contentDigest(contents)) return false
+  }
+  return true
+}
+
+function immutableSourceRecord<T>(value: T): T {
+  const copy = structuredClone(value)
+  const freeze = (item: unknown) => {
+    if (item && typeof item === 'object') {
+      Object.values(item).forEach(freeze)
+      Object.freeze(item)
+    }
+  }
+  freeze(copy)
+  return copy
+}
+
+function sourceLedger(
+  state: LifecycleState,
+  capability: 'SOURCE_ACCEPT' | 'SOURCE_RECHECK',
+  summary: string,
+): LifecycleState {
+  if (
+    !validSourceRecords(state.sourceEvidence, state.sourceRechecks, state.cycle)
+  )
+    throw new Error(
+      'Source records failed validation or exceeded the bounded record limit.',
+    )
+  return {
+    ...state,
+    ledger: [
+      ...state.ledger,
+      {
+        sequence: state.ledger.length + 1,
+        capability,
+        cycle: state.cycle,
+        practiceMinute: state.practiceMinute,
+        summary,
+      },
+    ],
+  }
+}
+
+function previousSourceDigest(
+  previous: NonNullable<LifecycleState['previousCycle']>,
+) {
+  const { sourceDigest: _digest, ...contents } = previous
+  return contentDigest(contents)
 }
 
 function validCanonicalRecord(
@@ -789,7 +974,7 @@ function validCanonicalRecord(
     'stale',
     'superseded',
   ] as const
-  const feedStates = ['fresh', 'stale', 'unavailable'] as const
+  const feedStates = ['fresh', 'stale', 'unknown', 'unavailable'] as const
   const pinnedEvidenceKeys = [
     'phase',
     'snapshotId',
@@ -888,6 +1073,20 @@ function validCanonicalRecord(
     !stringIn(record.phase, phaseChoices) ||
     !Number.isSafeInteger(record.practiceMinute) ||
     !validEvent ||
+    !validSourceRecords(
+      record.sourceEvidence,
+      record.sourceRechecks,
+      Number(record.cycle),
+    ) ||
+    !(
+      record.legacySeals === null ||
+      (exactKeys(record.legacySeals, ['h1', 'h2', 'integrity']) &&
+        (record.legacySeals.h1 === null ||
+          typeof record.legacySeals.h1 === 'string') &&
+        (record.legacySeals.h2 === null ||
+          typeof record.legacySeals.h2 === 'string') &&
+        typeof record.legacySeals.integrity === 'string')
+    ) ||
     !arrayOfExact(
       record.carriedGaps,
       ['gapId', 'rank', 'owner', 'dueBand'],
@@ -979,6 +1178,38 @@ function validCanonicalRecord(
     keys: string[],
     validate: (row: Record<string, unknown>) => boolean,
   ) => handoff === null || (exactKeys(handoff, keys) && validate(handoff))
+  const validPreviousCycle = (previous: unknown) =>
+    exactKeys(previous, [
+      'cycle',
+      'digest',
+      'carriedGapIds',
+      'carriedObjectiveIds',
+      'evidenceReferences',
+      'sourceEvidence',
+      'sourceRechecks',
+      'sourceDigest',
+    ]) &&
+    Number.isSafeInteger(previous.cycle) &&
+    Number(previous.cycle) >= 1 &&
+    typeof previous.digest === 'string' &&
+    Array.isArray(previous.carriedGapIds) &&
+    previous.carriedGapIds.every((id) => stringIn(id, gapIds)) &&
+    Array.isArray(previous.carriedObjectiveIds) &&
+    previous.carriedObjectiveIds.every((id) => stringIn(id, objectiveIds)) &&
+    Array.isArray(previous.evidenceReferences) &&
+    previous.evidenceReferences.every(validPinnedEvidence) &&
+    validSourceRecords(
+      previous.sourceEvidence,
+      previous.sourceRechecks,
+      Number(previous.cycle),
+    ) &&
+    typeof previous.sourceDigest === 'string'
+  if (
+    !Array.isArray(record.sourceHistory) ||
+    record.sourceHistory.length > 16 ||
+    !record.sourceHistory.every(validPreviousCycle)
+  )
+    return false
   if (
     !validHandoff(
       record.h1,
@@ -1146,25 +1377,7 @@ function validCanonicalRecord(
     record.packetSections.some(
       (section) => !stringIn(section, packetSectionChoices),
     ) ||
-    !validHandoff(
-      record.previousCycle,
-      [
-        'cycle',
-        'digest',
-        'carriedGapIds',
-        'carriedObjectiveIds',
-        'evidenceReferences',
-      ],
-      (row) =>
-        Number.isSafeInteger(row.cycle) &&
-        typeof row.digest === 'string' &&
-        Array.isArray(row.carriedGapIds) &&
-        row.carriedGapIds.every((id) => stringIn(id, gapIds)) &&
-        Array.isArray(row.carriedObjectiveIds) &&
-        row.carriedObjectiveIds.every((id) => stringIn(id, objectiveIds)) &&
-        Array.isArray(row.evidenceReferences) &&
-        row.evidenceReferences.every(validPinnedEvidence),
-    )
+    !(record.previousCycle === null || validPreviousCycle(record.previousCycle))
   )
     return false
   return true
@@ -1185,6 +1398,11 @@ export function parseLifecycleComparison(text: string) {
       'Lifecycle comparison fields do not match the exact schema.',
     )
   const comparison = value
+  const { stamp: _stamp, ...saved } = comparison
+  assertLifecycleIntegrity({
+    ...createInitialLifecycleState(),
+    ...saved,
+  })
   return {
     digest: fnvDigest(stableStringify(comparison)),
     cycle: comparison.cycle,
@@ -1193,6 +1411,9 @@ export function parseLifecycleComparison(text: string) {
 }
 
 export function restoreLifecycleState(text: string): LifecycleState {
+  if (new TextEncoder().encode(text).byteLength > maxLifecycleImportBytes)
+    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
+  rejectDuplicateKeys(text)
   const value: unknown = JSON.parse(text)
   const initial = createInitialLifecycleState()
   if (
@@ -1214,7 +1435,9 @@ export function restoreLifecycleState(text: string): LifecycleState {
       (row) =>
         Number.isSafeInteger(row.sequence) &&
         (stringIn(row.capability, capabilityIds) ||
-          row.capability === 'EVIDENCE_PIN') &&
+          ['EVIDENCE_PIN', 'SOURCE_ACCEPT', 'SOURCE_RECHECK'].includes(
+            String(row.capability),
+          )) &&
         Number.isSafeInteger(row.cycle) &&
         Number.isSafeInteger(row.practiceMinute) &&
         typeof row.summary === 'string',
@@ -1233,12 +1456,104 @@ export function restoreLifecycleState(text: string): LifecycleState {
     )
   )
     throw new Error('Saved lifecycle state failed validation.')
+  assertLifecycleIntegrity(state)
+  return {
+    ...state,
+    sourceEvidence: immutableSourceRecord(state.sourceEvidence),
+    sourceRechecks: immutableSourceRecord(state.sourceRechecks),
+    sourceHistory: immutableSourceRecord(state.sourceHistory),
+    previousCycle: immutableSourceRecord(state.previousCycle),
+  }
+}
+
+function legacySealIntegrity(state: LifecycleState) {
+  return contentDigest({
+    h1: state.legacySeals?.h1 ?? null,
+    h2: state.legacySeals?.h2 ?? null,
+    h1Inputs: state.legacySeals?.h1 ? h1Digest(state) : null,
+    h2Inputs: state.legacySeals?.h2 ? h2Digest(state) : null,
+  })
+}
+
+function validLegacyH1Digest(state: LifecycleState, digest: string) {
+  const originals = state.evidence.filter((item) => item.supersedes === null)
+  if (originals.length > gapCatalog.length) return false
+  const choices = originals.map((item) =>
+    item.state === 'stale' || item.state === 'superseded'
+      ? ([
+          'practice-reported criteria present',
+          'unknown',
+          'stale',
+          'superseded',
+        ] as const)
+      : [item.state],
+  )
+  const evidence = structuredClone(originals)
+  const matches = (index: number): boolean => {
+    if (index < evidence.length)
+      return choices[index].some((value) => {
+        evidence[index].state = value
+        return matches(index + 1)
+      })
+    return (
+      digest ===
+      fnvDigest(
+        stableStringify({
+          event: state.event,
+          gaps: state.carriedGaps,
+          objectives: state.objectives,
+          timing: state.timing,
+          assumptions: { ...state.assumptions, r2: null },
+          scope: state.simulationScope,
+          injects: state.injects,
+          evidence,
+        }),
+      )
+    )
+  }
+  return matches(0)
+}
+
+function assertLifecycleIntegrity(state: LifecycleState) {
+  if (
+    state.sourceRechecks.length &&
+    (!state.h2 || !['after', 'complete'].includes(state.phase))
+  )
+    throw new Error('Source rechecks require a sealed response handoff.')
+  if (
+    state.sourceEvidence.some(
+      (item) => !state.carriedGaps.some((gap) => gap.gapId === item.gapId),
+    )
+  )
+    throw new Error('Accepted source evidence must reference a carried gap.')
+  if (
+    state.legacySeals &&
+    (state.legacySeals.integrity !== legacySealIntegrity(state) ||
+      (state.legacySeals.h1 !== null &&
+        state.h1?.digest !== state.legacySeals.h1) ||
+      (state.legacySeals.h2 !== null &&
+        state.h2?.digest !== state.legacySeals.h2) ||
+      (state.legacySeals.h1 !== null &&
+        !validLegacyH1Digest(state, state.legacySeals.h1)) ||
+      (state.legacySeals.h2 !== null &&
+        state.legacySeals.h2 !==
+          fnvDigest(
+            stableStringify(
+              state.supportItems.map(({ id, disposition }) => ({
+                id,
+                disposition,
+              })),
+            ),
+          )) ||
+      state.sourceEvidence.length > 0)
+  )
+    throw new Error('Saved legacy seal integrity check failed.')
   const beforeReferences = state.pinnedEvidence.filter(
     (item) => item.phase === 'before',
   )
   if (
     state.h1 &&
-    (state.h1.digest !== h1Digest(state) ||
+    (state.h1.digest !== (state.legacySeals?.h1 ?? h1Digest(state)) ||
       stableStringify(state.h1.evidenceReferences) !==
         stableStringify(beforeReferences) ||
       stableStringify(state.h1.carriedGapIds) !==
@@ -1255,7 +1570,7 @@ export function restoreLifecycleState(text: string): LifecycleState {
   ).length
   if (
     state.h2 &&
-    (state.h2.digest !== h2Digest(state) ||
+    (state.h2.digest !== (state.legacySeals?.h2 ?? h2Digest(state)) ||
       stableStringify(state.h2.evidenceReferences) !==
         stableStringify(duringReferences) ||
       state.h2.carried !== carried ||
@@ -1264,42 +1579,130 @@ export function restoreLifecycleState(text: string): LifecycleState {
     throw new Error('Saved lifecycle H2 integrity check failed.')
   if (state.previousCycle && state.previousCycle.cycle !== state.cycle - 1)
     throw new Error('Saved lifecycle previous-cycle relationship failed.')
-  return state
+  if (
+    state.previousCycle &&
+    state.previousCycle.sourceDigest !==
+      previousSourceDigest(state.previousCycle)
+  )
+    throw new Error('Saved lifecycle H3 integrity check failed.')
+  for (const [index, previous] of state.sourceHistory.entries()) {
+    if (
+      previous.cycle >= state.cycle - 1 ||
+      (index > 0 && state.sourceHistory[index - 1].cycle >= previous.cycle) ||
+      previous.sourceDigest !== previousSourceDigest(previous)
+    )
+      throw new Error('Saved source history integrity check failed.')
+  }
 }
 
 export function migrateLifecycleV1State(text: string): LifecycleState {
+  return migrateLegacyLifecycleState(text, legacyLifecycleStorageKey)
+}
+
+export function migrateLifecycleV2State(text: string): LifecycleState {
+  return migrateLegacyLifecycleState(text, v2LifecycleStorageKey)
+}
+
+function migrateLegacyLifecycleState(
+  text: string,
+  schema: typeof legacyLifecycleStorageKey | typeof v2LifecycleStorageKey,
+): LifecycleState {
+  if (new TextEncoder().encode(text).byteLength > maxLifecycleImportBytes)
+    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
+  rejectDuplicateKeys(text)
   const value: unknown = JSON.parse(text)
   const initial = createInitialLifecycleState()
   const legacyKeys = Object.keys(initial).filter(
-    (key) => key !== 'pinnedEvidence',
+    (key) =>
+      ![
+        'sourceEvidence',
+        'sourceHistory',
+        'sourceRechecks',
+        'legacySeals',
+        ...(schema === legacyLifecycleStorageKey ? ['pinnedEvidence'] : []),
+      ].includes(key),
   )
-  if (
-    !exactKeys(value, legacyKeys) ||
-    value.schema !== legacyLifecycleStorageKey
-  )
-    throw new Error('Saved lifecycle v1 state is not supported.')
-  const legacy = value as Omit<LifecycleState, 'schema' | 'pinnedEvidence'> & {
-    schema: typeof legacyLifecycleStorageKey
-    h1: null | Omit<NonNullable<LifecycleState['h1']>, 'evidenceReferences'>
-    h2: null | Omit<NonNullable<LifecycleState['h2']>, 'evidenceReferences'>
-    previousCycle: null | Omit<
-      NonNullable<LifecycleState['previousCycle']>,
-      'evidenceReferences'
-    >
+  if (!exactKeys(value, legacyKeys) || value.schema !== schema)
+    throw new Error('Saved legacy lifecycle state is not supported.')
+  const migrateHandoff = (handoff: unknown, keys: string[]) => {
+    if (handoff === null) return null
+    const v1 = schema === legacyLifecycleStorageKey
+    if (!exactKeys(handoff, [...keys, ...(v1 ? [] : ['evidenceReferences'])]))
+      throw new Error(
+        'Saved legacy handoff fields do not match the exact schema.',
+      )
+    return { ...handoff, ...(v1 ? { evidenceReferences: [] } : {}) }
   }
-  const migrated: LifecycleState = {
-    ...legacy,
+  const h1 = migrateHandoff(value.h1, [
+    'digest',
+    'sealedMinute',
+    'carriedGapIds',
+    'objectiveIds',
+  ])
+  const h2 = migrateHandoff(value.h2, [
+    'digest',
+    'sealedMinute',
+    'carried',
+    'setAside',
+  ])
+  const previous = migrateHandoff(value.previousCycle, [
+    'cycle',
+    'digest',
+    'carriedGapIds',
+    'carriedObjectiveIds',
+  ])
+  const candidate: Record<string, unknown> = {
+    ...value,
     schema: lifecycleSchema,
-    pinnedEvidence: [],
-    h1: legacy.h1 ? { ...legacy.h1, evidenceReferences: [] } : null,
-    h2: legacy.h2 ? { ...legacy.h2, evidenceReferences: [] } : null,
-    previousCycle: legacy.previousCycle
-      ? { ...legacy.previousCycle, evidenceReferences: [] }
+    pinnedEvidence:
+      schema === legacyLifecycleStorageKey ? [] : value.pinnedEvidence,
+    sourceEvidence: [],
+    sourceRechecks: [],
+    sourceHistory: [],
+    legacySeals: null,
+    h1,
+    h2,
+    previousCycle: previous
+      ? {
+          ...previous,
+          sourceEvidence: [],
+          sourceRechecks: [],
+          sourceDigest: '',
+        }
       : null,
   }
-  if (migrated.h1) migrated.h1.digest = h1Digest(migrated)
-  if (migrated.h2) migrated.h2.digest = h2Digest(migrated)
-  return restoreLifecycleState(JSON.stringify(migrated))
+  const canonical: Record<string, unknown> = {
+    ...candidate,
+    stamp: practiceStamp,
+  }
+  delete canonical.comparison
+  delete canonical.capabilityMarkers
+  delete canonical.ledger
+  if (!validCanonicalRecord(canonical))
+    throw new Error('Saved legacy lifecycle state failed validation.')
+  const { stamp: _stamp, ...fields } = canonical
+  const migrated: LifecycleState = { ...initial, ...fields }
+  if (migrated.previousCycle)
+    migrated.previousCycle.sourceDigest = previousSourceDigest(
+      migrated.previousCycle,
+    )
+  // Keep the original v1 seals; its bounded evidence states are reconstructed for verification.
+  if (schema === legacyLifecycleStorageKey && (h1 || h2)) {
+    migrated.legacySeals = {
+      h1: migrated.h1?.digest ?? null,
+      h2: migrated.h2?.digest ?? null,
+      integrity: '',
+    }
+    migrated.legacySeals.integrity = legacySealIntegrity(migrated)
+  }
+  return restoreLifecycleState(
+    JSON.stringify({
+      ...migrated,
+      comparison: candidate.comparison,
+      capabilityMarkers: candidate.capabilityMarkers,
+      ledger: candidate.ledger,
+    }),
+  )
 }
 
 export function revealedInjects(state: LifecycleState) {
@@ -1463,6 +1866,15 @@ export function generateCloseoutPacket(state: LifecycleState) {
     practiceStamp,
     `Schema: ${lifecycleSchema}`,
     `Cycle digest: ${digest}`,
+    `## Accepted public source context\nFacilitator-selected planning context only; not criteria, admission, available beds, County coverage, current accessibility verification, service condition, event applicability, or recovery.\n${stableStringify(
+      {
+        accepted: state.sourceEvidence,
+        rechecks: state.sourceRechecks,
+        previousCycle: state.previousCycle,
+        sourceHistory: state.sourceHistory,
+        legacySeals: state.legacySeals,
+      },
+    )}`,
     `## Pinned public evidence\n${
       state.pinnedEvidence.length
         ? state.pinnedEvidence
@@ -1513,6 +1925,23 @@ export function applyLifecycleAction(
   state: LifecycleState,
   action: LifecycleAction,
 ): LifecycleState {
+  const next = reduceLifecycleAction(state, action)
+  if (
+    new TextEncoder().encode(JSON.stringify(next)).byteLength >
+      maxLifecycleImportBytes ||
+    new TextEncoder().encode(exportLifecycleRecord(next)).byteLength >
+      maxLifecycleImportBytes
+  )
+    throw new Error(
+      'Lifecycle record exceeds the 128 KiB limit. Export before an explicit reset.',
+    )
+  return next
+}
+
+function reduceLifecycleAction(
+  state: LifecycleState,
+  action: LifecycleAction,
+): LifecycleState {
   if (state.phase === 'complete')
     throw new Error('Cycle 1 is read-only. Start the next practice cycle.')
   const expectedPhase = requiredPhase(action)
@@ -1523,6 +1952,103 @@ export function applyLifecycleAction(
   if (state.h1 && beforeActionTypes.has(action.type))
     throw new Error('H1 is immutable. Start response practice to continue.')
   switch (action.type) {
+    case 'accept-source': {
+      if (!state.carriedGaps.some((gap) => gap.gapId === action.gapId))
+        throw new Error(
+          'Carry the readiness gap before attaching public context.',
+        )
+      if (
+        !validSourceReading(action.displayed) ||
+        !action.displayed.claim ||
+        !validSourceTime(action.acceptedAt)
+      )
+        throw new Error('Select a validated displayed source revision first.')
+      if (
+        state.sourceEvidence.some(
+          (item) =>
+            item.gapId === action.gapId &&
+            item.displayed.claim?.content_digest ===
+              action.displayed.claim?.content_digest,
+        )
+      )
+        throw new Error(
+          'This source fact revision is already accepted for this gap.',
+        )
+      const contents = {
+        id: `SA-${state.cycle}-${state.sourceEvidence.length + 1}`,
+        cycle: state.cycle,
+        gapId: action.gapId,
+        acceptedAt: action.acceptedAt,
+        acceptanceState: 'facilitator-selected planning context' as const,
+        freshnessAtAcceptance: sourceObservationState(
+          action.displayed,
+          Date.parse(action.acceptedAt),
+        ),
+        displayed: action.displayed,
+      }
+      const accepted = immutableSourceRecord({
+        ...contents,
+        recordDigest: contentDigest(contents),
+      })
+      return sourceLedger(
+        {
+          ...state,
+          sourceEvidence: [...state.sourceEvidence, accepted],
+        },
+        'SOURCE_ACCEPT',
+        `Accepted ${accepted.id} for ${action.gapId}; planning context, not criteria.`,
+      )
+    }
+    case 'recheck-source': {
+      const accepted = state.sourceEvidence.find(
+        (item) => item.id === action.acceptedId,
+      )
+      if (
+        !accepted?.displayed.claim ||
+        !validSourceReading(action.reading) ||
+        !validSourceTime(action.checkedAt) ||
+        action.reading.checkedAt !== action.checkedAt
+      )
+        throw new Error(
+          'Recheck requires an accepted claim and an explicit source check.',
+        )
+      if (
+        sourceObservationState(
+          accepted.displayed,
+          Date.parse(action.checkedAt),
+        ) === 'fresh' &&
+        action.reading.transport !== 'unavailable'
+      )
+        throw new Error(
+          'Source rechecks apply to stale, unknown, or unavailable accepted evidence.',
+        )
+      const contents = {
+        id: `SR-${state.cycle}-${state.sourceRechecks.length + 1}`,
+        acceptedId: accepted.id,
+        acceptedDigest: accepted.recordDigest,
+        owner: action.owner,
+        horizon: action.horizon,
+        checkedAt: action.checkedAt,
+        result: sourceRecheckResult(
+          accepted.displayed.claim,
+          action.reading,
+          Date.parse(action.checkedAt),
+        ),
+        reading: action.reading,
+      }
+      const recheck = immutableSourceRecord({
+        ...contents,
+        recordDigest: contentDigest(contents),
+      })
+      return sourceLedger(
+        {
+          ...state,
+          sourceRechecks: [...state.sourceRechecks, recheck],
+        },
+        'SOURCE_RECHECK',
+        `${accepted.id}: ${recheck.result}; ${action.owner}, ${action.horizon}. No recovery inference.`,
+      )
+    }
     case 'pin-evidence': {
       if (
         (state.phase === 'before' && state.h1) ||
@@ -2173,13 +2699,27 @@ export function applyLifecycleAction(
       const digest = lifecycleDigest(state)
       const next = createInitialLifecycleState()
       next.cycle = state.cycle + 1
+      next.sourceHistory = immutableSourceRecord([
+        ...state.sourceHistory,
+        ...(state.previousCycle?.sourceEvidence.length
+          ? [state.previousCycle]
+          : []),
+      ])
+      if (next.sourceHistory.length > 16)
+        throw new Error(
+          'Source history is full. Export the record before an explicit reset.',
+        )
       next.previousCycle = {
         cycle: state.cycle,
         digest,
         carriedGapIds: nextGapIds,
         carriedObjectiveIds,
         evidenceReferences: state.pinnedEvidence,
+        sourceEvidence: immutableSourceRecord(state.sourceEvidence),
+        sourceRechecks: immutableSourceRecord(state.sourceRechecks),
+        sourceDigest: '',
       }
+      next.previousCycle.sourceDigest = previousSourceDigest(next.previousCycle)
       next.carriedGaps = nextGapIds.map((gapId, index) => ({
         gapId,
         rank: index + 1,

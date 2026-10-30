@@ -56,14 +56,22 @@ Every draft, strict record, and closeout packet is labeled
 
 Each capability interaction appends a local ledger event and exposes a stable
 `data-capability="B01"` through `data-capability="A10"` marker. Browser
-persistence uses the strict `practice-lifecycle.v2` schema and an explicit
+persistence uses the strict `practice-lifecycle.v3` schema and an explicit
 reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
+Every reducer action checks both persisted-state and canonical-export UTF-8 bytes
+after all effects, including ledger additions. Overflow rejects the action and
+preserves the previous valid state, including retained source history.
 
-Saved `practice-lifecycle.v1` state migrates once into v2 with empty pinned
-evidence and compatible handoff references; strict comparison imports remain v2
-only. An explicit pin stores only snapshot identity, times, aggregate status,
+Saved `practice-lifecycle.v1` and original `practice-lifecycle.v2` state migrate
+explicitly into v3 with empty source-bound records. V1 also receives empty pinned
+evidence and compatible handoff references. Original sealed digests are retained,
+not rewritten: v1 H1 verification reconstructs its bounded pre-seal evidence
+states, and v2 uses its original canonical inputs. Malformed or oversized saved
+records are not overwritten on a failed restore. Strict comparison imports
+remain current-schema-only; they do not silently migrate or merge content.
+An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a
 partial event feed cannot be summarized as merely fresh. Duplicate phase pins
@@ -72,6 +80,95 @@ capability complete, and later refreshes cannot alter pins or sealed H1/H2/H3
 records. Restore recomputes H1/H2 digests from their retained canonical inputs
 and requires their evidence references to exactly match the corresponding
 phase pins.
+
+## Source-bound B07 → D03 → A04
+
+The first item-level chain is deliberately **FEMA shelter reporting only**.
+It uses the existing read-only `/api/v1/lifecycle/evidence` endpoint, with a
+bounded `shelter_context` projection derived from the existing official adapter.
+No new scraping, staff persistence, mutations, dispatch, or authority controls
+are introduced.
+
+- **B07:** carry a gap, review a report, then explicitly accept the displayed
+  revision as facilitator-selected planning context. A refresh can update the
+  suggestions but cannot swap the reviewed revision at acceptance. The record
+  retains every displayed report fact, product/source identity, authority/link,
+  geography/query scope, source timestamps (including explicit unknowns),
+  limitations, fact digest, derivation version, retrieval metadata, snapshot ID,
+  acceptance time/state, and linked gap. A source acceptance appends
+  `SOURCE_ACCEPT`, not a B07 completion or “criteria present” marker. It does not
+  establish that the fictional event affects the planning location.
+- **D03:** a separate **FEMA-reported shelter context** register displays status,
+  reported capacity, accessibility and pet codes, provenance, and limitations.
+  The manual practice service-area condition remains a distinct fixed-choice
+  action. A successful empty query says **no records reported**, not no shelters.
+  Partial, stale, unavailable, and last-known results remain explicit. No report
+  establishes admission, available beds, complete County coverage, current
+  accessibility verification, restoration, or a service condition.
+- **A04:** an explicit source recheck performs a read and appends an owned,
+  horizon-bounded result linked to the exact accepted record: `unchanged`,
+  `changed`, `not-returned`, or `source-unavailable`. Only a successful complete
+  same-scope query can yield `not-returned`; incomplete, stale, expired,
+  cancelled, offline, malformed, or failed reads cannot. This is a comparison
+  result, never recovery or a replacement for accepted facts. Manual service
+  recheck plans, objective scores, and gates do not change.
+
+Real-source freshness uses wall time, refreshed on an independent browser clock,
+not practice T+ time or successful request time. A 304 does not extend an expired
+deadline. Retrieval freshness is separate from observation freshness: this FEMA
+feed does not provide verified item update/expiry timestamps, so observation
+age remains **unknown**, even after a successful retrieval. Transient errors keep
+validated last-known facts with an unavailable label. Lifecycle evidence JSON
+is bounded and runtime-validated before entering the cache; an invalid payload
+does not replace validated data.
+Source, transport, and aggregate enum fields require actual strings before
+membership checks. Coercible arrays, objects, and numbers are malformed, never
+fresh evidence or a basis for a `not-returned` recheck.
+Every mount reconciles offline transport, including cache hits after navigation:
+validated facts remain last-known/unavailable without issuing another request.
+
+The projection contains at most 20 unique items, each at most 4 KiB, with
+bounded typed fields and no resident/contact/address fields. Missing capacity
+is null, not zero; missing status is unknown, not `OPEN`. Malformed or truncated
+source records make query processing partial rather than silently complete.
+Each item uses `fema-shelter-context.v1` and a deterministic
+`fnv1a-dual-v1` content checksum. The checksum covers facts, attribution, source
+times, geography, scope, limitations, and derivation version, but excludes
+retrieval timestamps, snapshot identity, distance, and item ordering. It detects
+content changes, **not authenticity or operational authority**.
+
+V3 allows at most 8 accepted claims and 16 source rechecks per cycle, with a
+combined 32 KiB source-record budget and the existing 128 KiB exchange/restore
+limit. Source records are immutable and append-only. H1/H2 include accepted
+source content; H3 retains the full accepted/recheck chain and a verified retained
+content checksum. Later cycles archive prior source-bearing H3 records (up to 16
+archives, subject to the total byte limit) rather than silently dropping them.
+At a limit, export and explicitly reset; no accepted record is auto-evicted.
+Exports and packets include the full source chain and its provenance in fixed
+canonical order. Existing sealed handoffs are not rewritten by refreshes.
+
+### Deliberately blocked domains and next slices
+
+1. **NWS product provenance:** next ranked source-bound slice. First separate
+   issued, effective, and onset timestamps and retain deterministic source
+   geography. B04 remains manual; the existing onset-as-issued mapping is not
+   timing evidence.
+2. **PTWC jurisdiction:** no attachable Hawaiʻi-applicable claim until a
+   deterministic jurisdiction rule is implemented and tested. A ComCat tsunami
+   flag remains an earthquake fact, never a tsunami alert or order.
+3. **Operational authority:** shelter admission/current beds/accessibility,
+   legal orders, road passability, utility restoration, wildfire containment,
+   observed unmet need, and partner commitments require authoritative external
+   contracts and appropriate verification. None is inferred from this chain.
+
+The real-backend browser proof uses `cmd/e2e-server` with its test-only
+`X-Lifecycle-Fixture` header (`baseline`, `changed`, `empty`, `partial`, `stale`,
+`unavailable`). The production handler has no such control. Requests are continued
+to the real Go endpoint rather than fulfilled by browser mocks. Separate mocked
+boundary tests cover malformed JSON contracts, cancellation, offline, and expired
+304 behavior. Run `npm run test:e2e` before `npm run test:operations`, never in
+parallel; both rebuild `dist/`. Confirm all test ports are free or belong to this
+worktree before starting.
 
 Closeout packets contain pinned public-evidence summaries plus the saved section
 selection in a fixed section order, and the canonical cycle digest shown in the toolbar in the filename.

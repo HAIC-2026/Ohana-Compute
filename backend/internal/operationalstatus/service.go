@@ -86,16 +86,18 @@ type ShelterFact struct {
 }
 
 type DomainStatus struct {
-	Domain              string               `json:"domain"`
-	Status              string               `json:"status"`
-	ReferenceKind       string               `json:"reference_kind"`
-	Summary             string               `json:"summary"`
-	Coverage            Coverage             `json:"coverage"`
-	Freshness           Freshness            `json:"freshness"`
-	Provenance          Provenance           `json:"provenance"`
-	Limitations         []string             `json:"limitations"`
-	Shelters            []ShelterFact        `json:"shelters,omitempty"`
-	UnavailableBoundary *UnavailableBoundary `json:"unavailable_boundary,omitempty"`
+	Domain                   string               `json:"domain"`
+	Status                   string               `json:"status"`
+	ReferenceKind            string               `json:"reference_kind"`
+	Summary                  string               `json:"summary"`
+	Coverage                 Coverage             `json:"coverage"`
+	Freshness                Freshness            `json:"freshness"`
+	Provenance               Provenance           `json:"provenance"`
+	Limitations              []string             `json:"limitations"`
+	Shelters                 []ShelterFact        `json:"shelters,omitempty"`
+	UnavailableBoundary      *UnavailableBoundary `json:"unavailable_boundary,omitempty"`
+	ShelterQueryPartial      bool                 `json:"-"`
+	ShelterSourceUnavailable bool                 `json:"-"`
 }
 
 type Snapshot struct {
@@ -254,6 +256,8 @@ func normalizeShelters(input official.OpenShelters) (DomainStatus, error) {
 			Notes: "Coverage depends on participating reporting authorities and incident reporting.",
 		},
 		Freshness: freshness, Provenance: provenance, Shelters: facts,
+		ShelterQueryPartial:      input.QueryPartial,
+		ShelterSourceUnavailable: source.RefreshAttemptedAt != nil,
 		Limitations: []string{
 			"FEMA records remain separate from County shelter-plan provenance and practice facilities.",
 			"A missing record does not prove that no County shelter is open.",

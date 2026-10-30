@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 import { capabilityIds, practiceStamp } from '../src/lib/practice-lifecycle'
+import { shelterContext } from './fixtures/lifecycle-source'
 
 const capability = (page: Page, id: string) =>
   page.locator(`[data-capability="${id}"]`)
@@ -29,6 +30,7 @@ test.beforeEach(async ({ page }) => {
         status: 'partial',
         valid_until: '2026-10-29T21:00:00Z',
         planning_disclaimer: 'Planning context only.',
+        shelter_context: shelterContext(),
         event_triggers: {
           state: 'fresh',
           status: 'partial',
@@ -92,7 +94,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
 }) => {
   const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
   await expect(panel).toContainText('snapshot-browser-a')
-  await expect(panel).toContainText('1 · fresh')
+  await expect(panel).toContainText('1 · stale')
   await expect(panel).toContainText('Feed partial · 1 source unavailable')
   await expect(panel).toContainText('2 · stale')
   await expect(panel).toContainText('1 unavailable')
@@ -109,7 +111,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
     panel.getByRole('button', { name: 'Pinned in before' }),
   ).toBeDisabled()
   const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('practice-lifecycle.v2') ?? '{}'),
+    JSON.parse(localStorage.getItem('practice-lifecycle.v3') ?? '{}'),
   )
   expect(saved.pinnedEvidence).toEqual([
     expect.objectContaining({
@@ -119,7 +121,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
       domainCount: 2,
       unavailableDomainCount: 1,
       eventUnavailableSourceCount: 1,
-      eventTriggerState: 'fresh',
+      eventTriggerState: 'stale',
       operationalStatusState: 'stale',
       eventTriggerStatus: 'partial',
       operationalStatusStatus: 'partial',
@@ -164,6 +166,11 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
         generated_at: '2026-10-29T20:01:00Z',
         status: 'unavailable',
         planning_disclaimer: 'Planning context only.',
+        shelter_context: {
+          ...shelterContext([]),
+          state: 'unavailable',
+          coverage: 'unavailable',
+        },
         event_triggers: {
           state: 'unavailable',
           status: 'unavailable',
@@ -185,7 +192,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
   expect(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem('practice-lifecycle.v2') ?? '{}')
+        JSON.parse(localStorage.getItem('practice-lifecycle.v3') ?? '{}')
           .pinnedEvidence[0].snapshotId,
     ),
   ).toBe('snapshot-browser-a')
@@ -364,7 +371,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     /^practice-lifecycle-[a-f0-9]{16}\.json$/,
   )
   const recordText = await readFile(await record.path(), 'utf8')
-  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v2')
+  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v3')
   expect(recordText).toContain(practiceStamp)
   await capability(page, 'A08')
     .getByRole('button', {
@@ -419,7 +426,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   expect(apiWrites).toEqual([])
   await expect
     .poll(() =>
-      page.evaluate(() => localStorage.getItem('practice-lifecycle.v2')),
+      page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
     )
     .not.toBeNull()
   const width = await page.evaluate(() => ({
@@ -457,8 +464,23 @@ test('lifecycle has no forbidden controls, free-text operational fields, or real
     }),
   ).toHaveCount(0)
   await expect(page.locator('input[type="text"]')).toHaveCount(0)
-  const text = await page.locator('main').innerText()
+  const text = await page
+    .locator('.lifecycle-capability')
+    .evaluateAll((nodes) =>
+      nodes
+        .map((node) => {
+          const practice = node.cloneNode(true) as HTMLElement
+          practice
+            .querySelectorAll('.lifecycle-source-section')
+            .forEach((section) => section.remove())
+          return practice.textContent
+        })
+        .join('\n'),
+    )
   expect(text).not.toMatch(
     /(Hawaiʻi County|Maui County|Honolulu|HI-EMA|DHS|Red Cross)/,
   )
+  await expect(
+    page.getByRole('region', { name: 'FEMA-reported shelter context' }),
+  ).toContainText('Honolulu')
 })

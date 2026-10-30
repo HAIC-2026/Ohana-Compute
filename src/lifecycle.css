@@ -170,6 +170,51 @@
   font-size: 0.8rem;
 }
 
+.lifecycle-source-section {
+  margin-block: 24px;
+  padding-block: 16px;
+  border-block: 1px solid var(--cp-border-strong);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lifecycle-source-section h4 {
+  margin-block: 0 12px;
+}
+
+.lifecycle-source-section details {
+  margin-block: 12px;
+}
+
+.lifecycle-source-section summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.lifecycle-source-facts {
+  display: grid;
+  gap: 4px;
+  margin-block: 16px;
+}
+
+.lifecycle-source-facts dt {
+  margin-block-start: 10px;
+  font-weight: 700;
+}
+
+.lifecycle-source-facts dd {
+  margin: 0;
+}
+
+.lifecycle-source-reading,
+.lifecycle-source-section select {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .lifecycle-jump {
   position: sticky;
   top: 0;

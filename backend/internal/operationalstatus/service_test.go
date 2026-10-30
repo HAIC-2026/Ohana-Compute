@@ -149,7 +149,34 @@ func TestValidateRejectsLiveUnsupportedDomain(t *testing.T) {
 			unavailableWildfire(),
 		},
 	}
+
 	if err := Validate(snapshot); err == nil {
 		t.Fatal("Validate() accepted live unsupported road status")
+	}
+}
+
+func TestSnapshotRetainsShelterQueryAndRefreshFailureMetadata(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 30, 16, 0, 0, 0, time.UTC)
+	service := NewService(Config{
+		Shelters: shelterReaderStub{result: official.OpenShelters{
+			QueryPartial: true,
+			Shelters:     []official.Shelter{{ID: "last-known", Name: "Last known report"}},
+			Sources: []arcgis.SourceStatus{{
+				ID: "fema-open-shelters", Authority: "FEMA", URL: "https://gis.fema.gov/example",
+				Status: "stale", RetrievedAt: now.Add(-10 * time.Minute),
+				FreshUntil: now.Add(-5 * time.Minute), RefreshAttemptedAt: &now,
+			}},
+		}},
+		Now: func() time.Time { return now },
+	})
+	snapshot, err := service.Snapshot(context.Background(), 21.3, -157.8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	domain := snapshot.Domains[2]
+	if domain.Status != "stale" || !domain.ShelterQueryPartial ||
+		!domain.ShelterSourceUnavailable || len(domain.Shelters) != 1 {
+		t.Fatalf("last-known operational behavior or lifecycle metadata lost: %+v", domain)
 	}
 }

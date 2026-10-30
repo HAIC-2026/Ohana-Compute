@@ -82,9 +82,10 @@ type Shelter struct {
 }
 
 type OpenShelters struct {
-	Shelters []Shelter             `json:"shelters"`
-	Sources  []arcgis.SourceStatus `json:"sources"`
-	Warnings []string              `json:"warnings,omitempty"`
+	Shelters     []Shelter             `json:"shelters"`
+	Sources      []arcgis.SourceStatus `json:"sources"`
+	Warnings     []string              `json:"warnings,omitempty"`
+	QueryPartial bool                  `json:"-"`
 }
 
 func NewClient(arcGIS Querier) *Client {
@@ -281,19 +282,21 @@ func (client *Client) OpenShelters(
 	longitude float64,
 ) (OpenShelters, error) {
 	result, err := client.arcGIS.Query(ctx, arcgis.Request{
-		SourceID:  "fema-open-shelters",
-		Authority: femaAuthority,
-		URL:       openSheltersURL,
-		CacheTTL:  shelterCacheTTL,
+		SourceID:             "fema-open-shelters",
+		Authority:            femaAuthority,
+		URL:                  openSheltersURL,
+		CacheTTL:             shelterCacheTTL,
+		AllowPartialFeatures: true,
 		Params: url.Values{
-			"where":          {"1=1"},
-			"geometry":       {"-161,18,-154,23"},
-			"geometryType":   {"esriGeometryEnvelope"},
-			"inSR":           {"4326"},
-			"spatialRel":     {"esriSpatialRelIntersects"},
-			"outFields":      {"*"},
-			"returnGeometry": {"true"},
-			"outSR":          {"4326"},
+			"where":             {"1=1"},
+			"geometry":          {"-161,18,-154,23"},
+			"geometryType":      {"esriGeometryEnvelope"},
+			"inSR":              {"4326"},
+			"spatialRel":        {"esriSpatialRelIntersects"},
+			"outFields":         {"*"},
+			"returnGeometry":    {"true"},
+			"outSR":             {"4326"},
+			"resultRecordCount": {"21"},
 		},
 	})
 	if err != nil {
@@ -301,33 +304,24 @@ func (client *Client) OpenShelters(
 	}
 
 	shelters := make([]Shelter, 0, len(result.Collection.Features))
+	partial := result.Partial
 	for _, feature := range result.Collection.Features {
-		coordinates, ok := pointCoordinates(feature.Geometry)
+		shelter, ok := reportedShelter(feature, latitude, longitude)
 		if !ok {
+			partial = true
 			continue
 		}
-		shelters = append(shelters, Shelter{
-			ID:                    firstNonEmpty(feature.Properties, "shelter_id", "objectid"),
-			Name:                  stringValue(feature.Properties, "shelter_name", "Open shelter"),
-			Address:               stringValue(feature.Properties, "address", ""),
-			City:                  stringValue(feature.Properties, "city", ""),
-			Status:                stringValue(feature.Properties, "shelter_status", "OPEN"),
-			Capacity:              optionalInt(feature.Properties, "evacuation_capacity"),
-			WheelchairAccessible:  stringValue(feature.Properties, "wheelchair_accessible", "Unknown"),
-			PetAccommodationsCode: stringValue(feature.Properties, "pet_accommodations_code", ""),
-			Organization:          stringValue(feature.Properties, "org_name", ""),
-			Coordinates:           coordinates,
-			DistanceMiles:         round(haversineMiles(latitude, longitude, coordinates[1], coordinates[0]), 2),
-		})
+		shelters = append(shelters, shelter)
 	}
 	sort.Slice(shelters, func(first int, second int) bool {
 		return shelters[first].DistanceMiles < shelters[second].DistanceMiles
 	})
 
 	return OpenShelters{
-		Shelters: shelters,
-		Sources:  []arcgis.SourceStatus{result.Source},
-		Warnings: result.Warnings,
+		Shelters:     shelters,
+		Sources:      []arcgis.SourceStatus{result.Source},
+		Warnings:     result.Warnings,
+		QueryPartial: partial,
 	}, nil
 }
 
@@ -453,42 +447,6 @@ func stringValue(properties map[string]any, key string, fallback string) string 
 		return fallback
 	}
 	return *value
-}
-
-func firstNonEmpty(properties map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value := optionalString(properties, key); value != nil {
-			return *value
-		}
-	}
-	return ""
-}
-
-func optionalInt(properties map[string]any, key string) *int {
-	value, ok := properties[key]
-	if !ok || value == nil {
-		return nil
-	}
-	switch typed := value.(type) {
-	case float64:
-		result := int(typed)
-		return &result
-	case int:
-		result := typed
-		return &result
-	case json.Number:
-		parsed, err := typed.Int64()
-		if err == nil {
-			result := int(parsed)
-			return &result
-		}
-	case string:
-		parsed, err := strconv.Atoi(typed)
-		if err == nil {
-			return &parsed
-		}
-	}
-	return nil
 }
 
 func pointCoordinates(geometry json.RawMessage) ([2]float64, bool) {

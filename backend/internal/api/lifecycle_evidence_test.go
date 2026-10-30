@@ -190,7 +190,9 @@ func TestLifecycleEvidenceEndpointCoordinatesValidUntilAndETag(t *testing.T) {
 	if !strings.HasPrefix(etag, `W/"`) {
 		t.Fatalf("expected weak ETag, got %q", etag)
 	}
-	if body := response.Body.String(); !containsAll(body, `"valid_until":"2026-10-29T22:00:00Z"`, lifecycleEvidenceDisclaimer) {
+	if body := response.Body.String(); !containsAll(body, `"valid_until":"2026-10-29T22:00:00Z"`, lifecycleEvidenceDisclaimer,
+		`"shelter_context":{"derivation_version":"fema-shelter-context.v1"`,
+		`"retrieved_at":null,"fresh_until":null,"items":[]`) {
 		t.Fatalf("missing valid-until or disclaimer: %s", body)
 	}
 

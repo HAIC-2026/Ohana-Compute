@@ -12,12 +12,24 @@ import {
   lifecycleDigest,
   lifecycleGates,
   lifecycleGatesMet,
+  maxLifecycleImportBytes,
   migrateLifecycleV1State,
+  migrateLifecycleV2State,
   parseLifecycleComparison,
   practiceStamp,
   restoreLifecycleState,
   serviceRecordNeedsRecheck,
 } from '../src/lib/practice-lifecycle'
+import {
+  displayedSource,
+  sourceClaim,
+  sourceTestTime,
+} from './fixtures/lifecycle-source'
+import {
+  contentDigest,
+  fnvDigest,
+  stableStringify,
+} from '../src/lib/record-digest'
 import type {
   LifecycleAction,
   LifecycleState,
@@ -46,7 +58,22 @@ function evidenceReference(
 }
 
 function apply(state: LifecycleState, action: LifecycleAction) {
-  return applyLifecycleAction(state, action)
+  const next = applyLifecycleAction(state, action)
+  assertBoundedRoundTrip(next)
+  return next
+}
+
+function assertBoundedRoundTrip(state: LifecycleState) {
+  const persisted = JSON.stringify(state)
+  const exported = exportLifecycleRecord(state)
+  expect(new TextEncoder().encode(persisted).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(new TextEncoder().encode(exported).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(restoreLifecycleState(persisted)).toEqual(state)
+  expect(parseLifecycleComparison(exported).digest).toBe(lifecycleDigest(state))
 }
 
 function completeLifecycle(startNextCycle = true) {
@@ -232,8 +259,11 @@ function completeLifecycle(startNextCycle = true) {
   return state
 }
 
-function readyBefore(choice: 'r1' | 'comparison' = 'comparison') {
-  let state = createInitialLifecycleState()
+function readyBefore(
+  choice: 'r1' | 'comparison' = 'comparison',
+  initial = createInitialLifecycleState(),
+) {
+  let state = initial
   state = apply(state, { type: 'lock-event', eventId: 'hurricane-amber' })
   state = apply(state, {
     type: 'carry-gap',
@@ -429,8 +459,9 @@ test('exports and packets preserve practice boundaries', () => {
   expect(output).toContain(practiceStamp)
   expect(output).toContain('Unknown — not zero')
   expect(output).not.toMatch(
-    /\b(open|passable|restored|normal|contained|resumed|approved|verified|confirmed|activated|dispatched|accepted|acknowledged|released|closed|cleared|all-clear)\b/i,
+    /\b(open|passable|restored|normal|contained|resumed|approved|verified|confirmed|activated|dispatched|acknowledged|released|closed|cleared|all-clear)\b/i,
   )
+  expect(output).toContain('Facilitator-selected planning context only')
   expect(output).not.toMatch(
     /(Hawaiʻi County|Maui County|Honolulu|HI-EMA|DHS|Red Cross)/,
   )
@@ -700,18 +731,510 @@ test('restore rejects malformed ledger and comparison metadata', () => {
   expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
 })
 
-test('migrates saved v1 state to strict v2 with compatible handoffs', () => {
-  const state = apply(readyBefore(), { type: 'seal-h1' })
+test('migrates saved v1 state to strict v3 preserving original seals', () => {
+  const before = readyBefore()
+  const originalDigest = fnvDigest(
+    stableStringify({
+      event: before.event,
+      gaps: before.carriedGaps,
+      objectives: before.objectives,
+      timing: before.timing,
+      assumptions: before.assumptions,
+      scope: before.simulationScope,
+      injects: before.injects,
+      evidence: before.evidence,
+    }),
+  )
+  let state = apply(before, { type: 'seal-h1' })
+  state = apply(state, { type: 'start-during' })
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = apply(state, { type: 'add-r2', uptakePercent: 30, supportDays: 6 })
   const legacy = JSON.parse(JSON.stringify(state)) as Record<string, any>
+  legacy.h1.digest = originalDigest
   legacy.schema = 'practice-lifecycle.v1'
   delete legacy.pinnedEvidence
+  delete legacy.sourceEvidence
+  delete legacy.sourceRechecks
+  delete legacy.sourceHistory
+  delete legacy.legacySeals
   delete legacy.h1.evidenceReferences
 
   const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
-  expect(migrated.schema).toBe('practice-lifecycle.v2')
+  expect(migrated.schema).toBe('practice-lifecycle.v3')
   expect(migrated.pinnedEvidence).toEqual([])
   expect(migrated.h1?.evidenceReferences).toEqual([])
+  expect(migrated.h1?.digest).toBe(originalDigest)
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
+  expect(() =>
+    migrateLifecycleV1State(
+      JSON.stringify({
+        ...legacy,
+        h1: { ...legacy.h1, digest: '0000000000000000' },
+      }),
+    ),
+  ).toThrow(/legacy seal integrity/)
+})
+
+test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and tampered seals', () => {
+  const state = completeLifecycle(false)
+  const legacy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+  legacy.schema = 'practice-lifecycle.v2'
+  delete legacy.sourceEvidence
+  delete legacy.sourceRechecks
+  delete legacy.sourceHistory
+  delete legacy.legacySeals
+  const text = JSON.stringify(legacy)
+  const migrated = migrateLifecycleV2State(text)
+  expect(migrated.sourceEvidence).toEqual([])
+  expect(migrated.sourceRechecks).toEqual([])
+  expect(migrated.h1).toEqual(state.h1)
+  expect(migrated.h2).toEqual(state.h2)
+  expect(() => restoreLifecycleState(text)).toThrow()
+  expect(() => parseLifecycleComparison(text)).toThrow()
+  expect(() =>
+    migrateLifecycleV2State(JSON.stringify({ ...legacy, sourceEvidence: [] })),
+  ).toThrow()
+  expect(() =>
+    migrateLifecycleV2State(
+      JSON.stringify({
+        ...legacy,
+        h1: { ...state.h1, digest: 'tampered' },
+      }),
+    ),
+  ).toThrow(/H1 integrity/)
+  expect(() =>
+    migrateLifecycleV2State(text.replace('"cycle":1', '"cycle":1,"cycle":1')),
+  ).toThrow(/Duplicate/)
+})
+
+test('original v1 After restores both original handoffs and rejects changed H2 inputs', () => {
+  const state = completeLifecycle(false)
+  const legacy = JSON.parse(JSON.stringify(state)) as Record<string, any>
+  legacy.schema = 'practice-lifecycle.v1'
+  for (const key of [
+    'pinnedEvidence',
+    'sourceEvidence',
+    'sourceRechecks',
+    'sourceHistory',
+    'legacySeals',
+  ])
+    delete legacy[key]
+  delete legacy.h1.evidenceReferences
+  delete legacy.h2.evidenceReferences
+  legacy.h1.digest = fnvDigest(
+    stableStringify({
+      event: state.event,
+      gaps: state.carriedGaps,
+      objectives: state.objectives,
+      timing: state.timing,
+      assumptions: { ...state.assumptions, r2: null },
+      scope: state.simulationScope,
+      injects: state.injects,
+      evidence: state.evidence
+        .filter((item) => item.supersedes === null)
+        .map((item) => ({
+          ...item,
+          state: 'practice-reported criteria present',
+        })),
+    }),
+  )
+  legacy.h2.digest = fnvDigest(
+    stableStringify(
+      state.supportItems.map(({ id, disposition }) => ({ id, disposition })),
+    ),
+  )
+  const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
+  expect(migrated.h1?.digest).toBe(legacy.h1.digest)
+  expect(migrated.h2?.digest).toBe(legacy.h2.digest)
+  expect(migrated.sourceEvidence).toEqual([])
+  expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
+  legacy.supportItems[0].disposition = 'set aside'
+  expect(() => migrateLifecycleV1State(JSON.stringify(legacy))).toThrow(
+    /legacy seal integrity/,
+  )
+})
+
+function acceptSource(state = readyBefore(), displayed = displayedSource()) {
+  return apply(state, {
+    type: 'accept-source',
+    gapId: 'transportation',
+    displayed,
+    acceptedAt: sourceTestTime,
+  })
+}
+
+test('post-action size guard includes the appended source ledger row and preserves valid input', () => {
+  const state = readyBefore()
+  const action: LifecycleAction = {
+    type: 'accept-source',
+    gapId: 'transportation',
+    displayed: displayedSource(),
+    acceptedAt: sourceTestTime,
+  }
+  const next = apply(state, action)
+  const delta =
+    new TextEncoder().encode(JSON.stringify(next)).byteLength -
+    new TextEncoder().encode(JSON.stringify(state)).byteLength
+  const padded = structuredClone(state)
+  const size = new TextEncoder().encode(JSON.stringify(padded)).byteLength
+  padded.ledger[0].summary += 'x'.repeat(
+    maxLifecycleImportBytes - delta + 1 - size,
+  )
+  assertBoundedRoundTrip(padded)
+  const previous = JSON.stringify(padded)
+  expect(() => applyLifecycleAction(padded, action)).toThrow(/128 KiB/)
+  expect(JSON.stringify(padded)).toBe(previous)
+  assertBoundedRoundTrip(padded)
+})
+
+for (const withHistory of [false, true]) {
+  test(`post-action size guard bounds repeated pins${withHistory ? ' with multi-cycle source history' : ''}`, () => {
+    let state = createInitialLifecycleState()
+    if (withHistory) {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        state = readyBefore('comparison', state)
+        for (let revision = 0; revision < 8; revision++)
+          state = acceptSource(
+            state,
+            displayedSource(sourceClaim(`REVISION-${revision}`)),
+          )
+        state = sealH2(
+          apply(apply(state, { type: 'seal-h1' }), { type: 'start-during' }),
+        )
+        state = apply(state, {
+          type: 'decide-gates',
+          decision: 'gates-unmet-carry-forward',
+        })
+        state = apply(state, { type: 'start-next-cycle' })
+      }
+      expect(state.sourceHistory).toHaveLength(2)
+    }
+    const history = structuredClone(state.sourceHistory)
+    for (let index = 0; index < 1000; index++) {
+      const previous = JSON.stringify(state)
+      let next: LifecycleState
+      try {
+        next = applyLifecycleAction(state, {
+          type: 'pin-evidence',
+          reference: evidenceReference('before', `size-pin-${index}`),
+        })
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        expect((error as Error).message).toContain('128 KiB')
+        expect(JSON.stringify(state)).toBe(previous)
+        expect(state.sourceHistory).toEqual(history)
+        assertBoundedRoundTrip(state)
+        return
+      }
+      assertBoundedRoundTrip(next)
+      state = next
+    }
+    throw new Error(
+      'Expected the common byte limit to refuse a pin before 1000 actions.',
+    )
+  })
+}
+
+function authorityState(state: LifecycleState) {
+  return {
+    event: state.event,
+    timing: state.timing,
+    evidence: state.evidence,
+    support: state.supportItems,
+    service: state.serviceRecords,
+    review: state.objectiveReview,
+    gateDecision: state.gateDecision,
+    markers: state.capabilityMarkers,
+    beforeGates: h1Gates(state),
+    afterGates: lifecycleGates(state),
+  }
+}
+
+test('source acceptance is attributable, append-only, and never criteria or authority', () => {
+  const before = readyBefore()
+  before.evidence = []
+  before.capabilityMarkers = before.capabilityMarkers.filter(
+    (id) => id !== 'B07',
+  )
+  const displayed = displayedSource()
+  const accepted = acceptSource(before, displayed)
+  expect(authorityState(accepted)).toEqual(authorityState(before))
+  expect(h1Gates(accepted).evidence).toBe(false)
+  expect(accepted.capabilityMarkers).not.toContain('B07')
+  expect(accepted.sourceEvidence[0]).toMatchObject({
+    gapId: 'transportation',
+    acceptedAt: sourceTestTime,
+    acceptanceState: 'facilitator-selected planning context',
+    freshnessAtAcceptance: 'unknown',
+    displayed: { snapshotId: 'snapshot-source-a', claim: sourceClaim() },
+  })
+  displayed.claim!.facts.reported_status = 'CHANGED AFTER CLICK'
+  expect(
+    accepted.sourceEvidence[0].displayed.claim?.facts.reported_status,
+  ).toBe('OPEN')
+  expect(
+    Object.isFrozen(accepted.sourceEvidence[0].displayed.claim?.facts),
+  ).toBe(true)
+  const next = acceptSource(accepted, displayedSource(sourceClaim('CLOSED')))
+  expect(next.sourceEvidence[0]).toEqual(accepted.sourceEvidence[0])
+  expect(next.sourceEvidence).toHaveLength(2)
+  expect(() =>
+    acceptSource(next, displayedSource(sourceClaim('CLOSED'))),
+  ).toThrow(/already accepted/)
+  expect(() => apply(accepted, { type: 'seal-h1' })).toThrow(
+    /Before handoff gate/,
+  )
+})
+
+test('accept captures reviewed A even when refresh offers A-prime; sealed H1/H2 remain immutable', () => {
+  const displayedA = displayedSource()
+  const newerSuggestion = displayedSource(sourceClaim('CLOSED'))
+  newerSuggestion.snapshotId = 'snapshot-newer'
+  const before = readyBefore()
+  let state = acceptSource(before, displayedA)
+  expect(state.sourceEvidence[0].displayed).toEqual(displayedA)
+  state = apply(state, { type: 'seal-h1' })
+  const h1 = structuredClone(state.h1)
+  expect(h1?.digest).not.toBe(apply(before, { type: 'seal-h1' }).h1?.digest)
+  expect(() => acceptSource(state, newerSuggestion)).toThrow(/immutable/)
+  state = apply(state, { type: 'start-during' })
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = sealH2(state)
+  const h2 = structuredClone(state.h2)
+  const accepted = structuredClone(state.sourceEvidence)
+  const authority = authorityState(state)
+  const scenarios = [
+    { reading: displayedSource(sourceClaim('CLOSED')), result: 'changed' },
+    { reading: displayedSource(), result: 'unchanged' },
+    {
+      reading: { ...displayedSource(), transport: 'unavailable' as const },
+      result: 'source-unavailable',
+    },
+    { reading: displayedSource(null), result: 'not-returned' },
+  ]
+  for (const { reading, result } of scenarios) {
+    state = apply(state, {
+      type: 'recheck-source',
+      acceptedId: accepted[0].id,
+      reading,
+      checkedAt: sourceTestTime,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+    expect(state.sourceRechecks.at(-1)?.result).toBe(result)
+    expect(state.sourceEvidence).toEqual(accepted)
+    expect(state.h1).toEqual(h1)
+    expect(state.h2).toEqual(h2)
+    expect(authorityState(state)).toEqual(authority)
+  }
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+  expect(parseLifecycleComparison(exportLifecycleRecord(state)).digest).toBe(
+    lifecycleDigest(state),
+  )
+  const packet = generateCloseoutPacket(state)
+  expect(packet.text).toContain(accepted[0].displayed.claim!.content_digest)
+  expect(packet.text).toContain('source-unavailable')
+  expect(packet.text).toContain('fema-shelter-context.v1')
+  expect(generateCloseoutPacket(structuredClone(state))).toEqual(packet)
+  state = apply(state, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  const priorDigest = lifecycleDigest(state)
+  const next = apply(state, { type: 'start-next-cycle' })
+  expect(next.previousCycle?.digest).toBe(priorDigest)
+  expect(next.previousCycle?.sourceEvidence).toEqual(accepted)
+  expect(next.previousCycle?.sourceRechecks).toEqual(state.sourceRechecks)
+  expect(restoreLifecycleState(JSON.stringify(next))).toEqual(next)
+  let cycle2 = readyBefore('comparison', next)
+  cycle2 = sealH2(
+    apply(apply(cycle2, { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  cycle2 = apply(cycle2, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  const cycle3 = apply(cycle2, { type: 'start-next-cycle' })
+  expect(cycle3.sourceHistory).toEqual([next.previousCycle])
+  expect(restoreLifecycleState(JSON.stringify(cycle3))).toEqual(cycle3)
+  const badHistory = structuredClone(cycle3)
+  badHistory.sourceHistory[0].digest = 'tampered'
+  expect(() => restoreLifecycleState(JSON.stringify(badHistory))).toThrow(
+    /history integrity/,
+  )
+  const tampered = structuredClone(next)
+  tampered.previousCycle!.sourceRechecks = []
+  expect(() => restoreLifecycleState(JSON.stringify(tampered))).toThrow(
+    /H3 integrity/,
+  )
+})
+
+test('source records reject corrupt facts, checksums, references, enums, and oversized payloads', () => {
+  const good = acceptSource()
+  for (const tamper of [
+    (state: LifecycleState) => {
+      state.sourceEvidence[0].displayed.claim!.facts.reported_capacity = 0
+    },
+    (state: LifecycleState) => {
+      state.sourceEvidence[0].recordDigest = 'wrong'
+    },
+    (state: LifecycleState) => {
+      state.sourceEvidence[0].gapId = 'medical'
+    },
+    (state: LifecycleState) => {
+      state.sourceEvidence[0].displayed.claim!.name = 'x'.repeat(257)
+    },
+    (state: LifecycleState) => {
+      Object.assign(state.sourceEvidence[0].displayed.claim!, {
+        url: 'https://example.com',
+      })
+    },
+  ]) {
+    const state = structuredClone(good)
+    tamper(state)
+    expect(() => restoreLifecycleState(JSON.stringify(state))).toThrow()
+    expect(() =>
+      parseLifecycleComparison(exportLifecycleRecord(state)),
+    ).toThrow()
+  }
+  let after = sealH2(
+    apply(apply(good, { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  after = apply(after, {
+    type: 'recheck-source',
+    acceptedId: after.sourceEvidence[0].id,
+    reading: displayedSource(),
+    checkedAt: sourceTestTime,
+    owner: 'Recovery lead',
+    horizon: 'next day',
+  })
+  const invalidReference = structuredClone(after)
+  invalidReference.sourceRechecks[0].acceptedId = 'SA-1-99'
+  const { recordDigest: _digest, ...contents } =
+    invalidReference.sourceRechecks[0]
+  invalidReference.sourceRechecks[0].recordDigest = contentDigest(contents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(invalidReference)),
+  ).toThrow()
+  expect(() =>
+    apply(after, {
+      type: 'recheck-source',
+      acceptedId: 'SA-1-1',
+      reading: displayedSource(sourceClaim('OPEN', 'different-item')),
+      checkedAt: sourceTestTime,
+      owner: 'Recovery lead',
+      horizon: 'next day',
+    }),
+  ).toThrow()
+  expect(() =>
+    restoreLifecycleState(' '.repeat(128 * 1024) + JSON.stringify(after)),
+  ).toThrow(/128 KiB/)
+  expect(() => migrateLifecycleV2State(' '.repeat(128 * 1024) + '{}')).toThrow(
+    /128 KiB/,
+  )
+})
+
+test('source acceptance and rechecks enforce bounded counts', () => {
+  let state = readyBefore()
+  for (let index = 0; index < 8; index++)
+    state = acceptSource(state, displayedSource(sourceClaim(`STATUS-${index}`)))
+  expect(() =>
+    acceptSource(state, displayedSource(sourceClaim('NINTH'))),
+  ).toThrow(/bounded/)
+  state = sealH2(
+    apply(apply(acceptSource(), { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  for (let index = 0; index < 16; index++) {
+    state = apply(state, {
+      type: 'recheck-source',
+      acceptedId: 'SA-1-1',
+      reading: {
+        snapshotId: null,
+        generatedAt: null,
+        checkedAt: sourceTestTime,
+        transport: 'unavailable',
+        context: null,
+        claim: null,
+      },
+      checkedAt: sourceTestTime,
+      owner: 'Recovery lead',
+      horizon: 'next day',
+    })
+  }
+  expect(() =>
+    apply(state, {
+      type: 'recheck-source',
+      acceptedId: 'SA-1-1',
+      reading: displayedSource(),
+      checkedAt: sourceTestTime,
+      owner: 'Recovery lead',
+      horizon: 'next day',
+    }),
+  ).toThrow(/bounded/)
+})
+
+test('non-string enums cannot be accepted, rechecked, or persisted as not-returned', () => {
+  const before = readyBefore()
+  const accepted = acceptSource(before)
+  const after = sealH2(
+    apply(apply(accepted, { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  const recheck: LifecycleAction = {
+    type: 'recheck-source',
+    acceptedId: 'SA-1-1',
+    reading: displayedSource(null),
+    checkedAt: sourceTestTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  }
+  const checked = apply(after, recheck)
+  expect(checked.sourceRechecks[0].result).toBe('not-returned')
+  const original = JSON.stringify(after)
+  for (const [field, member] of [
+    ['coverage', 'partial'],
+    ['state', 'stale'],
+    ['transport', 'unavailable'],
+  ]) {
+    for (const invalid of [
+      [member],
+      [[member]],
+      { value: member },
+      0,
+      null,
+      false,
+    ]) {
+      const displayed = displayedSource()
+      Object.assign(field === 'transport' ? displayed : displayed.context!, {
+        [field]: invalid,
+      })
+      expect(() => acceptSource(before, displayed)).toThrow(
+        /validated displayed/,
+      )
+      const reading = { ...displayed, claim: null }
+      expect(() => apply(after, { ...recheck, reading })).toThrow(
+        /explicit source check/,
+      )
+      expect(JSON.stringify(after)).toBe(original)
+      const badAccepted = structuredClone(accepted)
+      badAccepted.sourceEvidence[0].displayed = displayed
+      const { recordDigest: _acceptedDigest, ...acceptedContents } =
+        badAccepted.sourceEvidence[0]
+      badAccepted.sourceEvidence[0].recordDigest =
+        contentDigest(acceptedContents)
+      const badRecheck = structuredClone(checked)
+      badRecheck.sourceRechecks[0].reading = reading
+      const { recordDigest: _recheckDigest, ...recheckContents } =
+        badRecheck.sourceRechecks[0]
+      badRecheck.sourceRechecks[0].recordDigest = contentDigest(recheckContents)
+      for (const tampered of [badAccepted, badRecheck]) {
+        expect(() => restoreLifecycleState(JSON.stringify(tampered))).toThrow()
+        expect(() =>
+          parseLifecycleComparison(exportLifecycleRecord(tampered)),
+        ).toThrow()
+      }
+    }
+  }
+  assertBoundedRoundTrip(after)
 })
 
 test('strict v2 restore rejects missing or malformed pinned evidence', () => {
@@ -785,12 +1308,12 @@ test('strict v2 restore verifies sealed H2 digest and exact phase references', (
   )
 })
 
-test('strict v2 restore checks only retained previous-cycle relationships', () => {
+test('strict v3 restore checks retained H3 content and cycle relationship', () => {
   const state = completeLifecycle()
   const digestTamper = structuredClone(state)
   digestTamper.previousCycle!.digest = 'not-recomputable-after-rollover'
-  expect(restoreLifecycleState(JSON.stringify(digestTamper))).toEqual(
-    digestTamper,
+  expect(() => restoreLifecycleState(JSON.stringify(digestTamper))).toThrow(
+    /H3 integrity/,
   )
 
   const cycleTamper = structuredClone(state)

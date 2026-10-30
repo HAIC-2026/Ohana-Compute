@@ -35,6 +35,7 @@ type lifecycleEvidenceSnapshot struct {
 	PlanningDisclaimer string                                            `json:"planning_disclaimer"`
 	EventTriggers      lifecycleEvidenceFeed[eventtriggers.Snapshot]     `json:"event_triggers"`
 	OperationalStatus  lifecycleEvidenceFeed[operationalstatus.Snapshot] `json:"operational_status"`
+	ShelterContext     shelterContext                                    `json:"shelter_context"`
 }
 
 type lifecycleEvidenceResult[T any] struct {
@@ -142,6 +143,7 @@ func loadLifecycleEvidence(
 		PlanningDisclaimer: lifecycleEvidenceDisclaimer,
 		EventTriggers:      eventEvidenceFeed(events),
 		OperationalStatus:  operationalEvidenceFeed(operations),
+		ShelterContext:     lifecycleShelterContext(operations, generatedAt),
 	}
 	failed := 0
 	if events.err != nil {
@@ -271,10 +273,12 @@ func lifecycleSnapshotID(snapshot lifecycleEvidenceSnapshot) string {
 		PlanningDisclaimer string                                            `json:"planning_disclaimer"`
 		EventTriggers      lifecycleEvidenceFeed[eventtriggers.Snapshot]     `json:"event_triggers"`
 		OperationalStatus  lifecycleEvidenceFeed[operationalstatus.Snapshot] `json:"operational_status"`
+		ShelterContext     shelterContext                                    `json:"shelter_context"`
 	}{
 		SchemaVersion: snapshot.SchemaVersion, Status: snapshot.Status,
 		ValidUntil: snapshot.ValidUntil, PlanningDisclaimer: snapshot.PlanningDisclaimer,
 		EventTriggers: snapshot.EventTriggers, OperationalStatus: snapshot.OperationalStatus,
+		ShelterContext: snapshot.ShelterContext,
 	}
 	encoded, _ := json.Marshal(content)
 	var value any
