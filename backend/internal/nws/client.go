@@ -257,10 +257,14 @@ func (client *Client) prefetchAffectedZones(alerts []Alert) {
 			continue
 		}
 		for _, zone := range alert.Product.AffectedZones {
-			if _, ok := seen[zone.URL]; ok {
+			key := canonicalZoneURL(zone)
+			if key == "" {
 				continue
 			}
-			seen[zone.URL] = struct{}{}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
 			requests = append(requests, ZoneRequest{Zone: zone})
 		}
 	}

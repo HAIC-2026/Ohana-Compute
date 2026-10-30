@@ -379,6 +379,70 @@ func TestZonePrefetchDeduplicatesAndBoundsBackgroundRequests(t *testing.T) {
 	}
 }
 
+func TestZoneClientCanonicalizesCacheAndEvidenceIdentity(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
+	canonical := Zone{
+		URL: "https://api.weather.gov/zones/forecast/HIZ006",
+		ID:  "HIZ006", Type: "forecast",
+	}
+	encoded := Zone{
+		URL: "https://api.weather.gov/zones/forecast/HIZ%30%30%36",
+		ID:  "HIZ006", Type: "forecast",
+	}
+	requests := 0
+	var mutex sync.Mutex
+	done := make(chan struct{})
+	client := testZoneClient(func() time.Time { return now }, func(request *http.Request) (*http.Response, error) {
+		mutex.Lock()
+		requests++
+		mutex.Unlock()
+		if request.URL.String() != canonical.URL {
+			t.Fatalf("fetch URL = %s, want canonical %s", request.URL, canonical.URL)
+		}
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+		return zoneResponse(
+			http.StatusOK,
+			zoneFixture(canonical, `{"type":"Polygon","coordinates":[[[0,0],[2,0],[2,2],[0,2],[0,0]]]}`),
+			map[string]string{"Content-Type": "application/geo+json"},
+		), nil
+	})
+	client.PrefetchZones([]ZoneRequest{{Zone: encoded}, {Zone: canonical}})
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("canonical zone prefetch did not run")
+	}
+	time.Sleep(20 * time.Millisecond)
+	sent := "2026-10-30T19:00:00Z"
+	got := client.EvaluateZones(
+		[]Zone{encoded, canonical},
+		&sent,
+		geoapplicability.Point{Longitude: "1", Latitude: "1"},
+	)
+	mutex.Lock()
+	defer mutex.Unlock()
+	if requests != 1 || got.Result != "inside" || len(got.Zones) != 1 ||
+		got.Zones[0].URL != canonical.URL {
+		t.Fatalf("canonical identity was duplicated or lost: requests=%d evidence=%#v", requests, got)
+	}
+	incomplete := client.EvaluateZones(
+		[]Zone{canonical, {
+			URL: "https://example.test/zones/forecast/HIZ007",
+			ID:  "HIZ007", Type: "forecast",
+		}},
+		&sent,
+		geoapplicability.Point{Longitude: "3", Latitude: "1"},
+	)
+	if incomplete.Result != "unknown" || incomplete.Coverage != ZoneCoveragePartial {
+		t.Fatalf("invalid cache identity produced false outside: %#v", incomplete)
+	}
+}
+
 func TestZoneClientRejectsRedirectsWithoutFollowingProductControlledHosts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
@@ -438,5 +502,88 @@ func TestZonePreparationSharesTopologyBudgetAcrossGeometryCollection(t *testing.
 	)
 	if _, _, err := prepareZoneGeometry(raw); !errors.Is(err, geoapplicability.ErrTooComplex) {
 		t.Fatalf("collection topology error = %v, want shared-budget ErrTooComplex", err)
+	}
+}
+
+func TestZoneClientConditionallyBacksOffUnchangedTooComplexGeometry(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
+	zone := Zone{
+		URL: "https://api.weather.gov/zones/county/HIC001",
+		ID:  "HIC001", Type: "county",
+	}
+	requests := 0
+	client := testZoneClient(func() time.Time { return now }, func(request *http.Request) (*http.Response, error) {
+		requests++
+		switch requests {
+		case 1:
+			return zoneResponse(
+				http.StatusOK,
+				zoneFixture(
+					zone,
+					`{"type":"Polygon","coordinates":[[`+rectangleRingJSON(2000, 0)+`]]}`,
+				),
+				map[string]string{
+					"Content-Type":  "application/geo+json",
+					"Cache-Control": "max-age=60",
+					"ETag":          `"complex-v1"`,
+				},
+			), nil
+		case 2:
+			if request.Header.Get("If-None-Match") != `"complex-v1"` {
+				t.Fatalf("too-complex validator omitted: %q", request.Header.Get("If-None-Match"))
+			}
+			return nil, errors.New("temporary network failure")
+		case 3:
+			if request.Header.Get("If-None-Match") != `"complex-v1"` {
+				t.Fatalf("validator lost after failure: %q", request.Header.Get("If-None-Match"))
+			}
+			return zoneResponse(http.StatusNotModified, "", map[string]string{
+				"Cache-Control": "max-age=60",
+			}), nil
+		case 4:
+			if request.Header.Get("If-None-Match") != `"complex-v1"` {
+				t.Fatalf("changed-revision validator omitted: %q", request.Header.Get("If-None-Match"))
+			}
+			return zoneResponse(
+				http.StatusOK,
+				zoneFixture(zone, `{"type":"Polygon","coordinates":[[[0,0],[2,0],[2,2],[0,2],[0,0]]]}`),
+				map[string]string{
+					"Content-Type":  "application/geo+json",
+					"Cache-Control": "max-age=60",
+					"ETag":          `"complex-v2"`,
+				},
+			), nil
+		default:
+			return nil, errors.New("unexpected request")
+		}
+	})
+	client.refresh(context.Background(), zone)
+	first := client.entry(zone.URL)
+	if first.reason != "too_complex" || first.etag != `"complex-v1"` ||
+		len(first.prepared) != 0 {
+		t.Fatalf("too-complex response did not retain only validators: %#v", first)
+	}
+	now = now.Add(2 * time.Minute)
+	client.refresh(context.Background(), zone)
+	failed := client.entry(zone.URL)
+	if failed.reason != "request_failed" || !failed.tooComplex ||
+		failed.etag != `"complex-v1"` || len(failed.prepared) != 0 {
+		t.Fatalf("transient failure discarded deterministic validators: %#v", failed)
+	}
+	now = now.Add(16 * time.Minute)
+	client.refresh(context.Background(), zone)
+	unchanged := client.entry(zone.URL)
+	if unchanged.reason != "too_complex" || unchanged.state != "unavailable" ||
+		len(unchanged.prepared) != 0 || requests != 3 {
+		t.Fatalf("304 changed too-complex evidence or repeated validation: %#v requests=%d", unchanged, requests)
+	}
+	now = now.Add(2 * time.Minute)
+	client.refresh(context.Background(), zone)
+	changed := client.entry(zone.URL)
+	if changed.state != "fresh" || changed.reason != "" ||
+		len(changed.prepared) != 1 || changed.etag != `"complex-v2"` ||
+		requests != 4 {
+		t.Fatalf("changed revision was not retried and accepted: %#v", changed)
 	}
 }

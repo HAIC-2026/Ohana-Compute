@@ -183,7 +183,10 @@ func parseZone(link string) (Zone, bool) {
 		id := strings.TrimPrefix(parsed.Path, prefix)
 		if zoneIDPattern.MatchString(id) &&
 			((kind == "county" && id[2] == 'C') || (kind != "county" && id[2] == 'Z')) {
-			return Zone{URL: link, ID: id, Type: kind}, true
+			return Zone{
+				URL: "https://api.weather.gov/zones/" + kind + "/" + id,
+				ID:  id, Type: kind,
+			}, true
 		}
 	}
 	return Zone{}, false

@@ -95,6 +95,7 @@ type zoneCacheEntry struct {
 	etag         string
 	lastModified string
 	reason       string
+	tooComplex   bool
 }
 
 type zoneFeature struct {
@@ -164,10 +165,11 @@ func (client *ZoneClient) PrefetchZones(requests []ZoneRequest) {
 		if len(unique) >= MaxZonePrefetch {
 			break
 		}
-		if canonicalZoneURL(request.Zone) == "" {
+		key := canonicalZoneURL(request.Zone)
+		if key == "" {
 			continue
 		}
-		unique[request.Zone.URL] = request.Zone
+		unique[key] = canonicalZone(request.Zone)
 	}
 	now := client.now().UTC()
 	for _, zone := range unique {
@@ -179,9 +181,10 @@ func (client *ZoneClient) PrefetchZones(requests []ZoneRequest) {
 }
 
 func (client *ZoneClient) markPending(zone Zone, now time.Time) bool {
+	key := canonicalZoneURL(zone)
 	client.mu.Lock()
 	defer client.mu.Unlock()
-	entry, ok := client.cache[zone.URL]
+	entry, ok := client.cache[key]
 	if ok && entry.state == "pending" {
 		return false
 	}
@@ -189,8 +192,8 @@ func (client *ZoneClient) markPending(zone Zone, now time.Time) bool {
 		return false
 	}
 	entry.state = "pending"
-	entry.zone = zone
-	client.cache[zone.URL] = entry
+	entry.zone = canonicalZone(zone)
+	client.cache[key] = entry
 	return true
 }
 
@@ -203,8 +206,10 @@ func (client *ZoneClient) prefetch(zone Zone) {
 }
 
 func (client *ZoneClient) refresh(ctx context.Context, zone Zone) {
-	existing := client.entry(zone.URL)
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, canonicalZoneURL(zone), nil)
+	key := canonicalZoneURL(zone)
+	zone = canonicalZone(zone)
+	existing := client.entry(key)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, key, nil)
 	if err != nil {
 		client.fail(zone, existing, "request_failed")
 		return
@@ -223,15 +228,31 @@ func (client *ZoneClient) refresh(ctx context.Context, zone Zone) {
 	}
 	defer response.Body.Close()
 	now := client.now().UTC()
-	if response.StatusCode == http.StatusNotModified && len(existing.prepared) > 0 {
+	if response.StatusCode == http.StatusNotModified &&
+		(len(existing.prepared) > 0 ||
+			(existing.tooComplex &&
+				(existing.etag != "" || existing.lastModified != ""))) {
 		freshness := updatedZoneFreshnessPolicy(response.Header, existing.freshness)
 		freshnessTTL := freshness.ttl(response.Header, now, client.cacheTTL)
-		existing.state = "fresh"
+		existing.state = "unavailable"
+		if len(existing.prepared) > 0 {
+			existing.state = "fresh"
+			existing.reason = ""
+		} else {
+			existing.reason = "too_complex"
+		}
 		existing.retrievedAt = now
 		existing.freshUntil = now.Add(freshnessTTL)
 		existing.freshness = freshness
-		existing.reason = ""
-		client.store(zone.URL, existing)
+		existing.etag = firstNonEmpty(
+			boundedHeader(response.Header.Get("ETag")),
+			existing.etag,
+		)
+		existing.lastModified = firstNonEmpty(
+			boundedHeader(response.Header.Get("Last-Modified")),
+			existing.lastModified,
+		)
+		client.store(key, existing)
 		return
 	}
 	if response.StatusCode != http.StatusOK {
@@ -253,7 +274,8 @@ func (client *ZoneClient) refresh(ctx context.Context, zone Zone) {
 	if err != nil {
 		reason := "invalid_payload"
 		if errors.Is(err, geoapplicability.ErrTooComplex) {
-			reason = "too_complex"
+			client.storeTooComplex(zone, response.Header, now)
+			return
 		}
 		client.fail(zone, existing, reason)
 		return
@@ -265,17 +287,41 @@ func (client *ZoneClient) refresh(ctx context.Context, zone Zone) {
 	entry.freshUntil = now.Add(entry.freshness.ttl(response.Header, now, client.cacheTTL))
 	entry.etag = boundedHeader(response.Header.Get("ETag"))
 	entry.lastModified = boundedHeader(response.Header.Get("Last-Modified"))
-	client.store(zone.URL, entry)
+	client.store(key, entry)
+}
+
+func (client *ZoneClient) storeTooComplex(zone Zone, header http.Header, now time.Time) {
+	key := canonicalZoneURL(zone)
+	zone = canonicalZone(zone)
+	freshness := updatedZoneFreshnessPolicy(header, zoneFreshnessPolicy{})
+	client.store(key, zoneCacheEntry{
+		state: "unavailable", zone: zone, reason: "too_complex",
+		retrievedAt: now, freshUntil: now.Add(freshness.ttl(header, now, client.cacheTTL)),
+		freshness: freshness, etag: boundedHeader(header.Get("ETag")),
+		lastModified: boundedHeader(header.Get("Last-Modified")),
+		tooComplex:   true,
+	})
 }
 
 func (client *ZoneClient) fail(zone Zone, existing zoneCacheEntry, reason string) {
+	key := canonicalZoneURL(zone)
+	zone = canonicalZone(zone)
 	if len(existing.prepared) > 0 {
 		existing.state = "stale"
 		existing.reason = reason
-		client.store(zone.URL, existing)
+		client.store(key, existing)
 		return
 	}
-	client.store(zone.URL, zoneCacheEntry{
+	if existing.tooComplex {
+		existing.state = "unavailable"
+		existing.zone = zone
+		existing.retrievedAt = client.now().UTC()
+		existing.freshUntil = existing.retrievedAt.Add(15 * time.Minute)
+		existing.reason = reason
+		client.store(key, existing)
+		return
+	}
+	client.store(key, zoneCacheEntry{
 		state:       "unavailable",
 		zone:        zone,
 		retrievedAt: client.now().UTC(),
@@ -315,11 +361,17 @@ func (client *ZoneClient) EvaluateZones(
 	incomplete := false
 	pending := false
 	for _, zone := range zones {
-		if _, ok := seen[zone.URL]; ok {
+		key := canonicalZoneURL(zone)
+		if key == "" {
+			incomplete = true
 			continue
 		}
-		seen[zone.URL] = struct{}{}
-		entry := client.entry(zone.URL)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		zone = canonicalZone(zone)
+		entry := client.entry(key)
 		member := zoneEvidence(zone, entry)
 		if entry.state == "pending" && len(entry.prepared) == 0 {
 			member.State = "pending"
@@ -597,10 +649,18 @@ func zoneTimeContains(entry zoneCacheEntry, productSent *string) bool {
 
 func canonicalZoneURL(zone Zone) string {
 	expected, ok := parseZone(zone.URL)
-	if !ok || expected != zone {
+	if !ok || expected.ID != zone.ID || expected.Type != zone.Type {
 		return ""
 	}
-	return "https://api.weather.gov/zones/" + zone.Type + "/" + zone.ID
+	return expected.URL
+}
+
+func canonicalZone(zone Zone) Zone {
+	expected, ok := parseZone(zone.URL)
+	if !ok || expected.ID != zone.ID || expected.Type != zone.Type {
+		return Zone{}
+	}
+	return expected
 }
 
 func boundedHeader(value string) string {
