@@ -46,6 +46,7 @@ import {
   serviceAreas,
   serviceRecordNeedsRecheck,
   serviceRecordStale,
+  serializeLifecycleState,
 } from '../lib/practice-lifecycle'
 import type {
   CapabilityId,
@@ -201,7 +202,10 @@ function PracticeLifecycle() {
   useEffect(() => {
     if (!restored || restoreFailed) return
     try {
-      window.localStorage.setItem(lifecycleStorageKey, JSON.stringify(state))
+      window.localStorage.setItem(
+        lifecycleStorageKey,
+        serializeLifecycleState(state),
+      )
     } catch {
       setMessage(
         'Local persistence failed. Keep this page open and export the strict record before leaving.',

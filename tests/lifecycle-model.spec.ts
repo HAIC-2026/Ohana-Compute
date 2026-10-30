@@ -19,6 +19,7 @@ import {
   parseLifecycleComparison,
   practiceStamp,
   restoreLifecycleState,
+  serializeLifecycleState,
   serviceRecordNeedsRecheck,
 } from '../src/lib/practice-lifecycle'
 import {
@@ -76,7 +77,7 @@ function apply(state: LifecycleState, action: LifecycleAction) {
 }
 
 function assertBoundedRoundTrip(state: LifecycleState) {
-  const persisted = JSON.stringify(state)
+  const persisted = serializeLifecycleState(state)
   const exported = exportLifecycleRecord(state)
   expect(new TextEncoder().encode(persisted).byteLength).toBeLessThanOrEqual(
     maxLifecycleImportBytes,
@@ -788,7 +789,7 @@ test('migrates saved v1 state to strict v4 preserving original seals', () => {
         h1: { ...legacy.h1, digest: '0000000000000000' },
       }),
     ),
-  ).toThrow(/legacy seal integrity/)
+  ).toThrow(/H1 integrity/)
 })
 
 test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and tampered seals', () => {
@@ -874,7 +875,7 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
   legacy.supportItems[0].disposition = 'set aside'
   expect(() => migrateLifecycleV1State(JSON.stringify(legacy))).toThrow(
-    /legacy seal integrity/,
+    /H2 integrity/,
   )
 })
 
@@ -897,10 +898,12 @@ test('post-action size guard includes the appended source ledger row and preserv
   }
   const next = apply(state, action)
   const delta =
-    new TextEncoder().encode(JSON.stringify(next)).byteLength -
-    new TextEncoder().encode(JSON.stringify(state)).byteLength
+    new TextEncoder().encode(serializeLifecycleState(next)).byteLength -
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength
   const padded = structuredClone(state)
-  const size = new TextEncoder().encode(JSON.stringify(padded)).byteLength
+  const size = new TextEncoder().encode(
+    serializeLifecycleState(padded),
+  ).byteLength
   padded.ledger[0].summary += 'x'.repeat(
     maxLifecycleImportBytes - delta + 1 - size,
   )
@@ -1229,6 +1232,38 @@ test('weather records reject stale acceptance, invalid enums, tampering, and re-
   expect(() => restoreLifecycleState(JSON.stringify(tampered))).toThrow(
     /failed validation/,
   )
+  const falseValidity = structuredClone(good)
+  falseValidity.weatherEvidence[0].observation.validity = 'expired'
+  const { recordDigest: _validityDigest, ...validityContents } =
+    falseValidity.weatherEvidence[0]
+  falseValidity.weatherEvidence[0].recordDigest =
+    contentDigest(validityContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseValidity))).toThrow(
+    /failed validation/,
+  )
+
+  let checked = apply(good, { type: 'seal-h1' })
+  checked = sealH2(apply(checked, { type: 'start-during' }))
+  const unavailable = weatherReading()
+  unavailable.transport = 'unavailable'
+  unavailable.retrievalState = 'unavailable'
+  unavailable.coverage = 'unavailable'
+  checked = apply(checked, {
+    type: 'recheck-weather',
+    acceptedId: checked.weatherEvidence[0].id,
+    reading: unavailable,
+    checkedAt: unavailable.checkedAt!,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  const falseResult = structuredClone(checked)
+  falseResult.weatherRechecks[0].result = 'cancelled'
+  const { recordDigest: _resultDigest, ...resultContents } =
+    falseResult.weatherRechecks[0]
+  falseResult.weatherRechecks[0].recordDigest = contentDigest(resultContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseResult))).toThrow(
+    /failed validation/,
+  )
 })
 
 test('v3 migration preserves sealed digests and creates no weather facts', () => {
@@ -1248,6 +1283,53 @@ test('v3 migration preserves sealed digests and creates no weather facts', () =>
   expect(migrated.weatherHistory).toEqual([])
   expect(migrated.previousWeatherCycle).toBeNull()
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
+})
+
+test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () => {
+  const cases = [
+    ['practice-lifecycle.v1', migrateLifecycleV1State],
+    ['practice-lifecycle.v2', migrateLifecycleV2State],
+    ['practice-lifecycle.v3', migrateLifecycleV3State],
+  ] as const
+  for (const [schema, migrate] of cases) {
+    const legacy = structuredClone(
+      createInitialLifecycleState(),
+    ) as unknown as Record<string, any>
+    legacy.schema = schema
+    for (const key of [
+      ...(schema === 'practice-lifecycle.v3'
+        ? []
+        : ['sourceEvidence', 'sourceRechecks', 'sourceHistory', 'legacySeals']),
+      'weatherEvidence',
+      'weatherRechecks',
+      'weatherHistory',
+      'previousWeatherCycle',
+      ...(schema === 'practice-lifecycle.v1' ? ['pinnedEvidence'] : []),
+    ])
+      delete legacy[key]
+    legacy.ledger = [
+      {
+        sequence: 1,
+        capability: 'B01',
+        cycle: 1,
+        practiceMinute: -60,
+        summary: '',
+      },
+    ]
+    const baseBytes = new TextEncoder().encode(JSON.stringify(legacy)).length
+    legacy.ledger[0].summary = 'x'.repeat(
+      maxLifecycleImportBytes - baseBytes - 1,
+    )
+    const text = JSON.stringify(legacy)
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(
+      maxLifecycleImportBytes,
+    )
+    const migrated = migrate(text)
+    expect(
+      new TextEncoder().encode(serializeLifecycleState(migrated)).length,
+    ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+    expect(migrated.weatherEvidence).toEqual([])
+  }
 })
 
 test('source acceptance is attributable, append-only, and never criteria or authority', () => {
@@ -1537,11 +1619,11 @@ test('non-string enums cannot be accepted, rechecked, or persisted as not-return
   assertBoundedRoundTrip(after)
 })
 
-test('strict v2 restore rejects missing or malformed pinned evidence', () => {
+test('compact restore permits empty omitted pins and rejects malformed pinned evidence', () => {
   const state = createInitialLifecycleState()
   const missing = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
   delete missing.pinnedEvidence
-  expect(() => restoreLifecycleState(JSON.stringify(missing))).toThrow()
+  expect(restoreLifecycleState(JSON.stringify(missing))).toEqual(state)
 
   const malformed = {
     ...state,

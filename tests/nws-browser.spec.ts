@@ -254,7 +254,7 @@ test('real Go NWS provenance and immutable records survive source states on desk
     ['unavailable', 'source-unavailable'],
   ]) {
     mode = scenario
-    const count = JSON.parse((await saved())!).weatherRechecks.length
+    const count = (JSON.parse((await saved())!).weatherRechecks ?? []).length
     await rechecks
       .getByRole('button', { name: 'Recheck weather WA-1-1' })
       .click()

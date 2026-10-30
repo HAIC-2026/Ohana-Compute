@@ -73,7 +73,11 @@ weather collections are omitted from those digest profiles. V1 H1 verification
 still reconstructs its bounded pre-seal evidence states, and v2/v3 use their
 original canonical inputs. Malformed or oversized saved records are not
 overwritten on a failed restore. Strict comparison imports remain
-current-schema-only; they do not silently migrate or merge content.
+current-schema-only; they do not silently migrate or merge content. Local
+persistence omits only schema-defined empty collections and empty handoff
+references, then restores them deterministically. This compact form prevents an
+otherwise valid near-limit v1/v2/v3 record from crossing 128 KiB solely because
+v4 introduced empty fields; non-empty evidence is never omitted.
 An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a

@@ -507,6 +507,33 @@ function referenceMatches(
   )
 }
 
+function projectedReferenceMatches(
+  reference: WeatherReference,
+  accepted: AcceptedWeatherEvidence,
+) {
+  const identity =
+    reference.identifier === accepted.product.id ||
+    reference.url === accepted.product.url
+  return (
+    identity &&
+    (reference.sender === null ||
+      reference.sender === accepted.product.sender) &&
+    (reference.sent === null || reference.sent === accepted.product.sent)
+  )
+}
+
+function sameProductIdentity(
+  product: WeatherProductRevision,
+  accepted: AcceptedWeatherEvidence,
+) {
+  return (
+    product.id === accepted.product.id &&
+    product.url === accepted.product.url &&
+    product.sender === accepted.product.sender &&
+    product.sent === accepted.product.sent
+  )
+}
+
 function evaluationAvailable(product: NWSProduct, now: number) {
   if (product.applicability_basis !== 'affected_zones') return true
   const applicability = currentNWSApplicability(product, now)
@@ -992,6 +1019,12 @@ export function validAcceptedWeatherEvidence(
       'not_yet_effective',
       'unknown',
     ]) ||
+    Date.parse(value.observation.checkedAt) > Date.parse(value.acceptedAt) ||
+    Date.parse(value.observation.retrievedAt) >
+      Date.parse(value.observation.checkedAt) ||
+    Date.parse(value.observation.freshUntil) <= Date.parse(value.acceptedAt) ||
+    value.observation.validity !==
+      projectedValidity(product, Date.parse(value.acceptedAt)) ||
     value.productDigest !== productDigest(product) ||
     value.evaluationDigest !== evaluationDigest(evaluation)
   )
@@ -1129,6 +1162,98 @@ export function validWeatherRecords(
           Date.parse((rechecks[index - 1] as WeatherRecheck).checkedAt))
     )
       return false
+    const observed = row.observed as WeatherRecheck['observed']
+    const candidates = row.candidates as WeatherRecheck['candidates']
+    const sameIdentity = observed
+      ? sameProductIdentity(observed.product, prior)
+      : false
+    const lineage =
+      observed &&
+      observed.product.references.some((reference) =>
+        projectedReferenceMatches(reference, prior),
+      )
+    const stableObservation = Boolean(
+      observed &&
+      observed.productDigest === prior.productDigest &&
+      observed.evaluationDigest === prior.evaluationDigest,
+    )
+    const incompleteEvaluation = Boolean(
+      observed &&
+      (observed.evaluation.reason === 'zone_incomplete' ||
+        observed.evaluation.reason === 'zone_pending'),
+    )
+    const canonicalCandidates =
+      candidates.identities.every(
+        (identity, candidateIndex) =>
+          candidateIndex === 0 ||
+          `${candidates.identities[candidateIndex - 1].id}:${candidates.identities[candidateIndex - 1].url}:${candidates.identities[candidateIndex - 1].productDigest}` <
+            `${identity.id}:${identity.url}:${identity.productDigest}`,
+      ) &&
+      new Set(
+        candidates.identities.map(
+          (identity) =>
+            `${identity.id}:${identity.url}:${identity.productDigest}`,
+        ),
+      ).size === candidates.identities.length &&
+      candidates.count >= candidates.identities.length &&
+      candidates.complete === candidates.count <= 8 &&
+      (candidates.complete
+        ? candidates.count === candidates.identities.length &&
+          (candidates.count === 0
+            ? candidates.digest === null
+            : candidates.digest === contentDigest(candidates.identities))
+        : candidates.digest !== null)
+    const consistentResult =
+      canonicalCandidates &&
+      row.validityAtCheck ===
+        projectedValidity(prior.product, Date.parse(row.checkedAt)) &&
+      (row.result === 'source-unavailable'
+        ? (row.retrievalState !== 'fresh' && observed === null) ||
+          (row.retrievalState === 'fresh' &&
+            observed !== null &&
+            sameIdentity &&
+            observed.productDigest === prior.productDigest &&
+            incompleteEvaluation)
+        : row.result === 'not-returned'
+          ? row.retrievalState === 'fresh' &&
+            observed === null &&
+            candidates.count === 0
+          : row.result === 'ambiguous'
+            ? row.retrievalState === 'fresh' &&
+              observed === null &&
+              candidates.count > 1
+            : row.result === 'unchanged'
+              ? row.retrievalState === 'fresh' &&
+                observed !== null &&
+                sameIdentity &&
+                stableObservation &&
+                row.validityAtCheck !== 'expired'
+              : row.result === 'expired'
+                ? row.retrievalState === 'fresh' &&
+                  observed !== null &&
+                  sameIdentity &&
+                  stableObservation &&
+                  row.validityAtCheck === 'expired'
+                : row.result === 'changed'
+                  ? row.retrievalState === 'fresh' &&
+                    observed !== null &&
+                    sameIdentity &&
+                    observed.product.relationship !== 'cancel' &&
+                    (observed.productDigest !== prior.productDigest ||
+                      observed.evaluationDigest !== prior.evaluationDigest)
+                  : row.result === 'cancelled'
+                    ? row.retrievalState === 'fresh' &&
+                      observed !== null &&
+                      observed.product.relationship === 'cancel' &&
+                      (sameIdentity || lineage)
+                    : row.result === 'superseded'
+                      ? row.retrievalState === 'fresh' &&
+                        observed !== null &&
+                        !sameIdentity &&
+                        observed.product.relationship === 'update' &&
+                        lineage
+                      : false)
+    if (!consistentResult) return false
     const { recordDigest, ...contents } = row
     return (
       recordDigest === contentDigest(contents) &&

@@ -855,6 +855,36 @@ export function exportLifecycleRecord(state: LifecycleState) {
   return JSON.stringify(canonicalLifecycleRecord(state), null, 2)
 }
 
+export function serializeLifecycleState(state: LifecycleState) {
+  const compact = structuredClone(state) as Partial<LifecycleState>
+  if (!state.pinnedEvidence.length) delete compact.pinnedEvidence
+  if (!state.sourceEvidence.length) delete compact.sourceEvidence
+  if (!state.sourceRechecks.length) delete compact.sourceRechecks
+  if (!state.sourceHistory.length) delete compact.sourceHistory
+  if (state.legacySeals === null) delete compact.legacySeals
+  if (!state.weatherEvidence.length) delete compact.weatherEvidence
+  if (!state.weatherRechecks.length) delete compact.weatherRechecks
+  if (!state.weatherHistory.length) delete compact.weatherHistory
+  if (state.previousWeatherCycle === null) delete compact.previousWeatherCycle
+  if (compact.h1 && !compact.h1.evidenceReferences.length)
+    delete (compact.h1 as Partial<NonNullable<LifecycleState['h1']>>)
+      .evidenceReferences
+  if (compact.h2 && !compact.h2.evidenceReferences.length)
+    delete (compact.h2 as Partial<NonNullable<LifecycleState['h2']>>)
+      .evidenceReferences
+  if (compact.previousCycle) {
+    const previous = compact.previousCycle as Partial<
+      NonNullable<LifecycleState['previousCycle']>
+    >
+    if (!previous.evidenceReferences?.length) delete previous.evidenceReferences
+    if (!previous.sourceEvidence?.length) delete previous.sourceEvidence
+    if (!previous.sourceRechecks?.length) delete previous.sourceRechecks
+    if (!previous.sourceEvidence && !previous.sourceRechecks)
+      delete previous.sourceDigest
+  }
+  return JSON.stringify(compact)
+}
+
 function exactKeys(
   value: unknown,
   keys: string[],
@@ -1526,12 +1556,80 @@ export function restoreLifecycleState(text: string): LifecycleState {
   rejectDuplicateKeys(text)
   const value: unknown = JSON.parse(text)
   const initial = createInitialLifecycleState()
+  const optionalCompactKeys = new Set([
+    'pinnedEvidence',
+    'sourceEvidence',
+    'sourceRechecks',
+    'sourceHistory',
+    'legacySeals',
+    'weatherEvidence',
+    'weatherRechecks',
+    'weatherHistory',
+    'previousWeatherCycle',
+  ])
+  const initialKeys = Object.keys(initial)
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Saved lifecycle state is not supported.')
+  const record = value as Record<string, unknown>
   if (
-    !exactKeys(value, Object.keys(initial)) ||
-    value.schema !== lifecycleSchema
+    Object.keys(record).some((key) => !initialKeys.includes(key)) ||
+    initialKeys.some(
+      (key) =>
+        !optionalCompactKeys.has(key) &&
+        !Object.prototype.hasOwnProperty.call(record, key),
+    ) ||
+    record.schema !== lifecycleSchema
   )
     throw new Error('Saved lifecycle state is not supported.')
-  const state = value as LifecycleState
+  const compact = record as unknown as Partial<LifecycleState>
+  const compactH1 = compact.h1 as Partial<
+    NonNullable<LifecycleState['h1']>
+  > | null
+  const compactH2 = compact.h2 as Partial<
+    NonNullable<LifecycleState['h2']>
+  > | null
+  const compactPrevious = compact.previousCycle as Partial<
+    NonNullable<LifecycleState['previousCycle']>
+  > | null
+  const h1 = compactH1
+    ? {
+        ...compactH1,
+        evidenceReferences: compactH1.evidenceReferences ?? [],
+      }
+    : null
+  const h2 = compactH2
+    ? {
+        ...compactH2,
+        evidenceReferences: compactH2.evidenceReferences ?? [],
+      }
+    : null
+  const previousCycle = compactPrevious
+    ? {
+        ...compactPrevious,
+        evidenceReferences: compactPrevious.evidenceReferences ?? [],
+        sourceEvidence: compactPrevious.sourceEvidence ?? [],
+        sourceRechecks: compactPrevious.sourceRechecks ?? [],
+        sourceDigest: compactPrevious.sourceDigest ?? '',
+      }
+    : null
+  if (
+    previousCycle &&
+    !previousCycle.sourceDigest &&
+    Number.isSafeInteger(previousCycle.cycle) &&
+    typeof previousCycle.digest === 'string' &&
+    Array.isArray(previousCycle.carriedGapIds) &&
+    Array.isArray(previousCycle.carriedObjectiveIds)
+  )
+    previousCycle.sourceDigest = previousSourceDigest(
+      previousCycle as NonNullable<LifecycleState['previousCycle']>,
+    )
+  const state = {
+    ...initial,
+    ...compact,
+    h1,
+    h2,
+    previousCycle,
+  } as LifecycleState
   if (
     !validCanonicalRecord(canonicalLifecycleRecord(state)) ||
     !Number.isSafeInteger(state.cycle) ||
@@ -1540,7 +1638,7 @@ export function restoreLifecycleState(text: string): LifecycleState {
     !Array.isArray(state.capabilityMarkers) ||
     state.capabilityMarkers.some((id) => !capabilityIds.includes(id)) ||
     !arrayOfExact(
-      value.ledger,
+      state.ledger,
       ['sequence', 'capability', 'cycle', 'practiceMinute', 'summary'],
       (row) =>
         Number.isSafeInteger(row.sequence) &&
@@ -1553,11 +1651,11 @@ export function restoreLifecycleState(text: string): LifecycleState {
         typeof row.summary === 'string',
     ) ||
     !(
-      value.comparison === null ||
-      (exactKeys(value.comparison, ['digest', 'cycle', 'phase']) &&
-        typeof value.comparison.digest === 'string' &&
-        Number.isSafeInteger(value.comparison.cycle) &&
-        stringIn(value.comparison.phase, [
+      state.comparison === null ||
+      (exactKeys(state.comparison, ['digest', 'cycle', 'phase']) &&
+        typeof state.comparison.digest === 'string' &&
+        Number.isSafeInteger(state.comparison.cycle) &&
+        stringIn(state.comparison.phase, [
           'before',
           'during',
           'after',
@@ -1672,7 +1770,10 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   )
   if (
     state.h1 &&
-    (state.h1.digest !== (state.legacySeals?.h1 ?? h1Digest(state)) ||
+    (!(
+      state.h1.digest === (state.legacySeals?.h1 ?? h1Digest(state)) ||
+      (!state.legacySeals && validLegacyH1Digest(state, state.h1.digest))
+    ) ||
       stableStringify(state.h1.evidenceReferences) !==
         stableStringify(beforeReferences) ||
       stableStringify(state.h1.carriedGapIds) !==
@@ -1689,7 +1790,19 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   ).length
   if (
     state.h2 &&
-    (state.h2.digest !== (state.legacySeals?.h2 ?? h2Digest(state)) ||
+    (!(
+      state.h2.digest === (state.legacySeals?.h2 ?? h2Digest(state)) ||
+      (!state.legacySeals &&
+        state.h2.digest ===
+          fnvDigest(
+            stableStringify(
+              state.supportItems.map(({ id, disposition }) => ({
+                id,
+                disposition,
+              })),
+            ),
+          ))
+    ) ||
       stableStringify(state.h2.evidenceReferences) !==
         stableStringify(duringReferences) ||
       state.h2.carried !== carried ||
@@ -1763,7 +1876,7 @@ export function migrateLifecycleV3State(text: string): LifecycleState {
   if (!validCanonicalRecord(canonicalLifecycleRecord(candidate)))
     throw new Error('Saved v3 lifecycle state failed validation.')
   assertLifecycleIntegrity(candidate)
-  return restoreLifecycleState(JSON.stringify(candidate))
+  return restoreLifecycleState(serializeLifecycleState(candidate))
 }
 
 function migrateLegacyLifecycleState(
@@ -1857,22 +1970,13 @@ function migrateLegacyLifecycleState(
     migrated.previousCycle.sourceDigest = previousSourceDigest(
       migrated.previousCycle,
     )
-  // Keep the original v1 seals; its bounded evidence states are reconstructed for verification.
-  if (schema === legacyLifecycleStorageKey && (h1 || h2)) {
-    migrated.legacySeals = {
-      h1: migrated.h1?.digest ?? null,
-      h2: migrated.h2?.digest ?? null,
-      integrity: '',
-    }
-    migrated.legacySeals.integrity = legacySealIntegrity(migrated)
-  }
   return restoreLifecycleState(
-    JSON.stringify({
+    serializeLifecycleState({
       ...migrated,
       comparison: candidate.comparison,
       capabilityMarkers: candidate.capabilityMarkers,
       ledger: candidate.ledger,
-    }),
+    } as LifecycleState),
   )
 }
 
@@ -2102,7 +2206,7 @@ export function applyLifecycleAction(
 ): LifecycleState {
   const next = reduceLifecycleAction(state, action)
   if (
-    new TextEncoder().encode(JSON.stringify(next)).byteLength >
+    new TextEncoder().encode(serializeLifecycleState(next)).byteLength >
       maxLifecycleImportBytes ||
     new TextEncoder().encode(exportLifecycleRecord(next)).byteLength >
       maxLifecycleImportBytes

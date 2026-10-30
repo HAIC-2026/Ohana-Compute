@@ -169,7 +169,13 @@ test('real backend source chain captures A, reports A-prime, and rechecks withou
     ['stale', 'source-unavailable'],
   ]) {
     scenario = mode
-    const count = (await saved(page)).sourceRechecks.length
+    const count = await page.evaluate(
+      () =>
+        (
+          JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}')
+            .sourceRechecks ?? []
+        ).length,
+    )
     await checks
       .getByRole('button', { name: 'Recheck source SA-1-1', exact: true })
       .click()
