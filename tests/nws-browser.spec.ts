@@ -1,0 +1,383 @@
+import { expect, test } from '@playwright/test'
+import { parseLifecycleEvidence } from '../src/lib/lifecycle-evidence'
+import {
+  nwsProduct,
+  weatherLegacySnapshot,
+  weatherSnapshot,
+  weatherTime,
+} from './fixtures/nws-product'
+
+test('real Go NWS provenance stays read-only across source states on desktop and mobile', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000)
+  let mode = 'current'
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (
+      request.url().includes('/api/') &&
+      !['GET', 'OPTIONS'].includes(request.method()) &&
+      !request.url().includes('/telemetry/')
+    )
+      writes.push(request.url())
+  })
+  await page.clock.install({ time: new Date(weatherTime) })
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) =>
+    route.continue({
+      headers: { ...route.request().headers(), 'X-NWS-Fixture': mode },
+    }),
+  )
+  const initialResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/lifecycle/evidence?') &&
+      response.status() === 200,
+  )
+  await page.goto('/lifecycle')
+  const initial = parseLifecycleEvidence(await (await initialResponse).json())
+  const product = initial.event_triggers.data!.triggers.find(
+    (row) => row.source === 'nws',
+  )!.nws_product!
+  expect(product.id).toBe('fixture-nws-advisory')
+  expect(product.sent).not.toBe(product.onset)
+  expect(product.query_scope.coverage).toBe('statewide')
+  expect(product.applicability).toBe('unknown')
+  expect(product.references?.map((row) => row.identifier)).toEqual([
+    'previous-b',
+    'previous-a',
+  ])
+  const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
+  const weather = page.getByRole('region', { name: 'NWS product provenance' })
+  await expect(weather.locator('[data-nws-retrieval]')).toHaveAttribute(
+    'data-nws-retrieval',
+    'fresh',
+  )
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
+  await expect(weather).toContainText('B04 remains manual')
+  await expect(page.locator('[data-lifecycle-restored]')).toHaveAttribute(
+    'data-lifecycle-restored',
+    'true',
+  )
+  const saved = () =>
+    page.evaluate(() => localStorage.getItem('practice-lifecycle.v3'))
+  const before = await saved()
+  await weather.locator('summary').click()
+  for (const field of [
+    'sent',
+    'effective',
+    'onset',
+    'expires',
+    'ends',
+  ] as const)
+    await expect(weather).toContainText(product[field]!)
+  await expect(weather).toContainText('Honolulu County')
+  await expect(
+    weather.getByRole('link', { name: 'Open NWS product', exact: true }),
+  ).toHaveAttribute('href', product.url!)
+  for (const [scenario, eligibility, validity] of [
+    ['changed', 'eligible', 'current'],
+    ['update', 'eligible', 'current'],
+    ['cancel', 'cancellation', 'current'],
+    ['ack', 'protocol', 'current'],
+    ['error', 'protocol', 'current'],
+    ['test', 'non actual', 'current'],
+    ['exercise', 'non actual', 'current'],
+    ['draft', 'non actual', 'current'],
+    ['system', 'non actual', 'current'],
+    ['expired', 'eligible', 'expired'],
+    ['missing', 'eligible', 'unknown'],
+    ['null-times', 'eligible', 'current'],
+    ['invalid-geometry', 'eligible', 'current'],
+    ['stale', 'eligible', 'current'],
+    ['partial', 'eligible', 'current'],
+    ['empty', '', ''],
+    ['unavailable', '', ''],
+  ]) {
+    mode = scenario
+    const response = page.waitForResponse((item) =>
+      item.url().includes('/api/v1/lifecycle/evidence?'),
+    )
+    await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+    await response
+    await expect(panel).not.toContainText('Refreshing public evidence')
+    if (eligibility) {
+      await expect(weather.locator('[data-nws-eligibility]')).toHaveText(
+        eligibility,
+      )
+      await expect(weather.locator('[data-nws-validity]')).toHaveText(validity)
+      await expect(weather).toContainText(
+        'Planning-location applicability: unknown',
+      )
+    }
+    if (scenario === 'changed')
+      await expect(weather).toContainText('Fixture same-ID revised report')
+    if (scenario === 'null-times') {
+      await expect(
+        weather
+          .locator('dt')
+          .filter({ hasText: /^Onset$/ })
+          .locator('+ dd'),
+      ).toHaveText('Not reported')
+      await expect(
+        weather
+          .locator('dt')
+          .filter({ hasText: /^Ends / })
+          .locator('+ dd'),
+      ).toHaveText('Not reported')
+    }
+    if (scenario === 'stale')
+      await expect(weather.locator('[data-nws-retrieval]')).toContainText(
+        'stale',
+      )
+    if (scenario === 'partial')
+      await expect(weather).toContainText('NWS source reported an error')
+    if (scenario === 'empty')
+      await expect(weather).toContainText(
+        'No products returned by this query. This does not mean no hazard or order.',
+      )
+    if (scenario === 'unavailable')
+      await expect(weather).toContainText('NWS product availability is unknown')
+    expect(await saved()).toBe(before)
+  }
+  mode = 'current'
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
+  const cap = (id: string) => page.locator(`[data-capability="${id}"]`)
+  await cap('B01').getByRole('button', { name: 'Lock practice event' }).click()
+  await cap('B02').getByRole('button').first().click()
+  await cap('B03')
+    .getByRole('button', { name: 'Freeze objective selection' })
+    .click()
+  await cap('B04')
+    .getByRole('button', { name: 'Compute bounded margin' })
+    .click()
+  await cap('B05').getByRole('button', { name: 'Carry comparison' }).click()
+  await cap('B07')
+    .getByRole('button', { name: /Record unknown for/ })
+    .first()
+    .click()
+  await cap('B08').getByRole('button').first().click()
+  await cap('B09').getByRole('button').first().click()
+  await cap('B10').getByRole('button', { name: 'Seal immutable H1' }).click()
+  await cap('D01')
+    .getByRole('button', { name: 'Start response practice' })
+    .click()
+  await cap('D02').getByRole('button', { name: 'Advance 60m' }).click()
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
+  await expect(weather).toContainText(product.sent!)
+  await weather.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('nws-provenance.png') })
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true)
+  expect(writes).toEqual([])
+})
+
+test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed replacement', async ({
+  page,
+  context,
+}) => {
+  let mode = 'ok'
+  let calls = 0
+  await page.clock.install({ time: new Date(weatherTime) })
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) => {
+    calls++
+    if (mode === '304')
+      return route.fulfill({ status: 304, headers: { ETag: 'W/"weather-a"' } })
+    if (mode === 'abort') return route.abort('failed')
+    const snapshot = weatherSnapshot()
+    if (mode === 'malformed')
+      Object.assign(snapshot.event_triggers.data!.triggers[0].nws_product!, {
+        message_type: ['Alert'],
+        headline: 'Unvalidated replacement',
+      })
+    return route.fulfill({ json: snapshot, headers: { ETag: 'W/"weather-a"' } })
+  })
+  await page.goto('/lifecycle')
+  const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
+  const weather = page.getByRole('region', { name: 'NWS product provenance' })
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
+  const before = await page.evaluate(() =>
+    localStorage.getItem('practice-lifecycle.v3'),
+  )
+  mode = '304'
+  const beforeCalls = calls
+  // No request is made when the wall clock crosses expiry below the polling interval.
+  await page.clock.setSystemTime(new Date(Date.parse(weatherTime) + 120_000))
+  await page.clock.runFor(1000)
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
+  await expect(weather.locator('[data-nws-retrieval]')).toContainText('fresh')
+  expect(calls).toBe(beforeCalls)
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
+  mode = 'malformed'
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(panel).toContainText('Malformed lifecycle evidence')
+  await expect(weather).not.toContainText('Unvalidated replacement')
+  await expect(weather).toContainText('Fixture Flood Warning')
+  await expect(weather.locator('[data-nws-retrieval]')).toContainText(
+    'unavailable',
+  )
+  mode = 'abort'
+  await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(panel).toContainText('LAST KNOWN')
+  await context.setOffline(true)
+  await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
+  expect(
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+  ).toBe(before)
+})
+
+test('legacy warning panel ages products without refetch and retains validated facts after failure', async ({
+  page,
+}, testInfo) => {
+  let mode = 'ok'
+  await page.clock.install({ time: new Date(weatherTime) })
+  await page.route('**/api/v1/planning/event-triggers', (route) => {
+    if (mode === 'malformed')
+      return route.fulfill({
+        json: {
+          ...weatherLegacySnapshot(),
+          triggers: [{ nws_product: { validity: ['current'] } }],
+        },
+      })
+    const snapshot = weatherLegacySnapshot()
+    if (mode === 'cancel') {
+      snapshot.triggers[0].nws_product!.message_type = 'Cancel'
+      snapshot.triggers[0].nws_product!.relationship = 'cancel'
+      snapshot.triggers[0].nws_product!.eligibility = 'cancellation'
+    }
+    return route.fulfill({ json: snapshot })
+  })
+  await page.goto('/')
+  if (testInfo.project.name === 'mobile-chromium')
+    await page
+      .getByRole('button', { name: /Change planning area or active event/ })
+      .click()
+  await page
+    .getByText('Official triggers & practice scenarios', { exact: true })
+    .click()
+  const panel = page.getByTestId('event-trigger-panel').first()
+  await expect(panel).toContainText('Official warning product')
+  await page.clock.setSystemTime(new Date(Date.parse(weatherTime) + 120_000))
+  await page.clock.runFor(1000)
+  await expect(panel).toContainText('Retained product')
+  await expect(panel).toContainText('Retained NWS product validity: expired.')
+  await expect(panel).not.toContainText('Official warning product')
+  mode = 'malformed'
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(panel).toContainText('Malformed event evidence')
+  await expect(panel).toContainText('Fixture Flood Warning')
+  mode = 'cancel'
+  await panel.getByRole('button', { name: 'Retry trigger sources' }).click()
+  await expect(panel).toContainText('Message eligibility: cancellation')
+  await expect(panel).not.toContainText('Official warning product')
+})
+
+for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
+  test(`legacy panel keeps unexpired validity and unknown applicability with ${retrieval} retrieval`, async ({
+    page,
+    context,
+  }, testInfo) => {
+    const snapshot = weatherLegacySnapshot({
+      ...nwsProduct(),
+      expires: '2026-10-30T19:00:00Z',
+    })
+    let failed = false
+    let requests = 0
+    const writes: string[] = []
+    page.on('request', (request) => {
+      if (
+        request.url().includes('/api/') &&
+        !['GET', 'OPTIONS'].includes(request.method()) &&
+        !request.url().includes('/telemetry/')
+      )
+        writes.push(request.url())
+    })
+    await page.clock.install({ time: new Date(weatherTime) })
+    await page.route('**/api/v1/planning/event-triggers', (route) => {
+      requests++
+      return failed
+        ? route.fulfill({ status: 503, body: 'Source unavailable' })
+        : route.fulfill({ json: snapshot })
+    })
+    await page.goto('/')
+    if (testInfo.project.name === 'mobile-chromium')
+      await page
+        .getByRole('button', { name: /Change planning area or active event/ })
+        .click()
+    await page
+      .getByText('Official triggers & practice scenarios', { exact: true })
+      .click()
+    const panel = page.getByTestId('event-trigger-panel').first()
+    const consequence = panel.locator('.event-trigger-detail > p').first()
+    await expect(panel).toContainText('Official warning product')
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
+    const saved = await page.evaluate(() =>
+      localStorage.getItem('practice-lifecycle.v3'),
+    )
+    if (retrieval === 'offline') {
+      await context.setOffline(true)
+    } else if (retrieval === 'unavailable') {
+      failed = true
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    } else {
+      const before = requests
+      await page.clock.setSystemTime(
+        new Date(Date.parse(weatherTime) + 300_000),
+      )
+      await page.clock.runFor(1000)
+      expect(requests).toBe(before)
+    }
+    const expectedRetrieval = retrieval === 'stale' ? 'stale' : 'unavailable'
+    if (retrieval !== 'stale') await expect(panel).toContainText('LAST KNOWN')
+    await expect(consequence).toContainText(
+      'Retained NWS product validity: current.',
+    )
+    await expect(consequence).toContainText(`Retrieval: ${expectedRetrieval}.`)
+    await expect(consequence).toContainText(
+      'Planning-location applicability: unknown.',
+    )
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
+    await expect(panel.locator('.nws-product-state')).toContainText(
+      `Retrieval: ${expectedRetrieval}`,
+    )
+    await expect(panel.locator('.event-trigger-selector')).toContainText(
+      'Retained product',
+    )
+    await expect(panel.locator('.event-trigger-title')).toContainText(
+      'Retained product',
+    )
+    await expect(panel).not.toContainText('Not current')
+    await expect(panel).not.toContainText(
+      'Not a current warning for this location',
+    )
+    await expect(panel).not.toContainText('Official warning product')
+    await panel.locator('.nws-product summary').click()
+    await expect(panel.locator('.nws-product-facts')).toContainText(weatherTime)
+    await expect(panel.locator('.nws-product-facts')).toContainText(
+      '2026-10-30T18:05:00Z',
+    )
+    const beforeExpiry = requests
+    await page.clock.setSystemTime(new Date('2026-10-30T19:00:00Z'))
+    await page.clock.runFor(1000)
+    await expect(consequence).toContainText(
+      'Retained NWS product validity: expired.',
+    )
+    await expect(consequence).toContainText(`Retrieval: ${expectedRetrieval}.`)
+    await expect(consequence).toContainText(
+      'Planning-location applicability: unknown.',
+    )
+    await expect(consequence).toContainText('this is not an all-clear')
+    await expect(panel.locator('[data-nws-validity]')).toHaveText('expired')
+    await expect(panel).not.toContainText(
+      'Not a current warning for this location',
+    )
+    expect(requests).toBe(beforeExpiry)
+    expect(
+      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+    ).toBe(saved)
+    expect(writes).toEqual([])
+  })
+}

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { backendConditionalGet } from './backend-api'
 import { rejectDuplicateKeys } from './record-digest'
+import { validNWSProduct } from './nws-product'
+import type { NWSProduct } from './nws-product'
 import {
   boundedText,
   stringIn,
@@ -21,6 +23,7 @@ export type EventTriggerEvidence = {
     lifecycle: string
     planning_state: string
     title: string
+    nws_product?: NWSProduct
   }>
   source_errors?: Array<{ source: string; error: string }>
   source_states?: Array<{
@@ -170,7 +173,13 @@ export function parseLifecycleEvidence(
           boundedText(row.source, 128) &&
           boundedText(row.lifecycle, 128) &&
           boundedText(row.planning_state, 128) &&
-          boundedText(row.title, 2048),
+          boundedText(row.title, 2048) &&
+          (row.nws_product === undefined ||
+            (row.source === 'nws' &&
+              validNWSProduct(
+                row.nws_product,
+                Date.parse(events.generated_at as string),
+              ))),
       ) ||
       !validErrors(events.source_errors) ||
       !(
@@ -237,13 +246,30 @@ export function parseLifecycleEvidence(
               generated_at: snapshot.event_triggers.data.generated_at,
               status: snapshot.event_triggers.data.status,
               triggers: snapshot.event_triggers.data.triggers.map(
-                ({ source, lifecycle, planning_state, title }) => ({
+                ({
                   source,
                   lifecycle,
                   planning_state,
                   title,
+                  nws_product,
+                }) => ({
+                  source,
+                  lifecycle,
+                  planning_state,
+                  title,
+                  ...(nws_product
+                    ? { nws_product: structuredClone(nws_product) }
+                    : {}),
                 }),
               ),
+              ...(snapshot.event_triggers.data.source_errors
+                ? {
+                    source_errors:
+                      snapshot.event_triggers.data.source_errors.map(
+                        ({ source, error }) => ({ source, error }),
+                      ),
+                  }
+                : {}),
               ...(snapshot.event_triggers.data.source_states
                 ? {
                     source_states:

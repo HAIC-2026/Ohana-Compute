@@ -84,20 +84,21 @@ type Provenance struct {
 }
 
 type Trigger struct {
-	SchemaVersion       string     `json:"schema_version"`
-	GeneratedAt         time.Time  `json:"generated_at"`
-	Source              string     `json:"source"`
-	HazardEventKind     string     `json:"hazard_event_kind"`
-	JurisdictionScope   string     `json:"jurisdiction_scope"`
-	Lifecycle           string     `json:"lifecycle"`
-	PlanningState       string     `json:"planning_state"`
-	AuthorityKind       string     `json:"authority_kind"`
-	LegalOrderStatus    string     `json:"legal_order_status"`
-	AuthorityLimitation string     `json:"authority_limitation"`
-	PlanningConsequence string     `json:"planning_consequence"`
-	Title               string     `json:"title"`
-	Facts               Facts      `json:"facts"`
-	Provenance          Provenance `json:"provenance"`
+	SchemaVersion       string      `json:"schema_version"`
+	GeneratedAt         time.Time   `json:"generated_at"`
+	Source              string      `json:"source"`
+	HazardEventKind     string      `json:"hazard_event_kind"`
+	JurisdictionScope   string      `json:"jurisdiction_scope"`
+	Lifecycle           string      `json:"lifecycle"`
+	PlanningState       string      `json:"planning_state"`
+	AuthorityKind       string      `json:"authority_kind"`
+	LegalOrderStatus    string      `json:"legal_order_status"`
+	AuthorityLimitation string      `json:"authority_limitation"`
+	PlanningConsequence string      `json:"planning_consequence"`
+	Title               string      `json:"title"`
+	Facts               Facts       `json:"facts"`
+	Provenance          Provenance  `json:"provenance"`
+	NWSProduct          *NWSProduct `json:"nws_product,omitempty"`
 }
 
 type SourceError struct {
@@ -177,6 +178,15 @@ func NewService(config Config) *Service {
 }
 
 func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
+	nwsResult := loadSource(ctx, service.nws.ActiveAlerts)
+	ptwcResult := loadSource(ctx, service.ptwc.LatestProduct)
+	comCatResult := loadSource(ctx, service.comCat.RecentEvents)
+	hansResult := loadSource(ctx, service.hans.Snapshot)
+	nwsSource := <-nwsResult
+	ptwcSource := <-ptwcResult
+	comCatSource := <-comCatResult
+	hansSource := <-hansResult
+	// Evaluate validity after retrieval, including expiry crossed during I/O.
 	now := service.now().UTC()
 	result := Snapshot{
 		SchemaVersion:      SchemaVersion,
@@ -189,12 +199,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	successes := 0
 
-	nwsResult := loadSource(ctx, service.nws.ActiveAlerts)
-	ptwcResult := loadSource(ctx, service.ptwc.LatestProduct)
-	comCatResult := loadSource(ctx, service.comCat.RecentEvents)
-	hansResult := loadSource(ctx, service.hans.Snapshot)
-
-	nwsSource := <-nwsResult
 	if nwsSource.err != nil {
 		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "nws", Error: nwsSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "nws", "NOAA National Weather Service", "weather_alert", "https://www.weather.gov/hfo/"))
@@ -202,6 +206,9 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	} else {
 		successes++
 		source := nwsSource.value.Source
+		for _, warning := range nwsSource.value.Warnings {
+			result.SourceErrors = append(result.SourceErrors, SourceError{Source: "nws", Error: warning})
+		}
 		result.SourceStates = append(result.SourceStates, SourceState{
 			ID: "nws-hi-alerts", Status: source.Status, RetrievedAt: source.RetrievedAt, FreshUntil: source.FreshUntil,
 		})
@@ -209,7 +216,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "nws", Outcome: sourceOutcome(nwsSource.value.Source.Status), Duration: nwsSource.duration})
 	}
 
-	ptwcSource := <-ptwcResult
 	if ptwcSource.err != nil {
 		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "ptwc", Error: ptwcSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "ptwc", "NOAA Pacific Tsunami Warning Center", "tsunami_product", "https://www.tsunami.gov/"))
@@ -224,7 +230,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "ptwc", Outcome: sourceOutcome(ptwcSource.value.Source.Status), Duration: ptwcSource.duration})
 	}
 
-	comCatSource := <-comCatResult
 	if comCatSource.err != nil {
 		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_comcat", Error: comCatSource.err.Error()})
 		result.Triggers = append(result.Triggers, unavailableTrigger(now, "usgs_comcat", "U.S. Geological Survey", "earthquake", "https://earthquake.usgs.gov/earthquakes/map/"))
@@ -239,7 +244,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		reportSourceObservation(ctx, SourceObservation{Source: "usgs_comcat", Outcome: sourceOutcome(comCatSource.value.Source.Status), Duration: comCatSource.duration})
 	}
 
-	hansSource := <-hansResult
 	if hansSource.err != nil {
 		result.SourceErrors = append(result.SourceErrors, SourceError{Source: "usgs_hans", Error: hansSource.err.Error()})
 		hansSource.value = hans.Snapshot{
@@ -264,41 +268,6 @@ func (service *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		result.Status = "partial"
 	}
 	return result, nil
-}
-
-func normalizeNWS(snapshot nws.Snapshot, now time.Time) []Trigger {
-	triggers := make([]Trigger, 0, len(snapshot.Alerts))
-	for _, alert := range snapshot.Alerts {
-		lifecycle := lifecycle(alert.Expires, snapshot.Source.Status, now)
-		triggers = append(triggers, Trigger{
-			SchemaVersion:       SchemaVersion,
-			GeneratedAt:         now,
-			Source:              "nws",
-			HazardEventKind:     boundedHazard(alert.Hazard),
-			JurisdictionScope:   "multi_county",
-			Lifecycle:           lifecycle,
-			PlanningState:       nwsPlanningState(alert.Event, lifecycle),
-			AuthorityKind:       "federal_warning_center",
-			LegalOrderStatus:    "not_an_evacuation_order",
-			AuthorityLimitation: AuthorityLimitation,
-			PlanningConsequence: planningConsequence("nws", alert.Event, lifecycle, false),
-			Title:               alert.Headline,
-			Facts: Facts{
-				Severity: alert.Severity, Certainty: alert.Certainty,
-				Urgency: alert.Urgency, ResponseType: alert.ResponseType,
-			},
-			Provenance: Provenance{
-				SourceAuthority: snapshot.Source.Authority, ProductID: alert.ID,
-				ProductType: alert.Event, IssuedAt: alert.Onset,
-				EffectiveAt: alert.Effective, ExpiresAt: alert.Expires,
-				RetrievedAt:             snapshot.Source.RetrievedAt.Format(time.RFC3339),
-				FreshUntil:              snapshot.Source.FreshUntil.Format(time.RFC3339),
-				SourceStatus:            snapshot.Source.Status,
-				OfficialInstructionsURL: "https://www.weather.gov/hfo/",
-			},
-		})
-	}
-	return triggers
 }
 
 func normalizePTWC(snapshot ptwc.Snapshot, now time.Time) Trigger {
@@ -440,17 +409,6 @@ func lifecycle(expires, sourceStatus string, now time.Time) string {
 		return "stale"
 	}
 	return "active"
-}
-
-func nwsPlanningState(event, lifecycleValue string) string {
-	state := "monitor"
-	lower := strings.ToLower(event)
-	if strings.Contains(lower, "warning") {
-		state = "official_warning"
-	} else if strings.Contains(lower, "watch") || strings.Contains(lower, "advisory") {
-		state = "prepare"
-	}
-	return planningStateForLifecycle(state, lifecycleValue)
 }
 
 func ptwcPlanningState(action, lifecycleValue string) string {

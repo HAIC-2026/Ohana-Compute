@@ -12,6 +12,7 @@ import {
   lifecycleEvidenceCounts,
   useLifecycleEvidence,
 } from '../lib/lifecycle-evidence'
+import { LifecycleWeatherContext } from '../components/NWSProductDetails'
 import {
   applyLifecycleAction,
   canonicalLifecycleRecord,
@@ -405,6 +406,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 Refreshing public evidence…
               </p>
             )}
+            <LifecycleWeatherContext live={liveEvidence} />
             <button
               type="button"
               disabled={

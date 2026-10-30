@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 )
@@ -53,6 +55,7 @@ func (fixture lifecycleShelterFixture) OpenShelters(
 func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handler {
 	defaultHandler := api.NewServer(config).Handler()
 	handlers := make(map[string]http.Handler)
+	weatherHandlers := make(map[string]http.Handler)
 	for _, mode := range []string{"baseline", "changed", "empty", "unavailable", "partial", "stale"} {
 		fixtureConfig := config
 		fixtureConfig.Registry = nil
@@ -62,7 +65,24 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 		})
 		handlers[mode] = api.NewServer(fixtureConfig).Handler()
 	}
+	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "invalid-geometry", "stale", "partial", "empty", "unavailable"} {
+		fixtureConfig := config
+		fixtureConfig.Registry = nil
+		fixtureConfig.EventTriggers = eventtriggers.NewService(eventtriggers.Config{
+			NWS: weatherFixture{mode: mode}, PTWC: weatherFixture{mode: mode},
+			ComCat: fixtureSources{}, HANS: hans.NewClient(nil),
+			Now: func() time.Time { return time.Date(2026, 10, 30, 18, 0, 0, 0, time.UTC) },
+		})
+		weatherHandlers[mode] = api.NewServer(fixtureConfig).Handler()
+	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet && (request.URL.Path == "/api/v1/lifecycle/evidence" || request.URL.Path == "/api/v1/planning/event-triggers") {
+			if handler, ok := weatherHandlers[request.Header.Get(weatherFixtureHeader)]; ok {
+				writer.Header().Add("Vary", weatherFixtureHeader)
+				handler.ServeHTTP(writer, request)
+				return
+			}
+		}
 		if request.Method == http.MethodGet && request.URL.Path == "/api/v1/lifecycle/evidence" {
 			if handler, ok := handlers[request.Header.Get(lifecycleFixtureHeader)]; ok {
 				writer.Header().Add("Vary", lifecycleFixtureHeader)
