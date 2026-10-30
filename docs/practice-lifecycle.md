@@ -252,6 +252,13 @@ hash. The browser ages the projected per-zone `fresh_until` values: a displayed
 `inside` or `outside` becomes reason-coded unknown once its required zone
 evidence expires, without recomputing geometry.
 
+The repository deploys the backend independently from the frontend, so version
+skew is possible. The browser accepts the previous contract only when
+`applicability_basis` and zone evidence are both absent; that preserves the
+legacy inline/no-polygon result. It never infers affected-zone applicability
+from absent geometry or accepts `zone_evidence` without an explicit
+`affected_zones` basis.
+
 A successful empty query means **no products returned**, not no hazard or
 order. `outside` is never an all-clear or proof the location is unaffected;
 `inside` is never a claim of impact, authority, an order, or an instruction.

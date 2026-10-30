@@ -3,18 +3,23 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/hans"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/usgs"
 )
 
 func evidenceString(value string) *string { return &value }
@@ -22,6 +27,36 @@ func evidenceString(value string) *string { return &value }
 type zoneApplicabilityStub struct {
 	result nws.ZoneApplicability
 	calls  int
+}
+
+type zoneRewriteTransport struct {
+	target *url.URL
+}
+
+func (transport zoneRewriteTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	copy := request.Clone(request.Context())
+	copy.URL.Scheme = transport.target.Scheme
+	copy.URL.Host = transport.target.Host
+	copy.Host = request.URL.Host
+	return http.DefaultTransport.RoundTrip(copy)
+}
+
+type unavailablePTWC struct{}
+
+func (unavailablePTWC) LatestProduct(context.Context) (ptwc.Snapshot, error) {
+	return ptwc.Snapshot{}, errors.New("unavailable")
+}
+
+type unavailableComCat struct{}
+
+func (unavailableComCat) RecentEvents(context.Context) (usgs.Snapshot, error) {
+	return usgs.Snapshot{}, errors.New("unavailable")
+}
+
+type unavailableHANS struct{}
+
+func (unavailableHANS) Snapshot(context.Context) (hans.Snapshot, error) {
+	return hans.Snapshot{}, errors.New("unavailable")
 }
 
 func (stub *zoneApplicabilityStub) EvaluateZones(
@@ -269,6 +304,156 @@ func TestLifecycleEvidenceUsesBoundedZoneEvidenceOnlyForAbsentInlineGeometry(t *
 		product.Geometry.Status != "absent" {
 		t.Fatalf("zone-only applicability was not projected safely: %#v", product)
 	}
+
+	t.Run("integrates real zone client partial inside", func(t *testing.T) {
+		now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
+		zoneServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/zones/forecast/HIZ007" {
+				http.Error(writer, "unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if request.URL.Path != "/zones/forecast/HIZ006" {
+				http.NotFound(writer, request)
+				return
+			}
+			writer.Header().Set("Content-Type", "application/geo+json")
+			writer.Header().Set("Cache-Control", "max-age=3600")
+			writer.Header().Set("ETag", `"zone-v1"`)
+			_, _ = writer.Write([]byte(`{
+				"type":"Feature",
+				"id":"https://api.weather.gov/zones/forecast/HIZ006",
+				"geometry":{"type":"Polygon","coordinates":[[[0,0],[2,0],[2,2],[0,2],[0,0]]]},
+				"properties":{
+					"@id":"https://api.weather.gov/zones/forecast/HIZ006",
+					"id":"HIZ006","type":"public",
+					"effectiveDate":"2026-01-01T00:00:00Z",
+					"expirationDate":"2200-01-01T00:00:00Z"
+				}
+			}`))
+		}))
+		defer zoneServer.Close()
+		target, err := url.Parse(zoneServer.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		zoneClient := nws.NewZoneClient(nws.ZoneConfig{
+			HTTPClient: &http.Client{Transport: zoneRewriteTransport{target: target}},
+			CacheTTL:   time.Hour, Now: func() time.Time { return now },
+		})
+		alertServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/geo+json")
+			_, _ = writer.Write([]byte(`{
+				"updated":"2026-10-30T19:55:00Z",
+				"features":[{
+					"id":"https://api.weather.gov/alerts/urn:oid:zone-real",
+					"geometry":null,
+					"properties":{
+						"id":"urn:oid:zone-real",
+						"sender":"w-nws.webmaster@noaa.gov",
+						"senderName":"NWS Honolulu",
+						"sent":"2026-10-30T19:00:00Z",
+						"effective":"2026-10-30T19:00:00Z",
+						"expires":"2026-10-30T21:00:00Z",
+						"status":"Actual","messageType":"Alert","scope":"Public",
+						"event":"Flood Warning","headline":"Real zone integration fixture",
+						"severity":"Severe","certainty":"Likely","urgency":"Immediate",
+						"response":"Evacuate","areaDesc":"Source-reported area",
+						"affectedZones":[
+							"https://api.weather.gov/zones/forecast/HIZ006",
+							"https://api.weather.gov/zones/forecast/HIZ007"
+						]
+					}
+				}]
+			}`))
+		}))
+		defer alertServer.Close()
+		alertClient := nws.NewClient(nws.Config{
+			AlertsURL: alertServer.URL, ZonePrefetcher: zoneClient,
+			Now: func() time.Time { return now },
+		})
+		alerts, err := alertClient.ActiveAlerts(context.Background())
+		if err != nil || len(alerts.Alerts) != 1 {
+			t.Fatalf("real alert ingestion failed: %#v %v", alerts, err)
+		}
+		product := alerts.Alerts[0].Product
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			evaluation := zoneClient.EvaluateZones(
+				product.AffectedZones,
+				product.Sent,
+				geoapplicability.Point{Longitude: "1", Latitude: "1"},
+			)
+			if evaluation.Result == "inside" && evaluation.Coverage == "partial" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("real zone prefetch did not settle: %#v", evaluation)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		events := eventtriggers.NewService(eventtriggers.Config{
+			NWS: alertClient, PTWC: unavailablePTWC{}, ComCat: unavailableComCat{},
+			HANS: unavailableHANS{}, Now: func() time.Time { return now },
+		})
+		_, operations := lifecycleEvidenceFixtures(now)
+		handler := lifecycleEvidenceHandler(
+			slog.New(slog.NewTextHandler(io.Discard, nil)), nil,
+			events, operationalStatusReaderStub{snapshot: operations},
+			func() time.Time { return now }, zoneClient,
+		)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/lifecycle/evidence?lat=1&lon=1",
+			nil,
+		))
+		if response.Code != http.StatusOK {
+			t.Fatalf("lifecycle handler returned %d: %s", response.Code, response.Body.String())
+		}
+		var decoded lifecycleEvidenceSnapshot
+		if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if decoded.EventTriggers.Data == nil {
+			t.Fatal("real event-trigger data missing")
+		}
+		var projected *eventtriggers.NWSProduct
+		for _, trigger := range decoded.EventTriggers.Data.Triggers {
+			if trigger.Source == "nws" {
+				projected = trigger.NWSProduct
+				break
+			}
+		}
+		if projected == nil || projected.Applicability != "inside" ||
+			projected.ApplicabilityBasis != "affected_zones" ||
+			projected.ZoneEvidence == nil || projected.ZoneEvidence.Coverage != "partial" ||
+			projected.ZoneEvidence.Reason != "strict_interior" ||
+			len(projected.ZoneEvidence.Zones) != 2 {
+			t.Fatalf("real zone lifecycle projection mismatch: %#v", projected)
+		}
+		inside, failed := projected.ZoneEvidence.Zones[0], projected.ZoneEvidence.Zones[1]
+		if inside.URL != "https://api.weather.gov/zones/forecast/HIZ006" ||
+			inside.State != "fresh" || inside.Result != "inside" ||
+			inside.Reason != "strict_interior" || inside.SourceRevision == nil ||
+			failed.URL != "https://api.weather.gov/zones/forecast/HIZ007" ||
+			failed.State != "unavailable" || failed.Result != "unknown" ||
+			failed.Reason != "http_503" || failed.SourceRevision != nil {
+			t.Fatalf("real source rows were not preserved exactly: %#v", projected.ZoneEvidence.Zones)
+		}
+		encoded, err := json.Marshal(projected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), `"coordinates"`) ||
+			!containsAll(
+				string(encoded),
+				`"applicability_basis":"affected_zones"`,
+				`"coverage":"partial"`,
+				`"reason":"http_503"`,
+			) {
+			t.Fatalf("browser/runtime shape leaked geometry or lost reason fields: %s", encoded)
+		}
+	})
 	body, err := json.Marshal(snapshot)
 	if err != nil {
 		t.Fatal(err)

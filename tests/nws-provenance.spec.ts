@@ -46,6 +46,42 @@ test('lifecycle projection retains source product provenance rather than only a 
   ).toEqual(lifecycleNullable)
 })
 
+test('deployment skew accepts old no-zone evidence but never infers a missing basis', () => {
+  const legacy = {
+    ...nwsProduct(),
+    geometry: { status: 'absent' as const, type: null, shape: null },
+    applicability: 'unknown' as const,
+    applicability_reason: 'no_polygon' as const,
+  }
+  delete legacy.applicability_basis
+  expect(validNWSProduct(legacy, now)).toBe(true)
+  expect(
+    validNWSProduct({
+      ...legacy,
+      zone_evidence: {
+        result: 'inside',
+        reason: 'strict_interior',
+        coverage: 'complete',
+        zones: [
+          {
+            url: 'https://api.weather.gov/zones/forecast/HIZ006',
+            id: 'HIZ006',
+            type: 'forecast',
+            source_revision: 'a'.repeat(64),
+            effective: '2026-01-01T00:00:00Z',
+            expires: '2200-01-01T00:00:00Z',
+            retrieved_at: '2026-10-30T17:55:00Z',
+            fresh_until: '2026-10-31T17:55:00Z',
+            state: 'fresh',
+            result: 'inside',
+            reason: 'strict_interior',
+          },
+        ],
+      },
+    }),
+  ).toBe(false)
+})
+
 test('wall-time product expiry is independent of retrieval deadlines, checks and practice time', () => {
   const product = nwsProduct()
   const retrieval = weatherSnapshot().event_triggers.data!.source_states![0]
