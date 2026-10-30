@@ -33,7 +33,9 @@ import {
   legacyLifecycleStorageKey,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
+  migrateLifecycleV3State,
   v2LifecycleStorageKey,
+  v3LifecycleStorageKey,
   objectiveCatalog,
   packetSectionChoices,
   practicePartners,
@@ -160,19 +162,23 @@ function PracticeLifecycle() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(lifecycleStorageKey)
-      const v2 = saved
+      const v3 = saved
         ? null
-        : window.localStorage.getItem(v2LifecycleStorageKey)
+        : window.localStorage.getItem(v3LifecycleStorageKey)
+      const v2 =
+        saved || v3 ? null : window.localStorage.getItem(v2LifecycleStorageKey)
       const legacy =
-        saved || v2
+        saved || v3 || v2
           ? null
           : window.localStorage.getItem(legacyLifecycleStorageKey)
-      if (saved || v2 || legacy) {
+      if (saved || v3 || v2 || legacy) {
         const next = saved
           ? restoreLifecycleState(saved)
-          : v2
-            ? migrateLifecycleV2State(v2)
-            : migrateLifecycleV1State(legacy!)
+          : v3
+            ? migrateLifecycleV3State(v3)
+            : v2
+              ? migrateLifecycleV2State(v2)
+              : migrateLifecycleV1State(legacy!)
         setState(next)
         setSelectedObjectives(
           next.objectives.length ? next.objectives : defaultObjectives,
@@ -406,7 +412,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 Refreshing public evidence…
               </p>
             )}
-            <LifecycleWeatherContext live={liveEvidence} />
+            <LifecycleWeatherContext
+              live={liveEvidence}
+              state={state}
+              act={act}
+            />
             <button
               type="button"
               disabled={

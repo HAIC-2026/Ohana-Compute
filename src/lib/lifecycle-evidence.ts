@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { backendConditionalGet } from './backend-api'
 import { rejectDuplicateKeys } from './record-digest'
-import { validNWSProduct } from './nws-product'
+import { retrievalState, validNWSProduct } from './nws-product'
 import type { NWSProduct } from './nws-product'
 import {
   boundedText,
@@ -11,6 +11,8 @@ import {
   validSourceTime,
 } from './source-evidence'
 import type { ShelterContext, SourceReading } from './source-evidence'
+import { weatherQueryScope } from './weather-evidence'
+import type { NWSQueryReading } from './weather-evidence'
 
 export type LifecycleEvidenceFeedState = 'fresh' | 'stale' | 'unavailable'
 
@@ -462,6 +464,51 @@ export function sourceReading(
     transport,
     context: context ? (metadata as Omit<ShelterContext, 'items'>) : null,
     claim: context?.items.find((item) => item.item_id === itemId) ?? null,
+  })
+}
+
+export function nwsQueryReading(check: EvidenceCheck): NWSQueryReading {
+  const snapshot = check.snapshot
+  const events = snapshot?.event_triggers.data
+  const source = events?.source_states?.find(
+    (row) => row.id === 'nws-hi-alerts',
+  )
+  const sourceFailed = events?.source_errors?.some(
+    (row) => row.source === 'nws',
+  )
+  const missingProvenance = events?.triggers.some(
+    (row) => row.source === 'nws' && !row.nws_product,
+  )
+  const unavailable = Boolean(
+    check.error || !snapshot || snapshot.event_triggers.state === 'unavailable',
+  )
+  const state = retrievalState(
+    source,
+    check.checkedAt ? Date.parse(check.checkedAt) : Date.now(),
+    unavailable || (Boolean(sourceFailed) && !source),
+  )
+  const products =
+    events?.triggers.flatMap((row) =>
+      row.source === 'nws' && row.nws_product ? [row.nws_product] : [],
+    ) ?? []
+  return structuredClone({
+    snapshotId: snapshot?.snapshot_id ?? null,
+    generatedAt: snapshot?.generated_at ?? null,
+    checkedAt: check.checkedAt,
+    transport: unavailable ? 'unavailable' : 'ok',
+    queryScope: weatherQueryScope,
+    retrievalState: state,
+    coverage:
+      unavailable || !events || !source
+        ? 'unavailable'
+        : sourceFailed || missingProvenance
+          ? 'partial'
+          : 'complete',
+    retrievedAt: source?.retrieved_at ?? null,
+    freshUntil: source?.fresh_until ?? null,
+    point: snapshot?.planning_location.point ?? null,
+    algorithmVersion: snapshot?.planning_location.algorithm_version ?? null,
+    products,
   })
 }
 

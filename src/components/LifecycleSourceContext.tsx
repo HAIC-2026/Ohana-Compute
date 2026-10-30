@@ -125,8 +125,8 @@ export function SourceAcceptance({ state, live, act }: Props) {
       <p>
         Facilitator-selected planning context only. Attachment does not record
         criteria, complete B07, or establish that this fictional event affects
-        the planning location. Only bounded FEMA reports are attachable;
-        hazard-product applicability is not established.
+        the planning location. This register accepts only bounded FEMA reports;
+        NWS product revisions use the separate weather record below.
       </p>
       {!claims.length && (
         <p>No attachable reports returned. Unknown is not zero.</p>

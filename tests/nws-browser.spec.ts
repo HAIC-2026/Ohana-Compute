@@ -7,7 +7,7 @@ import {
   weatherTime,
 } from './fixtures/nws-product'
 
-test('real Go NWS provenance stays read-only across source states on desktop and mobile', async ({
+test('real Go NWS provenance and immutable records survive source states on desktop and mobile', async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000)
@@ -59,9 +59,22 @@ test('real Go NWS provenance stays read-only across source states on desktop and
     'true',
   )
   const saved = () =>
-    page.evaluate(() => localStorage.getItem('practice-lifecycle.v3'))
+    page.evaluate(() => localStorage.getItem('practice-lifecycle.v4'))
+  await weather
+    .getByRole('button', { name: 'Review exact product revision' })
+    .click()
+  await expect(weather.locator('[data-reviewed-weather]')).toContainText(
+    product.headline!,
+  )
+  await weather
+    .getByRole('button', { name: 'Accept displayed weather revision' })
+    .click()
+  await expect(weather.locator('[data-accepted-weather]')).toHaveCount(1)
+  const accepted = JSON.parse((await saved())!).weatherEvidence
+  expect(accepted[0].product.id).toBe(product.id)
+  expect(accepted[0].evaluation.applicability).toBe('inside')
   const before = await saved()
-  await weather.locator('summary').click()
+  await weather.locator('summary').first().click()
   for (const field of [
     'sent',
     'effective',
@@ -218,6 +231,43 @@ test('real Go NWS provenance stays read-only across source states on desktop and
   await cap('D02').getByRole('button', { name: 'Advance 60m' }).click()
   await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
   await expect(weather).toContainText(product.sent!)
+  await cap('D03')
+    .getByRole('button', { name: /as unknown/ })
+    .first()
+    .click()
+  await cap('D04')
+    .getByRole('button', { name: /Record hold/ })
+    .first()
+    .click()
+  await cap('D10')
+    .getByRole('button', { name: /Mark S-1-1 carried/ })
+    .click()
+  await cap('D10').getByRole('button', { name: 'Seal immutable H2' }).click()
+  const rechecks = weather.getByRole('region', {
+    name: 'Accepted weather rechecks',
+  })
+  for (const [scenario, result] of [
+    ['current', 'unchanged'],
+    ['zone-update', 'changed'],
+    ['cancel', 'cancelled'],
+    ['empty', 'not-returned'],
+    ['unavailable', 'source-unavailable'],
+  ]) {
+    mode = scenario
+    const count = JSON.parse((await saved())!).weatherRechecks.length
+    await rechecks
+      .getByRole('button', { name: 'Recheck weather WA-1-1' })
+      .click()
+    await expect(rechecks.locator('[data-weather-recheck]')).toHaveCount(
+      count + 1,
+    )
+    await expect(
+      rechecks.locator('[data-weather-recheck]').last(),
+    ).toHaveAttribute('data-weather-recheck', result)
+    const current = JSON.parse((await saved())!)
+    expect(current.weatherEvidence).toEqual(accepted)
+    expect(current.capabilityMarkers).not.toContain('A04')
+  }
   await weather.scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('nws-provenance.png') })
   expect(
@@ -225,6 +275,14 @@ test('real Go NWS provenance stays read-only across source states on desktop and
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true)
+  await page.reload()
+  await expect(weather.locator('[data-accepted-weather]')).toHaveCount(1)
+  await expect(
+    weather
+      .getByRole('region', { name: 'Accepted weather rechecks' })
+      .locator('[data-weather-recheck]'),
+  ).toHaveCount(5)
+  expect(JSON.parse((await saved())!).weatherEvidence).toEqual(accepted)
   expect(writes).toEqual([])
 })
 
@@ -280,7 +338,7 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   const weather = page.getByRole('region', { name: 'NWS product provenance' })
   await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
   const before = await page.evaluate(() =>
-    localStorage.getItem('practice-lifecycle.v3'),
+    localStorage.getItem('practice-lifecycle.v4'),
   )
   mode = '304'
   const beforeCalls = calls
@@ -306,7 +364,7 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   await context.setOffline(true)
   await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
   expect(
-    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
   ).toBe(before)
 })
 
@@ -396,7 +454,7 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
     await expect(panel).toContainText('Official warning product')
     await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
     const saved = await page.evaluate(() =>
-      localStorage.getItem('practice-lifecycle.v3'),
+      localStorage.getItem('practice-lifecycle.v4'),
     )
     if (retrieval === 'offline') {
       await context.setOffline(true)
@@ -457,7 +515,7 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
     )
     expect(requests).toBe(beforeExpiry)
     expect(
-      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
     ).toBe(saved)
     expect(writes).toEqual([])
   })

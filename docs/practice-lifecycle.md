@@ -56,7 +56,7 @@ Every draft, strict record, and closeout packet is labeled
 
 Each capability interaction appends a local ledger event and exposes a stable
 `data-capability="B01"` through `data-capability="A10"` marker. Browser
-persistence uses the strict `practice-lifecycle.v3` schema and an explicit
+persistence uses the strict `practice-lifecycle.v4` schema and an explicit
 reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
@@ -64,13 +64,16 @@ Every reducer action checks both persisted-state and canonical-export UTF-8 byte
 after all effects, including ledger additions. Overflow rejects the action and
 preserves the previous valid state, including retained source history.
 
-Saved `practice-lifecycle.v1` and original `practice-lifecycle.v2` state migrate
-explicitly into v3 with empty source-bound records. V1 also receives empty pinned
-evidence and compatible handoff references. Original sealed digests are retained,
-not rewritten: v1 H1 verification reconstructs its bounded pre-seal evidence
-states, and v2 uses its original canonical inputs. Malformed or oversized saved
-records are not overwritten on a failed restore. Strict comparison imports
-remain current-schema-only; they do not silently migrate or merge content.
+Saved `practice-lifecycle.v1`, original `practice-lifecycle.v2`, and
+`practice-lifecycle.v3` state migrate explicitly into v4. V1 and v2 receive the
+same empty FEMA source records as before; every older schema receives empty NWS
+weather records, weather rechecks, and weather history. No migration invents a
+weather product. Original H1/H2 digest inputs remain unchanged because empty
+weather collections are omitted from those digest profiles. V1 H1 verification
+still reconstructs its bounded pre-seal evidence states, and v2/v3 use their
+original canonical inputs. Malformed or oversized saved records are not
+overwritten on a failed restore. Strict comparison imports remain
+current-schema-only; they do not silently migrate or merge content.
 An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a
@@ -147,7 +150,7 @@ At a limit, export and explicitly reset; no accepted record is auto-evicted.
 Exports and packets include the full source chain and its provenance in fixed
 canonical order. Existing sealed handoffs are not rewritten by refreshes.
 
-## Read-only NWS product provenance
+## NWS product provenance and immutable lifecycle records
 
 The lifecycle evidence panel retains bounded NWS product identity, canonical
 source link, sender attribution, CAP message state, explicit references,
@@ -272,15 +275,69 @@ remain message facts; neither is an all-clear.
 Partial retrieval and failures remain explicit; unrelated source failures do
 not change the NWS source's own retrieval state.
 
-These are read-only product details, not attachable lifecycle claims. Refreshes
-do not change B07/D03/A04 records, H1/H2/H3, manual service conditions, or
-`practice-lifecycle.v3` digests and migrations. B04 remains based solely on
-manual practice inputs: no warning/preparation margin, arrival, departure,
-legal order, passability, restoration, containment, or all-clear is computed
-from NWS fields. The legacy event-trigger panel also re-evaluates wall-time
-expiry and eligibility, refreshes instead of caching forever, and retains
-validated last-known source facts when a later payload is malformed or fails.
-Its retained-product summary reports product validity, message eligibility,
+The mutable NWS register remains separate from immutable lifecycle records.
+Within the B07 curriculum section, a facilitator may review and explicitly
+accept the exact displayed product revision while the NWS query is fresh,
+source-qualified, and complete. A later refresh cannot replace that reviewed
+object. Acceptance is allowed for eligible or ineligible, current or expired,
+inside, outside, or unknown products because the record is source context, not
+a warning or applicability decision. Missing product ID, canonical source link,
+sender, or sent time blocks acceptance.
+
+Each accepted record retains a bounded product projection, source-order
+references, reported area and typed zones/codes, geometry status plus a geometry
+checksum (not browser geometry), eligibility and relationship, exact evaluated
+point and algorithm, applicability result/reason/basis, bounded zone source
+identities/revisions/freshness/coverage, snapshot/query/retrieval facts,
+wall-time validity, fixed limitations, facilitator/cycle/phase/action metadata,
+and two independent checksums:
+
+- `nws-product-semantic.v1` covers stable product facts and a checksum of any
+  retained source geometry. Retrieval timestamps, wall-time validity, and zone
+  cache freshness are not product revisions.
+- `nws-planning-evaluation.v1` covers the exact point, algorithm, applicability,
+  and stable zone source revisions/results. Zone retrieval deadlines are
+  observation facts, not semantic revisions.
+
+Within the A04 curriculum section, an owner and horizon are assigned to a
+recheck of the exact accepted record. A source-qualified fresh complete NWS
+query can append `unchanged`, `changed`, `expired`, `superseded`, `cancelled`,
+`ambiguous`, or `not-returned`. Stale/partial/offline/failed/malformed source
+checks append `source-unavailable`. A stale or incomplete zone evaluation cannot
+produce `unchanged`; last-known accepted facts remain immutable. Same-ID
+semantic changes are `changed`; a different Update or Cancel must explicitly
+reference the accepted identity. Title similarity never establishes lineage.
+Multiple qualifying identities are `ambiguous`. A successful empty query means
+only that the product was not returned by that query.
+
+Weather acceptance and recheck actions append `SOURCE_ACCEPT` and
+`SOURCE_RECHECK` ledger rows. They are hosted by B07 and A04 but do not mark
+those capabilities complete, establish manual criteria, mutate service
+conditions, objectives, gates, support dispositions, H1/H2/H3, or authorize any
+action. B04 remains based solely on manual practice inputs: no
+warning/preparation margin, arrival, departure, legal order, dispatch,
+passability, restoration, containment, or all-clear is computed from NWS
+fields.
+
+V4 permits at most 4 accepted weather revisions and 8 weather rechecks per
+cycle. References, affected zones, geocodes, and zone-evidence rows are capped
+at 16 per record; a record is capped at 12 KiB and the current weather chain at
+40 KiB. Records that do not fit are rejected rather than truncated. Weather
+cycles use a separate immutable previous-cycle/archive chain so existing FEMA
+archive digests are not rewritten. The common 128 KiB persisted-state and
+canonical-export checks still run after every complete action and ledger effect;
+overflow preserves the prior valid state and requires export plus explicit
+reset rather than eviction.
+
+All record, archive, handoff, and lifecycle digests are deterministic
+consistency checks. They detect malformed or inconsistent content but are not
+keyed signatures, authenticity proofs, or protection against a local actor who
+can rewrite and recompute every checksum.
+
+The legacy event-trigger panel still re-evaluates wall-time expiry and
+eligibility, refreshes instead of caching forever, and retains validated
+last-known source facts when a later payload is malformed or fails. Its
+retained-product summary reports product validity, message eligibility,
 retrieval state, and unknown planning-location applicability separately.
 Offline, failed, or stale retrieval does not prove product expiration or local
 inapplicability; even an expired product is not a local all-clear.
