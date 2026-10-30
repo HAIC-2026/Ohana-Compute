@@ -18,11 +18,12 @@ type NWSQueryScope struct {
 // eligibility and wall-time validity. None establishes a planning-location match.
 type NWSProduct struct {
 	nws.Product
-	QueryScope    NWSQueryScope `json:"query_scope"`
-	Applicability string        `json:"applicability"`
-	Eligibility   string        `json:"eligibility"`
-	Validity      string        `json:"validity"`
-	Relationship  string        `json:"relationship"`
+	QueryScope          NWSQueryScope `json:"query_scope"`
+	Applicability       string        `json:"applicability"`
+	ApplicabilityReason string        `json:"applicability_reason"`
+	Eligibility         string        `json:"eligibility"`
+	Validity            string        `json:"validity"`
+	Relationship        string        `json:"relationship"`
 }
 
 var nwsTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-](0\d|1\d|2[0-3]):[0-5]\d)$`)
@@ -141,10 +142,11 @@ func normalizeNWS(snapshot nws.Snapshot, now time.Time) []Trigger {
 			QueryScope: NWSQueryScope{
 				Area: "HI", Coverage: "statewide", URL: "https://api.weather.gov/alerts/active?area=HI",
 			},
-			Applicability: "unknown",
-			Eligibility:   nwsEligibility(alert.Product),
-			Validity:      nwsValidity(alert.Product, now),
-			Relationship:  nwsRelationship(alert.Product.MessageType),
+			Applicability:       "unknown",
+			ApplicabilityReason: "not_evaluated",
+			Eligibility:         nwsEligibility(alert.Product),
+			Validity:            nwsValidity(alert.Product, now),
+			Relationship:        nwsRelationship(alert.Product.MessageType),
 		}
 		lifecycle := nwsLifecycle(product, snapshot.Source, now)
 		planningState := "unavailable"

@@ -84,6 +84,12 @@ test('semantic source identity ignores retrieval and snapshot churn, not fact ch
 test('lifecycle evidence validates item facts and malformed boundaries before caching', () => {
   const snapshot = sourceSnapshot()
   expect(parseLifecycleEvidence(snapshot)).toEqual(snapshot)
+  expect(() => parseLifecycleEvidence(snapshot, [-157.8, 21.3])).toThrow(
+    /Malformed/,
+  )
+  expect(parseLifecycleEvidence(snapshot, [-158.193546, 21.450442])).toEqual(
+    snapshot,
+  )
   expect(validSourceClaim(sourceClaim())).toBe(true)
   const zero = sourceClaim()
   zero.facts.reported_capacity = 0

@@ -19,6 +19,16 @@ export function NWSProductDetails({
 }) {
   const validity = nwsProductValidity(product, now)
   const eligibility = nwsEligibility(product)
+  const applicability = {
+    inside:
+      'Inside the retained source polygon. This does not establish impact, authority, an order, or an instruction.',
+    outside:
+      'Outside the retained source polygon. This is not an all-clear and does not establish that the location is unaffected.',
+    unknown:
+      product.applicability_reason === 'no_polygon'
+        ? 'Unknown because this product has no retained source polygon. Coverage is limited to products that include polygons.'
+        : `Unknown (${product.applicability_reason.replaceAll('_', ' ')}). No local-impact conclusion is available.`,
+  }[product.applicability]
   return (
     <div className="nws-product" data-nws-product={product.id ?? 'unknown'}>
       <p className="nws-product-state">
@@ -34,8 +44,11 @@ export function NWSProductDetails({
         <strong>{retrievalState(retrieval, now, unavailable)}</strong>
       </p>
       <p>
-        Planning-location applicability: <strong>unknown</strong>. Not a
-        local-impact claim or an evacuation order.
+        Planning-location applicability:{' '}
+        <strong data-nws-applicability={product.applicability}>
+          {product.applicability}
+        </strong>
+        . {applicability}
       </p>
       <details>
         <summary>
@@ -129,8 +142,8 @@ export function NWSProductDetails({
           <dt>Source geometry</dt>
           <dd>
             {product.geometry.status.replaceAll('_', ' ')} ·{' '}
-            {product.geometry.type ?? 'Type not reported'}. No planning-location
-            match performed.
+            {product.geometry.type ?? 'Type not reported'}. Applicability
+            reason: {product.applicability_reason.replaceAll('_', ' ')}.
           </dd>
           <dt>Explicit references (source order)</dt>
           <dd>
@@ -214,9 +227,10 @@ export function LifecycleWeatherContext({
           ' · NWS source reported an error; facts may be incomplete.'}
       </p>
       <p>
-        Statewide Hawaiʻi query; not planning-location applicability. Product
-        expiry uses wall time, never practice T+ or the last successful check.
-        B04 remains manual.
+        Statewide Hawaiʻi query; only retained source polygons are evaluated
+        against the displayed planning point. Products without polygons remain
+        unknown. Product expiry uses wall time, never practice T+ or the last
+        successful check. B04 remains manual.
       </p>
       {!products.length && (
         <p>

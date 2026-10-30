@@ -178,11 +178,39 @@ not projected.
 
 The NWS query is statewide Hawaiʻi. Query membership, reported area names,
 issuing office, county membership, and missing geometry never establish local
-impact. Planning-location applicability is explicitly **unknown**, including
-for products carrying valid polygons. No point-in-polygon match is introduced
-in this slice. A successful empty query means **no products returned**, not no
-hazard or order. Partial retrieval and failures remain explicit; unrelated
-source failures do not change the NWS source's own retrieval state.
+impact. The lifecycle-evidence handler evaluates only retained Polygon and
+MultiPolygon source geometry against its validated request point, on a
+per-request copy. The location-less event-trigger feed remains
+`unknown/not_evaluated`.
+
+Applicability uses `rfc7946-planar-rational-v1`: original JSON coordinate and
+query-number lexemes are converted to exact rational values, so no raw
+floating-point equality or architecture-dependent tolerance is used. A strict
+shell interior is `inside`; a valid hole is `outside`; and any shell or hole
+boundary is `unknown/boundary`. MultiPolygon validation covers every member
+before classification; any strict interior wins, then any boundary, otherwise
+the result is outside. Ring orientation, rotated starts, consecutive duplicate
+vertices, and member ordering do not change valid results.
+
+Applicability validation is stricter than retained geometry status and never
+mutates that provenance status. It rejects malformed or unclosed rings, fewer
+than three distinct vertices, zero area, self-intersection/self-touch,
+backtracking spikes, edges spanning more than 180 degrees longitude, holes
+outside/overlapping/touching the shell or one another, and overlapping
+MultiPolygon members. Shell-touching holes are invalid topology rather than
+boundary-bearing valid holes. Missing polygons remain `unknown/no_polygon`;
+unsupported or over-limit geometry remains `unknown/unsupported`; retained
+malformed or topologically invalid shapes remain `unknown/invalid_topology`.
+The response binds the result to the evaluated `[longitude, latitude]` and
+algorithm version, and those fields participate in the semantic snapshot hash.
+The browser rejects evidence for a different requested point rather than
+recomputing applicability.
+
+A successful empty query means **no products returned**, not no hazard or
+order. `outside` is never an all-clear or proof the location is unaffected;
+`inside` is never a claim of impact, authority, an order, or an instruction.
+Partial retrieval and failures remain explicit; unrelated source failures do
+not change the NWS source's own retrieval state.
 
 These are read-only product details, not attachable lifecycle claims. Refreshes
 do not change B07/D03/A04 records, H1/H2/H3, manual service conditions, or
@@ -199,10 +227,10 @@ inapplicability; even an expired product is not a local all-clear.
 
 ### Deliberately blocked domains and next slices
 
-1. **NWS applicability contract:** next ranked slice. Establish an explicitly
-   reviewed, deterministic geography contract before any planning-location
-   match or source-bound acceptance. Provenance alone is not applicability,
-   timing evidence, or a reason to migrate lifecycle records.
+1. **Affected-zone geometry:** source-backed zone fetches remain a separate
+   slice because their size, caching, and fetch-failure contracts differ from
+   retained product polygons. Area descriptions and zone names remain
+   non-geometric.
 2. **PTWC jurisdiction:** no attachable Hawaiʻi-applicable claim until a
    deterministic jurisdiction rule is implemented and tested. A ComCat tsunami
    flag remains an earthquake fact, never a tsunami alert or order.
@@ -212,12 +240,14 @@ inapplicability; even an expired product is not a local all-clear.
    contracts and appropriate verification. None is inferred from this chain.
 
 The real-backend browser proof uses `cmd/e2e-server` with its test-only
-`X-Lifecycle-Fixture` header (`baseline`, `changed`, `empty`, `partial`, `stale`,
-`unavailable`). The production handler has no such control. Requests are continued
-to the real Go endpoint rather than fulfilled by browser mocks. Separate mocked
-boundary tests cover malformed JSON contracts, cancellation, offline, and expired
-304 behavior. Run `npm run test:e2e` before `npm run test:operations`, never in
-parallel; both rebuild `dist/`. Confirm all test ports are free or belong to this
+`X-NWS-Fixture` header. The baseline and cancellation fixtures contain the
+planning point, the update fixture shrinks to exclude it, and invalid or absent
+geometry exercises reason-coded unknown. The production handler has no such
+control. Requests are continued to the real Go endpoint rather than fulfilled
+by browser mocks. Separate mocked boundary tests cover malformed JSON,
+point-mismatched responses, offline behavior, and expired 304 behavior. Run
+`npm run test:e2e` before `npm run test:operations`, never in parallel; both
+rebuild `dist/`. Confirm all test ports are free or belong to this
 worktree before starting.
 
 Closeout packets contain pinned public-evidence summaries plus the saved section

@@ -57,6 +57,7 @@ export function nwsProduct(at = weatherTime): NWSProduct {
       url: 'https://api.weather.gov/alerts/active?area=HI',
     },
     applicability: 'unknown',
+    applicability_reason: 'not_evaluated',
     eligibility: 'eligible',
     validity: 'current',
     relationship: 'initial',
@@ -64,6 +65,13 @@ export function nwsProduct(at = weatherTime): NWSProduct {
 }
 
 export function weatherSnapshot(product = nwsProduct()) {
+  if (product.applicability_reason === 'not_evaluated') {
+    product = {
+      ...product,
+      applicability: 'unknown',
+      applicability_reason: 'no_polygon',
+    }
+  }
   const snapshot = sourceSnapshot()
   snapshot.generated_at = weatherTime
   snapshot.valid_until = '2026-10-30T18:05:00Z'

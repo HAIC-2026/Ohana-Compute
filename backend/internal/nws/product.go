@@ -258,7 +258,7 @@ func boundedGeometry(raw json.RawMessage) Geometry {
 	return result
 }
 
-func cloneProduct(product Product) Product {
+func CloneProduct(product Product) Product {
 	cloneStrings(
 		&product.ID, &product.URL, &product.Sender, &product.SenderName,
 		&product.Sent, &product.Effective, &product.Onset, &product.Expires, &product.Ends,

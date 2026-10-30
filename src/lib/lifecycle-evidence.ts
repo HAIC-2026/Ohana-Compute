@@ -65,6 +65,10 @@ export type LifecycleEvidenceSnapshot = {
   status: 'complete' | 'partial' | 'unavailable'
   valid_until?: string
   planning_disclaimer: string
+  planning_location: {
+    point: [number, number]
+    algorithm_version: 'rfc7946-planar-rational-v1'
+  }
   event_triggers: LifecycleEvidenceFeed<EventTriggerEvidence>
   operational_status: LifecycleEvidenceFeed<OperationalEvidence>
   shelter_context: ShelterContext
@@ -98,11 +102,14 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>()
 
-export function parseLifecycleEvidenceJSON(text: string) {
+export function parseLifecycleEvidenceJSON(
+  text: string,
+  expectedCoordinates?: [number, number],
+) {
   if (new TextEncoder().encode(text).length > 2 * 1024 * 1024)
     throw new Error('Lifecycle evidence exceeds the 2 MiB limit.')
   rejectDuplicateKeys(text)
-  return parseLifecycleEvidence(JSON.parse(text))
+  return parseLifecycleEvidence(JSON.parse(text), expectedCoordinates)
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -139,6 +146,7 @@ function validErrors(value: unknown) {
 
 export function parseLifecycleEvidence(
   value: unknown,
+  expectedCoordinates?: [number, number],
 ): LifecycleEvidenceSnapshot {
   const invalid = () =>
     new Error(
@@ -153,6 +161,18 @@ export function parseLifecycleEvidence(
     !stringIn(value.status, ['complete', 'partial', 'unavailable']) ||
     (value.valid_until !== undefined && !validSourceTime(value.valid_until)) ||
     !boundedText(value.planning_disclaimer, 4096) ||
+    !object(value.planning_location) ||
+    value.planning_location.algorithm_version !==
+      'rfc7946-planar-rational-v1' ||
+    !Array.isArray(value.planning_location.point) ||
+    value.planning_location.point.length !== 2 ||
+    !value.planning_location.point.every(
+      (coordinate) =>
+        typeof coordinate === 'number' && Number.isFinite(coordinate),
+    ) ||
+    (expectedCoordinates !== undefined &&
+      (value.planning_location.point[0] !== expectedCoordinates[0] ||
+        value.planning_location.point[1] !== expectedCoordinates[1])) ||
     !validFeed(value.event_triggers) ||
     !validFeed(value.operational_status) ||
     !validShelterContext(value.shelter_context)
@@ -179,7 +199,8 @@ export function parseLifecycleEvidence(
               validNWSProduct(
                 row.nws_product,
                 Date.parse(events.generated_at as string),
-              ))),
+              ) &&
+              row.nws_product.applicability_reason !== 'not_evaluated')),
       ) ||
       !validErrors(events.source_errors) ||
       !(
@@ -232,6 +253,10 @@ export function parseLifecycleEvidence(
     status: snapshot.status,
     ...(snapshot.valid_until ? { valid_until: snapshot.valid_until } : {}),
     planning_disclaimer: snapshot.planning_disclaimer,
+    planning_location: {
+      point: [...snapshot.planning_location.point],
+      algorithm_version: snapshot.planning_location.algorithm_version,
+    },
     event_triggers: {
       state: snapshot.event_triggers.state,
       status: snapshot.event_triggers.status,
@@ -387,7 +412,7 @@ export function evidenceFeedState(
 }
 
 function coordinateKey(coordinates: [number, number]) {
-  return `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`
+  return `${coordinates[0]},${coordinates[1]}`
 }
 
 function entryFor(key: string) {
@@ -422,7 +447,7 @@ function loadEvidence(coordinates: [number, number]) {
     '/api/v1/lifecycle/evidence',
     { lat: coordinates[1], lon: coordinates[0] },
     entry.etag,
-    parseLifecycleEvidenceJSON,
+    (text) => parseLifecycleEvidenceJSON(text, coordinates),
   )
     .then((result) => {
       if (result.status === 'ok') {

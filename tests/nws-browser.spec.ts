@@ -40,7 +40,8 @@ test('real Go NWS provenance stays read-only across source states on desktop and
   expect(product.id).toBe('fixture-nws-advisory')
   expect(product.sent).not.toBe(product.onset)
   expect(product.query_scope.coverage).toBe('statewide')
-  expect(product.applicability).toBe('unknown')
+  expect(product.applicability).toBe('inside')
+  expect(product.applicability_reason).toBe('strict_interior')
   expect(product.references?.map((row) => row.identifier)).toEqual([
     'previous-b',
     'previous-a',
@@ -73,24 +74,25 @@ test('real Go NWS provenance stays read-only across source states on desktop and
   await expect(
     weather.getByRole('link', { name: 'Open NWS product', exact: true }),
   ).toHaveAttribute('href', product.url!)
-  for (const [scenario, eligibility, validity] of [
-    ['changed', 'eligible', 'current'],
-    ['update', 'eligible', 'current'],
-    ['cancel', 'cancellation', 'current'],
-    ['ack', 'protocol', 'current'],
-    ['error', 'protocol', 'current'],
-    ['test', 'non actual', 'current'],
-    ['exercise', 'non actual', 'current'],
-    ['draft', 'non actual', 'current'],
-    ['system', 'non actual', 'current'],
-    ['expired', 'eligible', 'expired'],
-    ['missing', 'eligible', 'unknown'],
-    ['null-times', 'eligible', 'current'],
-    ['invalid-geometry', 'eligible', 'current'],
-    ['stale', 'eligible', 'current'],
-    ['partial', 'eligible', 'current'],
-    ['empty', '', ''],
-    ['unavailable', '', ''],
+  for (const [scenario, eligibility, validity, applicability] of [
+    ['changed', 'eligible', 'current', 'inside'],
+    ['update', 'eligible', 'current', 'outside'],
+    ['cancel', 'cancellation', 'current', 'inside'],
+    ['ack', 'protocol', 'current', 'inside'],
+    ['error', 'protocol', 'current', 'inside'],
+    ['test', 'non actual', 'current', 'inside'],
+    ['exercise', 'non actual', 'current', 'inside'],
+    ['draft', 'non actual', 'current', 'inside'],
+    ['system', 'non actual', 'current', 'inside'],
+    ['expired', 'eligible', 'expired', 'inside'],
+    ['missing', 'eligible', 'unknown', 'inside'],
+    ['null-times', 'eligible', 'current', 'inside'],
+    ['no-polygon', 'eligible', 'current', 'unknown'],
+    ['invalid-geometry', 'eligible', 'current', 'unknown'],
+    ['stale', 'eligible', 'current', 'inside'],
+    ['partial', 'eligible', 'current', 'inside'],
+    ['empty', '', '', ''],
+    ['unavailable', '', '', ''],
   ]) {
     mode = scenario
     const response = page.waitForResponse((item) =>
@@ -104,12 +106,24 @@ test('real Go NWS provenance stays read-only across source states on desktop and
         eligibility,
       )
       await expect(weather.locator('[data-nws-validity]')).toHaveText(validity)
-      await expect(weather).toContainText(
-        'Planning-location applicability: unknown',
+      await expect(weather.locator('[data-nws-applicability]')).toHaveText(
+        applicability,
       )
     }
     if (scenario === 'changed')
       await expect(weather).toContainText('Fixture same-ID revised report')
+    if (scenario === 'update')
+      await expect(weather).toContainText('This is not an all-clear')
+    if (scenario === 'cancel')
+      await expect(weather).toContainText(
+        'This does not establish impact, authority, an order, or an instruction.',
+      )
+    if (scenario === 'invalid-geometry')
+      await expect(weather).toContainText('Unknown (invalid topology)')
+    if (scenario === 'no-polygon')
+      await expect(weather).toContainText(
+        'Coverage is limited to products that include polygons.',
+      )
     if (scenario === 'null-times') {
       await expect(
         weather

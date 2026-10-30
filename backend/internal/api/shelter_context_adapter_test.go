@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/arcgis"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/official"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 )
@@ -44,7 +45,8 @@ func TestShelterContextRealAdaptersRetainValidatedLastKnown(t *testing.T) {
 	})
 	read := func() lifecycleEvidenceSnapshot {
 		return loadLifecycleEvidence(context.Background(), context.Background(),
-			eventTriggerReaderStub{}, operations, 21.3, -157.8, now)
+			eventTriggerReaderStub{}, operations, 21.3, -157.8,
+			geoapplicability.Point{Longitude: "-157.8", Latitude: "21.3"}, now)
 	}
 	first := read()
 	if first.ShelterContext.State != "fresh" || first.ShelterContext.Coverage != "complete" ||

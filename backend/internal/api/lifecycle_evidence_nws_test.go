@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 )
@@ -39,7 +40,8 @@ func nwsEvidenceFixtures(now time.Time) (eventtriggers.Snapshot, operationalstat
 		QueryScope: eventtriggers.NWSQueryScope{
 			Area: "HI", Coverage: "statewide", URL: "https://api.weather.gov/alerts/active?area=HI",
 		},
-		Applicability: "unknown", Eligibility: "eligible", Validity: "current", Relationship: "update",
+		Applicability: "unknown", ApplicabilityReason: "not_evaluated",
+		Eligibility: "eligible", Validity: "current", Relationship: "update",
 	}
 	return events, operations
 }
@@ -55,7 +57,8 @@ func TestLifecycleEvidenceRetainsNWSProductAndIndependentRetrieval(t *testing.T)
 	})
 	snapshot := loadLifecycleEvidence(
 		context.Background(), context.Background(), eventTriggerReaderStub{snapshot: events},
-		operationalStatusReaderStub{snapshot: operations}, 21.45, -158.19, now,
+		operationalStatusReaderStub{snapshot: operations}, 21.45, -158.19,
+		geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now,
 	)
 	body, err := json.Marshal(snapshot)
 	if err != nil {
@@ -129,5 +132,51 @@ func TestLifecycleEvidenceETagChangesForSameIDNWSFacts(t *testing.T) {
 				t.Fatalf("changed same-ID source facts reused ETag: first=%d changed=%d %s", first.Code, changed.Code, changed.Body.String())
 			}
 		})
+	}
+}
+
+func TestLifecycleEvidenceEvaluatesRequestCopyOnly(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	events, operations := nwsEvidenceFixtures(now)
+	kind := "Polygon"
+	events.Triggers[0].NWSProduct.Geometry = nws.Geometry{
+		Status: "valid", Type: &kind,
+		Shape: json.RawMessage(`{"type":"Polygon","coordinates":[[[-159,21],[-158,21],[-158,22],[-159,22],[-159,21]]]}`),
+	}
+	handler := lifecycleEvidenceHandler(
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil,
+		eventTriggerReaderStub{snapshot: events}, operationalStatusReaderStub{snapshot: operations},
+		func() time.Time { return now },
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/lifecycle/evidence?lat=21.45&lon=-158.19",
+		nil,
+	))
+	if response.Code != http.StatusOK ||
+		!containsAll(
+			response.Body.String(),
+			`"planning_location":{"point":[-158.19,21.45],"algorithm_version":"rfc7946-planar-rational-v1"}`,
+			`"applicability":"inside"`,
+			`"applicability_reason":"strict_interior"`,
+		) {
+		t.Fatalf("lifecycle projection did not evaluate point: %d %s", response.Code, response.Body.String())
+	}
+	if events.Triggers[0].NWSProduct.Applicability != "unknown" ||
+		events.Triggers[0].NWSProduct.ApplicabilityReason != "not_evaluated" {
+		t.Fatalf("request mutated shared event snapshot: %#v", events.Triggers[0].NWSProduct)
+	}
+	outside := httptest.NewRecorder()
+	handler.ServeHTTP(outside, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/lifecycle/evidence?lat=20&lon=-158.19",
+		nil,
+	))
+	if outside.Code != http.StatusOK ||
+		!containsAll(outside.Body.String(), `"applicability":"outside"`, `"applicability_reason":"strict_exterior"`) ||
+		response.Header().Get("ETag") == outside.Header().Get("ETag") {
+		t.Fatalf("point/result did not affect projection and semantic hash: %d %s", outside.Code, outside.Body.String())
 	}
 }

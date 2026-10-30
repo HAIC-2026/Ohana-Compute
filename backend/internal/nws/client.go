@@ -295,7 +295,7 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 		snapshot.Alerts = append([]Alert{}, snapshot.Alerts...)
 	}
 	for index := range snapshot.Alerts {
-		snapshot.Alerts[index].Product = cloneProduct(snapshot.Alerts[index].Product)
+		snapshot.Alerts[index].Product = CloneProduct(snapshot.Alerts[index].Product)
 		snapshot.Alerts[index].AffectedZones = append(
 			[]string(nil),
 			snapshot.Alerts[index].AffectedZones...,

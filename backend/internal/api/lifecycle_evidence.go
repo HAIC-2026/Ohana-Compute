@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 )
 
@@ -33,9 +35,15 @@ type lifecycleEvidenceSnapshot struct {
 	Status             string                                            `json:"status"`
 	ValidUntil         *time.Time                                        `json:"valid_until,omitempty"`
 	PlanningDisclaimer string                                            `json:"planning_disclaimer"`
+	PlanningLocation   lifecyclePlanningLocation                         `json:"planning_location"`
 	EventTriggers      lifecycleEvidenceFeed[eventtriggers.Snapshot]     `json:"event_triggers"`
 	OperationalStatus  lifecycleEvidenceFeed[operationalstatus.Snapshot] `json:"operational_status"`
 	ShelterContext     shelterContext                                    `json:"shelter_context"`
+}
+
+type lifecyclePlanningLocation struct {
+	Point            [2]float64 `json:"point"`
+	AlgorithmVersion string     `json:"algorithm_version"`
 }
 
 type lifecycleEvidenceResult[T any] struct {
@@ -53,6 +61,14 @@ func lifecycleEvidenceHandler(
 	return func(writer http.ResponseWriter, request *http.Request) {
 		latitude, longitude, err := parseCoordinates(request)
 		if err != nil {
+			writeAPIError(writer, http.StatusBadRequest, "invalid coordinates", "")
+			return
+		}
+		point := geoapplicability.Point{
+			Longitude: request.URL.Query().Get("lon"),
+			Latitude:  request.URL.Query().Get("lat"),
+		}
+		if !geoapplicability.ValidPoint(point) {
 			writeAPIError(writer, http.StatusBadRequest, "invalid coordinates", "")
 			return
 		}
@@ -90,6 +106,7 @@ func lifecycleEvidenceHandler(
 			operationalReader,
 			latitude,
 			longitude,
+			point,
 			now().UTC(),
 		)
 		if snapshot.EventTriggers.Error != "" {
@@ -117,6 +134,7 @@ func loadLifecycleEvidence(
 	operationalReader OperationalStatusReader,
 	latitude float64,
 	longitude float64,
+	point geoapplicability.Point,
 	generatedAt time.Time,
 ) lifecycleEvidenceSnapshot {
 	eventResult := make(chan lifecycleEvidenceResult[eventtriggers.Snapshot], 1)
@@ -136,14 +154,20 @@ func loadLifecycleEvidence(
 
 	events := <-eventResult
 	operations := <-operationalResult
+	if events.err == nil {
+		events.value = lifecycleEventApplicability(events.value, point)
+	}
 	snapshot := lifecycleEvidenceSnapshot{
 		SchemaVersion:      lifecycleEvidenceSchema,
 		GeneratedAt:        generatedAt,
 		Status:             "complete",
 		PlanningDisclaimer: lifecycleEvidenceDisclaimer,
-		EventTriggers:      eventEvidenceFeed(events),
-		OperationalStatus:  operationalEvidenceFeed(operations),
-		ShelterContext:     lifecycleShelterContext(operations, generatedAt),
+		PlanningLocation: lifecyclePlanningLocation{
+			Point: [2]float64{longitude, latitude}, AlgorithmVersion: geoapplicability.AlgorithmVersion,
+		},
+		EventTriggers:     eventEvidenceFeed(events),
+		OperationalStatus: operationalEvidenceFeed(operations),
+		ShelterContext:    lifecycleShelterContext(operations, generatedAt),
 	}
 	failed := 0
 	if events.err != nil {
@@ -164,6 +188,31 @@ func loadLifecycleEvidence(
 	}
 	snapshot.ValidUntil = lifecycleValidUntil(events, operations)
 	snapshot.SnapshotID = lifecycleSnapshotID(snapshot)
+	return snapshot
+}
+
+func lifecycleEventApplicability(
+	snapshot eventtriggers.Snapshot,
+	point geoapplicability.Point,
+) eventtriggers.Snapshot {
+	snapshot.Triggers = append([]eventtriggers.Trigger{}, snapshot.Triggers...)
+	for index := range snapshot.Triggers {
+		product := snapshot.Triggers[index].NWSProduct
+		if product == nil {
+			continue
+		}
+		copy := *product
+		copy.Product = nws.CloneProduct(copy.Product)
+		evaluation := geoapplicability.Evaluate(
+			copy.Geometry.Status,
+			copy.Geometry.Type,
+			copy.Geometry.Shape,
+			point,
+		)
+		copy.Applicability = evaluation.Result
+		copy.ApplicabilityReason = evaluation.Reason
+		snapshot.Triggers[index].NWSProduct = &copy
+	}
 	return snapshot
 }
 
@@ -271,13 +320,15 @@ func lifecycleSnapshotID(snapshot lifecycleEvidenceSnapshot) string {
 		Status             string                                            `json:"status"`
 		ValidUntil         *time.Time                                        `json:"valid_until,omitempty"`
 		PlanningDisclaimer string                                            `json:"planning_disclaimer"`
+		PlanningLocation   lifecyclePlanningLocation                         `json:"planning_location"`
 		EventTriggers      lifecycleEvidenceFeed[eventtriggers.Snapshot]     `json:"event_triggers"`
 		OperationalStatus  lifecycleEvidenceFeed[operationalstatus.Snapshot] `json:"operational_status"`
 		ShelterContext     shelterContext                                    `json:"shelter_context"`
 	}{
 		SchemaVersion: snapshot.SchemaVersion, Status: snapshot.Status,
 		ValidUntil: snapshot.ValidUntil, PlanningDisclaimer: snapshot.PlanningDisclaimer,
-		EventTriggers: snapshot.EventTriggers, OperationalStatus: snapshot.OperationalStatus,
+		PlanningLocation: snapshot.PlanningLocation,
+		EventTriggers:    snapshot.EventTriggers, OperationalStatus: snapshot.OperationalStatus,
 		ShelterContext: snapshot.ShelterContext,
 	}
 	encoded, _ := json.Marshal(content)
