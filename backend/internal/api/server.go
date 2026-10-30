@@ -318,6 +318,16 @@ func NewServer(config Config) *Server {
 		"GET /api/v1/planning/live-status",
 		operationalStatusHandler(logger, metrics, config.OperationalStatus),
 	)
+	mux.HandleFunc(
+		"GET /api/v1/lifecycle/evidence",
+		lifecycleEvidenceHandler(
+			logger,
+			metrics,
+			config.EventTriggers,
+			config.OperationalStatus,
+			time.Now,
+		),
+	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(
 		logger,
 		"acs-5-year",
@@ -399,8 +409,9 @@ func cors(allowedOrigins []string, next http.Handler) http.Handler {
 			writer.Header().Set("Vary", "Origin")
 			writer.Header().Set(
 				"Access-Control-Allow-Headers",
-				"Authorization, Content-Type",
+				"Authorization, Content-Type, If-None-Match",
 			)
+			writer.Header().Set("Access-Control-Expose-Headers", "ETag")
 			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		}
 		if request.Method == http.MethodOptions {

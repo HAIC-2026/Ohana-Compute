@@ -56,7 +56,11 @@ records.
 - **[Complete practice event lifecycle](docs/practice-lifecycle.md)**:
   open **Practice lifecycle** (`/lifecycle`) to rehearse 10 real interactions
   before, 10 during, and 10 after a fictional event. One deterministic,
-  local-only `practice-lifecycle.v1` record carries immutable H1/H2/H3 handoffs,
+  local `practice-lifecycle.v2` record carries immutable H1/H2/H3 handoffs and
+  explicitly pinned summaries from a read-only, refreshable public-evidence
+  aggregate. Pins retain each feed's freshness and completeness status plus
+  bounded unavailable counts, so partial event coverage is never summarized as
+  merely fresh;
   fixed-choice evidence, bounded practice time, aggregate recovery review,
   strict comparison-only exchange, and PRACTICE · UNSENT downloads into the next
   cycle. Every capability has a stable marker and ledger event. `/exercise`
@@ -294,6 +298,7 @@ The backend listens on <http://127.0.0.1:8080> and currently exposes:
 - `GET /api/v1/planning/partner-matches?jurisdiction={id}&capability={capability}`
 - `GET /api/v1/planning/event-triggers`
 - `GET /api/v1/planning/live-status?lat={latitude}&lon={longitude}`
+- `GET /api/v1/lifecycle/evidence?lat={latitude}&lon={longitude}`
 - `GET /api/v1/community/profile?lat={latitude}&lon={longitude}`
 
 Browser page lifecycle and interaction telemetry is batched, privacy-safe, and

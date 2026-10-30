@@ -4,11 +4,17 @@ Open `/lifecycle` to rehearse one complete **Before → During → After** event
 cycle. `/exercise` is a compatibility path to the same workspace; it does not
 create a second exercise state or clock.
 
-The workspace is public, local-only, fixed-choice, and deterministic. It uses
+The decision workspace is public, local-only, fixed-choice, and deterministic.
+Its read-only evidence panel checks the backend
+`lifecycle-evidence.v1` aggregate every 60 seconds while the document is visible
+and online, and on focus or online recovery. It uses
 five fictional practice roles and four lettered practice partners. It accepts no
 resident names, addresses, contacts, coordinates, clinical details, or
 operational free text. It makes no staff API writes and has no controls for
 messages, resource movement, protective actions, or live-status changes.
+Public NWS/PTWC/USGS/FEMA evidence remains planning context, never County
+authority, dispatch, passability, restoration, containment, completeness,
+partner acceptance, recovery completion, or all-clear truth.
 
 Every draft, strict record, and closeout packet is labeled
 **PRACTICE · UNSENT**. Unknown aggregate need is always displayed as
@@ -48,15 +54,27 @@ Every draft, strict record, and closeout packet is labeled
 | During | D01–D10 | H1 queue; deterministic clock; service-area records; partner response categories; bounded escalation; r2; versioned guidance; frozen shift snapshot; evidence replacement; item disposition and H2.            |
 | After  | A01–A10 | Recovery register; aggregate unmet-need bands; linked hold review; recheck plans; recovery draft; objective scores; six gates; strict comparison-only exchange; deterministic closeout packet; H3 and cycle 2. |
 
-Each interaction appends a local ledger event and exposes a stable
+Each capability interaction appends a local ledger event and exposes a stable
 `data-capability="B01"` through `data-capability="A10"` marker. Browser
-persistence uses the strict `practice-lifecycle.v1` schema and an explicit
+persistence uses the strict `practice-lifecycle.v2` schema and an explicit
 reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
 
-Closeout packets contain only the saved section selection, in a fixed section
-order, and the canonical cycle digest shown in the toolbar in the filename.
+Saved `practice-lifecycle.v1` state migrates once into v2 with empty pinned
+evidence and compatible handoff references; strict comparison imports remain v2
+only. An explicit pin stores only snapshot identity, times, aggregate status,
+bounded counts, and each feed's freshness state and completeness status in the
+current phase. Event-source error/unavailable counts are capped at 99, so a
+partial event feed cannot be summarized as merely fresh. Duplicate phase pins
+are rejected. Pins add an `EVIDENCE_PIN` ledger row without marking a B/D/A
+capability complete, and later refreshes cannot alter pins or sealed H1/H2/H3
+records. Restore recomputes H1/H2 digests from their retained canonical inputs
+and requires their evidence references to exactly match the corresponding
+phase pins.
+
+Closeout packets contain pinned public-evidence summaries plus the saved section
+selection in a fixed section order, and the canonical cycle digest shown in the toolbar in the filename.
 Download stays disabled until the current selection is saved. They are ordinary
 browser downloads and do not enter or evict the offline field-packet cache.
 

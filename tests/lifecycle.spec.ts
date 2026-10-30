@@ -8,6 +8,71 @@ const capability = (page: Page, id: string) =>
   page.locator(`[data-capability="${id}"]`)
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
+    if (
+      route.request().headers()['if-none-match'] === 'W/"snapshot-browser-a"'
+    ) {
+      await route.fulfill({
+        status: 304,
+        headers: { ETag: 'W/"snapshot-browser-a"' },
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { ETag: 'W/"snapshot-browser-a"' },
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 'lifecycle-evidence.v1',
+        snapshot_id: 'snapshot-browser-a',
+        generated_at: '2026-10-29T20:00:00Z',
+        status: 'partial',
+        valid_until: '2026-10-29T21:00:00Z',
+        planning_disclaimer: 'Planning context only.',
+        event_triggers: {
+          state: 'fresh',
+          status: 'partial',
+          unavailable_count: 1,
+          data: {
+            schema_version: 'event-trigger-snapshot.v1',
+            generated_at: '2026-10-29T19:59:00Z',
+            status: 'partial',
+            source_errors: [{ source: 'ptwc', error: 'source unavailable' }],
+            triggers: [
+              {
+                source: 'nws',
+                lifecycle: 'active',
+                planning_state: 'monitor',
+                title: 'Mock advisory',
+              },
+            ],
+          },
+        },
+        operational_status: {
+          state: 'stale',
+          status: 'partial',
+          unavailable_count: 1,
+          data: {
+            schema_version: 'live-operational-status.v1',
+            generated_at: '2026-10-29T19:58:00Z',
+            status: 'partial',
+            domains: [
+              {
+                domain: 'shelter',
+                status: 'stale',
+                freshness: {},
+              },
+              {
+                domain: 'road_transport',
+                status: 'unavailable',
+                freshness: {},
+              },
+            ],
+          },
+        },
+      }),
+    })
+  })
   await page.goto('/lifecycle')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -20,6 +85,110 @@ test.beforeEach(async ({ page }) => {
     'data-lifecycle-restored',
     'true',
   )
+})
+
+test('live evidence panel shows feed states and pins immutable phase summary', async ({
+  page,
+}) => {
+  const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
+  await expect(panel).toContainText('snapshot-browser-a')
+  await expect(panel).toContainText('1 · fresh')
+  await expect(panel).toContainText('Feed partial · 1 source unavailable')
+  await expect(panel).toContainText('2 · stale')
+  await expect(panel).toContainText('1 unavailable')
+  await expect(panel).toContainText(
+    'not dispatch, an order, passability, restoration',
+  )
+  const generated = await panel.getByText(/^Generated /).innerText()
+  await panel.getByRole('button', { name: 'Refresh' }).click()
+  await expect(panel.getByText(/^Generated /)).toHaveText(generated)
+  await expect(panel).toContainText('snapshot-browser-a')
+
+  await panel.getByRole('button', { name: 'Pin snapshot into before' }).click()
+  await expect(
+    panel.getByRole('button', { name: 'Pinned in before' }),
+  ).toBeDisabled()
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('practice-lifecycle.v2') ?? '{}'),
+  )
+  expect(saved.pinnedEvidence).toEqual([
+    expect.objectContaining({
+      phase: 'before',
+      snapshotId: 'snapshot-browser-a',
+      triggerCount: 1,
+      domainCount: 2,
+      unavailableDomainCount: 1,
+      eventUnavailableSourceCount: 1,
+      eventTriggerState: 'fresh',
+      operationalStatusState: 'stale',
+      eventTriggerStatus: 'partial',
+      operationalStatusStatus: 'partial',
+    }),
+  ])
+  expect(saved.capabilityMarkers).toEqual([])
+  expect(saved.ledger.at(-1).capability).toBe('EVIDENCE_PIN')
+
+  await page.unroute('**/api/v1/lifecycle/evidence?**')
+  await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'temporarily unavailable' }),
+    })
+  })
+  await panel.getByRole('button', { name: 'Refresh' }).click()
+  await expect(panel).toContainText('LAST KNOWN')
+  await expect(panel).toContainText('snapshot-browser-a')
+
+  await page.unroute('**/api/v1/lifecycle/evidence?**')
+  await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    await route.fulfill({
+      status: 304,
+      headers: { ETag: 'W/"snapshot-browser-a"' },
+    })
+  })
+  await panel.getByRole('button', { name: 'Refresh' }).click()
+  await expect(panel).toContainText('LAST KNOWN')
+  await expect(panel).toContainText('Refreshing public evidence')
+  await expect(panel).not.toContainText('LAST KNOWN')
+
+  await page.unroute('**/api/v1/lifecycle/evidence?**')
+  await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 'lifecycle-evidence.v1',
+        snapshot_id: 'snapshot-browser-b',
+        generated_at: '2026-10-29T20:01:00Z',
+        status: 'unavailable',
+        planning_disclaimer: 'Planning context only.',
+        event_triggers: {
+          state: 'unavailable',
+          status: 'unavailable',
+          unavailable_count: 1,
+          error: 'event-trigger feed unavailable',
+        },
+        operational_status: {
+          state: 'unavailable',
+          status: 'unavailable',
+          unavailable_count: 1,
+          error: 'operational-status feed unavailable',
+        },
+      }),
+    })
+  })
+  await panel.getByRole('button', { name: 'Refresh' }).click()
+  await expect(panel).toContainText('snapshot-browser-b')
+  await expect(panel).toContainText('unavailable · unavailable')
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem('practice-lifecycle.v2') ?? '{}')
+          .pinnedEvidence[0].snapshotId,
+    ),
+  ).toBe('snapshot-browser-a')
 })
 
 test('all 30 lifecycle capabilities work on desktop and mobile', async ({
@@ -195,7 +364,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     /^practice-lifecycle-[a-f0-9]{16}\.json$/,
   )
   const recordText = await readFile(await record.path(), 'utf8')
-  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v1')
+  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v2')
   expect(recordText).toContain(practiceStamp)
   await capability(page, 'A08')
     .getByRole('button', {
@@ -250,7 +419,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   expect(apiWrites).toEqual([])
   await expect
     .poll(() =>
-      page.evaluate(() => localStorage.getItem('practice-lifecycle.v1')),
+      page.evaluate(() => localStorage.getItem('practice-lifecycle.v2')),
     )
     .not.toBeNull()
   const width = await page.evaluate(() => ({

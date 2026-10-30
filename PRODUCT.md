@@ -110,7 +110,9 @@ The product joins a statewide geospatial operating picture with a CMIST-oriented
   A01–A10 after the event. Immutable H1/H2/H3 handoffs carry one fictional cycle
   into the next. Every capability has a stable browser marker and deterministic
   local ledger event.
-- Lifecycle state is `practice-lifecycle.v1`, fixed-choice, bounded,
+- Lifecycle state is `practice-lifecycle.v2`, fixed-choice, bounded,
+  and can explicitly pin immutable summaries from the read-only
+  `lifecycle-evidence.v1` public-source aggregate,
   local-only, and driven by explicit T± practice minutes. It uses five
   fictional roles and four lettered practice partners, accepts no resident PII
   or operational free text, and never writes to restricted staff APIs.
