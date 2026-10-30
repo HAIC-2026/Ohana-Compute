@@ -75,16 +75,17 @@ test('public views survive offline reload without presenting live data', async (
   })
 })
 
-test('practice lifecycle isolates local choices and uses deterministic time', async ({
+test('practice lifecycle keeps decisions local and uses deterministic time', async ({
   page,
 }) => {
-  const apiCalls: string[] = []
+  const apiWrites: string[] = []
   page.on('request', (request) => {
     if (
+      request.method() !== 'GET' &&
       request.url().includes('/api/v1/') &&
       !request.url().includes('/telemetry/')
     )
-      apiCalls.push(request.url())
+      apiWrites.push(request.url())
   })
   await page.goto('/exercise')
   await expect(page).toHaveURL(/\/lifecycle$/)
@@ -101,9 +102,9 @@ test('practice lifecycle isolates local choices and uses deterministic time', as
   await expect(
     page.getByLabel('Lifecycle status').getByText('T-60'),
   ).toBeVisible()
-  expect(apiCalls).toEqual([])
+  expect(apiWrites).toEqual([])
   expect(
-    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v1')),
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v2')),
   ).not.toBeNull()
   await expect(page.locator('body')).toHaveJSProperty(
     'scrollWidth',

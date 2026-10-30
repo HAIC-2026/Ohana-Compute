@@ -12,6 +12,7 @@ import {
   lifecycleDigest,
   lifecycleGates,
   lifecycleGatesMet,
+  migrateLifecycleV1State,
   parseLifecycleComparison,
   practiceStamp,
   restoreLifecycleState,
@@ -20,7 +21,29 @@ import {
 import type {
   LifecycleAction,
   LifecycleState,
+  PinnedEvidenceReference,
 } from '../src/lib/practice-lifecycle'
+
+function evidenceReference(
+  phase: PinnedEvidenceReference['phase'] = 'before',
+  snapshotId = 'snapshot-a',
+): PinnedEvidenceReference {
+  return {
+    phase,
+    snapshotId,
+    generatedAt: '2026-10-29T20:00:00Z',
+    validUntil: '2026-10-29T21:00:00Z',
+    overallStatus: 'partial',
+    triggerCount: 2,
+    domainCount: 6,
+    unavailableDomainCount: 5,
+    eventUnavailableSourceCount: 1,
+    eventTriggerState: 'fresh',
+    operationalStatusState: 'stale',
+    eventTriggerStatus: 'partial',
+    operationalStatusStatus: 'partial',
+  }
+}
 
 function apply(state: LifecycleState, action: LifecycleAction) {
   return applyLifecycleAction(state, action)
@@ -675,4 +698,177 @@ test('restore rejects malformed ledger and comparison metadata', () => {
   reject({ comparison: { ...saved.comparison, digest: 1 } })
   reject({ comparison: { ...saved.comparison, extra: true } })
   expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
+})
+
+test('migrates saved v1 state to strict v2 with compatible handoffs', () => {
+  const state = apply(readyBefore(), { type: 'seal-h1' })
+  const legacy = JSON.parse(JSON.stringify(state)) as Record<string, any>
+  legacy.schema = 'practice-lifecycle.v1'
+  delete legacy.pinnedEvidence
+  delete legacy.h1.evidenceReferences
+
+  const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
+  expect(migrated.schema).toBe('practice-lifecycle.v2')
+  expect(migrated.pinnedEvidence).toEqual([])
+  expect(migrated.h1?.evidenceReferences).toEqual([])
+  expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
+})
+
+test('strict v2 restore rejects missing or malformed pinned evidence', () => {
+  const state = createInitialLifecycleState()
+  const missing = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+  delete missing.pinnedEvidence
+  expect(() => restoreLifecycleState(JSON.stringify(missing))).toThrow()
+
+  const malformed = {
+    ...state,
+    pinnedEvidence: [{ ...evidenceReference(), triggerCount: -1 }],
+  }
+  expect(() => restoreLifecycleState(JSON.stringify(malformed))).toThrow()
+})
+
+test('strict v2 restore verifies sealed H1 digest and exact phase references', () => {
+  let state = apply(readyBefore(), {
+    type: 'pin-evidence',
+    reference: evidenceReference('before', 'snapshot-before'),
+  })
+  state = apply(state, { type: 'seal-h1' })
+
+  const digestTamper = structuredClone(state)
+  digestTamper.h1!.digest = '0000000000000000'
+  expect(() => restoreLifecycleState(JSON.stringify(digestTamper))).toThrow(
+    /H1 integrity/,
+  )
+
+  const inputTamper = structuredClone(state)
+  inputTamper.timing.warningMinutes++
+  expect(() => restoreLifecycleState(JSON.stringify(inputTamper))).toThrow(
+    /H1 integrity/,
+  )
+
+  const referenceTamper = structuredClone(state)
+  referenceTamper.h1!.evidenceReferences = []
+  expect(() => restoreLifecycleState(JSON.stringify(referenceTamper))).toThrow(
+    /H1 integrity/,
+  )
+})
+
+test('strict v2 restore verifies sealed H2 digest and exact phase references', () => {
+  let state = startDuring()
+  state = apply(state, {
+    type: 'pin-evidence',
+    reference: evidenceReference('during', 'snapshot-during'),
+  })
+  state = sealH2(state)
+
+  const digestTamper = structuredClone(state)
+  digestTamper.h2!.digest = '0000000000000000'
+  expect(() => restoreLifecycleState(JSON.stringify(digestTamper))).toThrow(
+    /H2 integrity/,
+  )
+
+  const inputTamper = structuredClone(state)
+  inputTamper.supportItems[0].disposition =
+    inputTamper.supportItems[0].disposition === 'carried'
+      ? 'set aside'
+      : 'carried'
+  expect(() => restoreLifecycleState(JSON.stringify(inputTamper))).toThrow(
+    /H2 integrity/,
+  )
+
+  const referenceTamper = structuredClone(state)
+  referenceTamper.h2!.evidenceReferences = [
+    evidenceReference('before', 'snapshot-before'),
+  ]
+  expect(() => restoreLifecycleState(JSON.stringify(referenceTamper))).toThrow(
+    /H2 integrity/,
+  )
+})
+
+test('strict v2 restore checks only retained previous-cycle relationships', () => {
+  const state = completeLifecycle()
+  const digestTamper = structuredClone(state)
+  digestTamper.previousCycle!.digest = 'not-recomputable-after-rollover'
+  expect(restoreLifecycleState(JSON.stringify(digestTamper))).toEqual(
+    digestTamper,
+  )
+
+  const cycleTamper = structuredClone(state)
+  cycleTamper.previousCycle!.cycle = state.cycle
+  expect(() => restoreLifecycleState(JSON.stringify(cycleTamper))).toThrow(
+    /previous-cycle relationship/,
+  )
+})
+
+test('rejects duplicate evidence pins without marking a capability complete', () => {
+  const reference = evidenceReference()
+  const pinned = apply(createInitialLifecycleState(), {
+    type: 'pin-evidence',
+    reference,
+  })
+  expect(pinned.capabilityMarkers).toEqual([])
+  expect(pinned.ledger.at(-1)?.capability).toBe('EVIDENCE_PIN')
+  expect(() => apply(pinned, { type: 'pin-evidence', reference })).toThrow(
+    /already pinned/,
+  )
+})
+
+test('pinned evidence stays immutable when later refresh inputs change', () => {
+  const reference = evidenceReference()
+  const state = apply(createInitialLifecycleState(), {
+    type: 'pin-evidence',
+    reference,
+  })
+  reference.snapshotId = 'snapshot-after-refresh'
+  reference.triggerCount = 99
+  expect(state.pinnedEvidence[0]).toEqual(evidenceReference())
+})
+
+test('sealed handoff digest and references include only phase pins', () => {
+  const withoutPin = apply(readyBefore(), { type: 'seal-h1' })
+  let withPin = apply(readyBefore(), {
+    type: 'pin-evidence',
+    reference: evidenceReference('before', 'snapshot-before'),
+  })
+  withPin = apply(withPin, { type: 'seal-h1' })
+  expect(withPin.h1?.evidenceReferences).toEqual([
+    evidenceReference('before', 'snapshot-before'),
+  ])
+  expect(withPin.h1?.digest).not.toBe(withoutPin.h1?.digest)
+  expect(() =>
+    apply(withPin, {
+      type: 'pin-evidence',
+      reference: evidenceReference('before', 'snapshot-late'),
+    }),
+  ).toThrow(/sealed/)
+  const packet = generateCloseoutPacket(withPin).text
+  expect(packet).toContain('snapshot-before')
+  expect(packet).toContain('unavailable event sources 1')
+  expect(packet).toContain('event feed fresh/partial')
+  expect(exportLifecycleRecord(withPin)).toContain(
+    '"eventTriggerStatus": "partial"',
+  )
+})
+
+test('H2 and next-cycle records preserve their pinned evidence references', () => {
+  let during = startDuring()
+  during = apply(during, {
+    type: 'pin-evidence',
+    reference: evidenceReference('during', 'snapshot-during'),
+  })
+  during = sealH2(during)
+  expect(during.h2?.evidenceReferences).toEqual([
+    evidenceReference('during', 'snapshot-during'),
+  ])
+
+  let after = completeLifecycle(false)
+  after = apply(after, {
+    type: 'pin-evidence',
+    reference: evidenceReference('after', 'snapshot-after'),
+  })
+  const next = apply(after, { type: 'start-next-cycle' })
+  expect(next.previousCycle?.evidenceReferences).toEqual([
+    evidenceReference('after', 'snapshot-after'),
+  ])
+  expect(next.previousCycle?.digest).toBe(lifecycleDigest(after))
 })

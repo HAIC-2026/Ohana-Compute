@@ -78,6 +78,69 @@ export async function backendGet<T>(
   }
 }
 
+export type ConditionalGetResult<T> =
+  | { status: 'ok'; data: T; etag: string | null }
+  | { status: 'not-modified'; etag: string | null }
+
+export async function backendConditionalGet<T>(
+  path: string,
+  params: Record<string, string | number>,
+  etag?: string | null,
+): Promise<ConditionalGetResult<T>> {
+  const url = new URL(path, `${getBackendApiUrl()}/`)
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value))
+  }
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), requestTimeoutMs)
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        ...(etag ? { 'If-None-Match': etag } : {}),
+        ...authorizationHeaders(),
+      },
+      signal: controller.signal,
+    })
+    if (response.status === 304) {
+      return {
+        status: 'not-modified',
+        etag: response.headers.get('ETag') ?? etag ?? null,
+      }
+    }
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as {
+        detail?: string
+        error?: string
+      } | null
+      throw new BackendApiError(
+        path,
+        error?.detail ??
+          error?.error ??
+          `Backend request failed with ${response.status}`,
+        response.status,
+      )
+    }
+    return {
+      status: 'ok',
+      data: (await response.json()) as T,
+      etag: response.headers.get('ETag'),
+    }
+  } catch (error) {
+    if (error instanceof BackendApiError) throw error
+    if (controller.signal.aborted) {
+      throw new BackendApiError(path, 'Backend request timed out', null)
+    }
+    throw new BackendApiError(
+      path,
+      error instanceof Error ? error.message : 'Backend request failed',
+      null,
+    )
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 export async function backendPost<TRequest, TResponse>(
   path: string,
   body: TRequest,

@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { OperationsLayout } from '../components/OperationsLayout'
 import {
+  lifecycleEvidenceCounts,
+  useLifecycleEvidence,
+} from '../lib/lifecycle-evidence'
+import {
   applyLifecycleAction,
   canonicalLifecycleRecord,
   capabilityIds,
@@ -19,6 +23,8 @@ import {
   lifecycleGates,
   lifecycleGatesMet,
   lifecycleStorageKey,
+  legacyLifecycleStorageKey,
+  migrateLifecycleV1State,
   objectiveCatalog,
   packetSectionChoices,
   practicePartners,
@@ -36,6 +42,7 @@ import type {
   LifecycleState,
   PracticeRole,
 } from '../lib/practice-lifecycle'
+import { practiceLocation } from '../lib/waianae-case'
 import '../lifecycle.css'
 
 export const Route = createFileRoute('/lifecycle')({
@@ -136,12 +143,18 @@ function PracticeLifecycle() {
   )
   const [incomingRole, setIncomingRole] =
     useState<PracticeRole>('Recovery lead')
+  const liveEvidence = useLifecycleEvidence(practiceLocation)
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(lifecycleStorageKey)
-      if (saved) {
-        const next = restoreLifecycleState(saved)
+      const legacy = saved
+        ? null
+        : window.localStorage.getItem(legacyLifecycleStorageKey)
+      if (saved || legacy) {
+        const next = saved
+          ? restoreLifecycleState(saved)
+          : migrateLifecycleV1State(legacy!)
         setState(next)
         setSelectedObjectives(
           next.objectives.length ? next.objectives : defaultObjectives,
@@ -192,6 +205,22 @@ function PracticeLifecycle() {
   )
   const markerCount = capabilityIds.filter(marked).length
   const canonicalExport = useMemo(() => exportLifecycleRecord(state), [state])
+  const evidenceCounts = liveEvidence.snapshot
+    ? lifecycleEvidenceCounts(liveEvidence.snapshot)
+    : null
+  const evidencePhase = state.phase === 'complete' ? null : state.phase
+  const evidencePhaseSealed =
+    (evidencePhase === 'before' && Boolean(state.h1)) ||
+    (evidencePhase === 'during' && Boolean(state.h2))
+  const visibleSnapshotPinned = Boolean(
+    liveEvidence.snapshot &&
+    evidencePhase &&
+    state.pinnedEvidence.some(
+      (item) =>
+        item.phase === evidencePhase &&
+        item.snapshotId === liveEvidence.snapshot?.snapshot_id,
+    ),
+  )
 
   return (
     <OperationsLayout title="Practice the complete event lifecycle">
@@ -256,6 +285,143 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </li>
         ))}
       </ol>
+      <section
+        className="lifecycle-evidence-panel"
+        aria-labelledby="lifecycle-evidence-heading"
+        data-evidence-state={
+          liveEvidence.snapshot?.status ?? liveEvidence.status
+        }
+      >
+        <div className="lifecycle-evidence-heading">
+          <div>
+            <p className="operations-stamp">
+              PUBLIC SOURCE EVIDENCE · READ ONLY
+            </p>
+            <h2 id="lifecycle-evidence-heading">Live lifecycle evidence</h2>
+          </div>
+          <button type="button" onClick={liveEvidence.refresh}>
+            Refresh
+          </button>
+        </div>
+        <p>
+          Public evidence is planning context only—not dispatch, an order,
+          passability, restoration, containment, shelter completeness, partner
+          acceptance, resource movement, recovery completion, or all-clear
+          truth.
+        </p>
+        {liveEvidence.snapshot ? (
+          <>
+            <div className="lifecycle-evidence-summary">
+              <div>
+                <span>Snapshot</span>
+                <strong>{liveEvidence.snapshot.snapshot_id}</strong>
+                <small>
+                  Generated{' '}
+                  {new Date(
+                    liveEvidence.snapshot.generated_at,
+                  ).toLocaleString()}
+                </small>
+              </div>
+              <div>
+                <span>Overall</span>
+                <strong>{liveEvidence.snapshot.status}</strong>
+                <small>
+                  Valid until{' '}
+                  {liveEvidence.snapshot.valid_until
+                    ? new Date(
+                        liveEvidence.snapshot.valid_until,
+                      ).toLocaleString()
+                    : 'unknown'}
+                </small>
+              </div>
+              <div>
+                <span>Event triggers</span>
+                <strong>
+                  {evidenceCounts?.triggers ?? 'unavailable'} ·{' '}
+                  {liveEvidence.snapshot.event_triggers.state}
+                </strong>
+                <small>
+                  Feed {liveEvidence.snapshot.event_triggers.status} ·{' '}
+                  {evidenceCounts?.unavailableEventSources ?? 'unknown'} source
+                  unavailable
+                </small>
+              </div>
+              <div>
+                <span>Operational domains</span>
+                <strong>
+                  {evidenceCounts?.domains ?? 'unavailable'} ·{' '}
+                  {liveEvidence.snapshot.operational_status.state}
+                </strong>
+                <small>
+                  {evidenceCounts?.unavailableDomains ?? 'unknown'} unavailable
+                </small>
+              </div>
+            </div>
+            {liveEvidence.lastKnown && (
+              <p className="lifecycle-evidence-warning" role="status">
+                LAST KNOWN · The latest check failed: {liveEvidence.error}
+              </p>
+            )}
+            {liveEvidence.refreshing && (
+              <p className="lifecycle-evidence-refreshing" role="status">
+                Refreshing public evidence…
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={
+                !evidencePhase || evidencePhaseSealed || visibleSnapshotPinned
+              }
+              onClick={() => {
+                if (!liveEvidence.snapshot || !evidencePhase || !evidenceCounts)
+                  return
+                act({
+                  type: 'pin-evidence',
+                  reference: {
+                    phase: evidencePhase,
+                    snapshotId: liveEvidence.snapshot.snapshot_id,
+                    generatedAt: liveEvidence.snapshot.generated_at,
+                    validUntil: liveEvidence.snapshot.valid_until ?? null,
+                    overallStatus: liveEvidence.snapshot.status,
+                    triggerCount: evidenceCounts.triggers,
+                    domainCount: evidenceCounts.domains,
+                    unavailableDomainCount: evidenceCounts.unavailableDomains,
+                    eventUnavailableSourceCount:
+                      evidenceCounts.unavailableEventSources,
+                    eventTriggerState:
+                      liveEvidence.snapshot.event_triggers.state,
+                    operationalStatusState:
+                      liveEvidence.snapshot.operational_status.state,
+                    eventTriggerStatus:
+                      liveEvidence.snapshot.event_triggers.status,
+                    operationalStatusStatus:
+                      liveEvidence.snapshot.operational_status.status,
+                  },
+                })
+              }}
+            >
+              {visibleSnapshotPinned
+                ? `Pinned in ${evidencePhase}`
+                : evidencePhaseSealed
+                  ? `${evidencePhase} handoff sealed`
+                  : evidencePhase
+                    ? `Pin snapshot into ${evidencePhase}`
+                    : 'Cycle complete'}
+            </button>
+          </>
+        ) : (
+          <p className="lifecycle-evidence-warning" role="status">
+            {liveEvidence.status === 'loading'
+              ? 'Checking authoritative public evidence…'
+              : `Evidence unavailable: ${liveEvidence.error ?? 'No valid snapshot returned.'}`}
+          </p>
+        )}
+        {liveEvidence.checkedAt && (
+          <p className="lifecycle-evidence-checked">
+            Last check {new Date(liveEvidence.checkedAt).toLocaleString()}
+          </p>
+        )}
+      </section>
       <p className="operations-lead">
         One immutable chain carries planning decisions into response practice,
         recovery review, and the next cycle. Each capability changes local
@@ -1504,6 +1670,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             onClick={() => {
               const initial = createInitialLifecycleState()
               window.localStorage.removeItem(lifecycleStorageKey)
+              window.localStorage.removeItem(legacyLifecycleStorageKey)
               setState(initial)
               setSelectedObjectives(defaultObjectives)
               setPacketSections(initial.packetSections)

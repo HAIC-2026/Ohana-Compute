@@ -1,5 +1,6 @@
-export const lifecycleSchema = 'practice-lifecycle.v1' as const
-export const lifecycleStorageKey = 'practice-lifecycle.v1'
+export const lifecycleSchema = 'practice-lifecycle.v2' as const
+export const lifecycleStorageKey = 'practice-lifecycle.v2'
+export const legacyLifecycleStorageKey = 'practice-lifecycle.v1'
 export const maxLifecycleImportBytes = 128 * 1024
 export const practiceStamp = 'PRACTICE · UNSENT'
 
@@ -117,10 +118,26 @@ type CmistDomain = (typeof cmistDomains)[number]
 
 export type LifecycleLedgerEvent = {
   sequence: number
-  capability: CapabilityId
+  capability: CapabilityId | 'EVIDENCE_PIN'
   cycle: number
   practiceMinute: number
   summary: string
+}
+
+export type PinnedEvidenceReference = {
+  phase: Exclude<LifecyclePhase, 'complete'>
+  snapshotId: string
+  generatedAt: string
+  validUntil: string | null
+  overallStatus: 'complete' | 'partial' | 'unavailable'
+  triggerCount: number | null
+  domainCount: number | null
+  unavailableDomainCount: number | null
+  eventUnavailableSourceCount: number | null
+  eventTriggerState: 'fresh' | 'stale' | 'unavailable'
+  operationalStatusState: 'fresh' | 'stale' | 'unavailable'
+  eventTriggerStatus: 'complete' | 'partial' | 'unavailable'
+  operationalStatusStatus: 'complete' | 'partial' | 'unavailable'
 }
 
 export type CarriedGap = {
@@ -225,6 +242,7 @@ export type LifecycleState = {
   >
   channel: 'trusted voice' | 'printed handout' | 'local radio'
   evidence: PracticeEvidence[]
+  pinnedEvidence: PinnedEvidenceReference[]
   simulationScope: Record<ServiceArea, 'simulated' | 'unavailable'>
   injects: PracticeInject[]
   h1: null | {
@@ -232,6 +250,7 @@ export type LifecycleState = {
     sealedMinute: number
     carriedGapIds: GapId[]
     objectiveIds: ObjectiveId[]
+    evidenceReferences: PinnedEvidenceReference[]
   }
   supportItems: SupportItem[]
   serviceRecords: ServiceAreaRecord[]
@@ -249,6 +268,7 @@ export type LifecycleState = {
     sealedMinute: number
     carried: number
     setAside: number
+    evidenceReferences: PinnedEvidenceReference[]
   }
   recoveryRows: RecoveryRow[]
   unmetNeeds: UnmetNeedRecord[]
@@ -283,6 +303,7 @@ export type LifecycleState = {
     digest: string
     carriedGapIds: GapId[]
     carriedObjectiveIds: ObjectiveId[]
+    evidenceReferences: PinnedEvidenceReference[]
   }
   comparison: null | {
     digest: string
@@ -415,6 +436,7 @@ export type LifecycleAction =
       decision: 'gates-met' | 'gates-unmet-carry-forward'
     }
   | { type: 'pin-comparison'; text: string }
+  | { type: 'pin-evidence'; reference: PinnedEvidenceReference }
   | {
       type: 'select-packet-sections'
       sections: LifecycleState['packetSections']
@@ -450,6 +472,7 @@ const duringActionTypes = new Set<LifecycleAction['type']>([
 function requiredPhase(
   action: LifecycleAction,
 ): Exclude<LifecyclePhase, 'complete'> {
+  if (action.type === 'pin-evidence') return action.reference.phase
   if (beforeActionTypes.has(action.type) || action.type === 'start-during')
     return 'before'
   if (duringActionTypes.has(action.type)) return 'during'
@@ -508,6 +531,7 @@ export function createInitialLifecycleState(): LifecycleState {
     formats: { ...emptyFormats },
     channel: 'trusted voice',
     evidence: [],
+    pinnedEvidence: [],
     simulationScope: { ...emptyScope },
     injects: [],
     h1: null,
@@ -595,6 +619,55 @@ function fnvDigest(text: string) {
   return `${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`
 }
 
+function h1Digest(state: LifecycleState) {
+  const sealedMinute = state.h1?.sealedMinute ?? state.practiceMinute
+  return fnvDigest(
+    stableStringify({
+      event: state.event,
+      gaps: state.carriedGaps,
+      objectives: state.objectives,
+      timing: state.timing,
+      assumptions: {
+        r1: state.assumptions.r1,
+        comparison: state.assumptions.comparison,
+        chosen: state.assumptions.chosen,
+        demandDelta: state.assumptions.demandDelta,
+      },
+      scope: state.simulationScope,
+      injects: state.injects,
+      evidence: state.evidence
+        .filter(
+          (item) =>
+            item.recordedMinute <= sealedMinute && item.supersedes === null,
+        )
+        .map(({ id, gapId, partner, recordedMinute, supersedes }) => ({
+          id,
+          gapId,
+          partner,
+          recordedMinute,
+          supersedes,
+        })),
+      pinnedEvidence: state.pinnedEvidence.filter(
+        (item) => item.phase === 'before',
+      ),
+    }),
+  )
+}
+
+function h2Digest(state: LifecycleState) {
+  return fnvDigest(
+    stableStringify({
+      supportItems: state.supportItems.map((item) => ({
+        id: item.id,
+        disposition: item.disposition,
+      })),
+      pinnedEvidence: state.pinnedEvidence.filter(
+        (item) => item.phase === 'during',
+      ),
+    }),
+  )
+}
+
 export function canonicalLifecycleRecord(state: LifecycleState) {
   return {
     schema: lifecycleSchema,
@@ -610,6 +683,7 @@ export function canonicalLifecycleRecord(state: LifecycleState) {
     formats: state.formats,
     channel: state.channel,
     evidence: state.evidence,
+    pinnedEvidence: state.pinnedEvidence,
     simulationScope: state.simulationScope,
     injects: state.injects,
     h1: state.h1,
@@ -715,6 +789,59 @@ function validCanonicalRecord(
     'stale',
     'superseded',
   ] as const
+  const feedStates = ['fresh', 'stale', 'unavailable'] as const
+  const pinnedEvidenceKeys = [
+    'phase',
+    'snapshotId',
+    'generatedAt',
+    'validUntil',
+    'overallStatus',
+    'triggerCount',
+    'domainCount',
+    'unavailableDomainCount',
+    'eventUnavailableSourceCount',
+    'eventTriggerState',
+    'operationalStatusState',
+    'eventTriggerStatus',
+    'operationalStatusStatus',
+  ]
+  const validPinnedEvidence = (item: unknown) =>
+    exactKeys(item, pinnedEvidenceKeys) &&
+    stringIn(item.phase, ['before', 'during', 'after'] as const) &&
+    typeof item.snapshotId === 'string' &&
+    item.snapshotId.length > 0 &&
+    typeof item.generatedAt === 'string' &&
+    (item.validUntil === null || typeof item.validUntil === 'string') &&
+    stringIn(item.overallStatus, [
+      'complete',
+      'partial',
+      'unavailable',
+    ] as const) &&
+    (item.triggerCount === null ||
+      (Number.isSafeInteger(item.triggerCount) &&
+        Number(item.triggerCount) >= 0)) &&
+    (item.domainCount === null ||
+      (Number.isSafeInteger(item.domainCount) &&
+        Number(item.domainCount) >= 0)) &&
+    (item.unavailableDomainCount === null ||
+      (Number.isSafeInteger(item.unavailableDomainCount) &&
+        Number(item.unavailableDomainCount) >= 0)) &&
+    (item.eventUnavailableSourceCount === null ||
+      (Number.isSafeInteger(item.eventUnavailableSourceCount) &&
+        Number(item.eventUnavailableSourceCount) >= 0 &&
+        Number(item.eventUnavailableSourceCount) <= 99)) &&
+    stringIn(item.eventTriggerState, feedStates) &&
+    stringIn(item.operationalStatusState, feedStates) &&
+    stringIn(item.eventTriggerStatus, [
+      'complete',
+      'partial',
+      'unavailable',
+    ] as const) &&
+    stringIn(item.operationalStatusStatus, [
+      'complete',
+      'partial',
+      'unavailable',
+    ] as const)
   const supportResponses = ['not asked', 'hold', 'decline', 'unknown'] as const
   const supportDispositions = ['undecided', 'carried', 'set aside'] as const
   const serviceStates = [
@@ -830,6 +957,8 @@ function validCanonicalRecord(
         Number.isSafeInteger(row.recordedMinute) &&
         (row.supersedes === null || typeof row.supersedes === 'string'),
     ) ||
+    !Array.isArray(record.pinnedEvidence) ||
+    record.pinnedEvidence.some((item) => !validPinnedEvidence(item)) ||
     !exactKeys(simulationScope, [...serviceAreas]) ||
     Object.values(simulationScope).some(
       (item) => !stringIn(item, ['simulated', 'unavailable'] as const),
@@ -853,14 +982,22 @@ function validCanonicalRecord(
   if (
     !validHandoff(
       record.h1,
-      ['digest', 'sealedMinute', 'carriedGapIds', 'objectiveIds'],
+      [
+        'digest',
+        'sealedMinute',
+        'carriedGapIds',
+        'objectiveIds',
+        'evidenceReferences',
+      ],
       (row) =>
         typeof row.digest === 'string' &&
         Number.isSafeInteger(row.sealedMinute) &&
         Array.isArray(row.carriedGapIds) &&
         row.carriedGapIds.every((id) => stringIn(id, gapIds)) &&
         Array.isArray(row.objectiveIds) &&
-        row.objectiveIds.every((id) => stringIn(id, objectiveIds)),
+        row.objectiveIds.every((id) => stringIn(id, objectiveIds)) &&
+        Array.isArray(row.evidenceReferences) &&
+        row.evidenceReferences.every(validPinnedEvidence),
     ) ||
     !arrayOfExact(
       record.supportItems,
@@ -932,12 +1069,14 @@ function validCanonicalRecord(
     ) ||
     !validHandoff(
       record.h2,
-      ['digest', 'sealedMinute', 'carried', 'setAside'],
+      ['digest', 'sealedMinute', 'carried', 'setAside', 'evidenceReferences'],
       (row) =>
         typeof row.digest === 'string' &&
         Number.isSafeInteger(row.sealedMinute) &&
         Number.isSafeInteger(row.carried) &&
-        Number.isSafeInteger(row.setAside),
+        Number.isSafeInteger(row.setAside) &&
+        Array.isArray(row.evidenceReferences) &&
+        row.evidenceReferences.every(validPinnedEvidence),
     )
   )
     return false
@@ -1009,14 +1148,22 @@ function validCanonicalRecord(
     ) ||
     !validHandoff(
       record.previousCycle,
-      ['cycle', 'digest', 'carriedGapIds', 'carriedObjectiveIds'],
+      [
+        'cycle',
+        'digest',
+        'carriedGapIds',
+        'carriedObjectiveIds',
+        'evidenceReferences',
+      ],
       (row) =>
         Number.isSafeInteger(row.cycle) &&
         typeof row.digest === 'string' &&
         Array.isArray(row.carriedGapIds) &&
         row.carriedGapIds.every((id) => stringIn(id, gapIds)) &&
         Array.isArray(row.carriedObjectiveIds) &&
-        row.carriedObjectiveIds.every((id) => stringIn(id, objectiveIds)),
+        row.carriedObjectiveIds.every((id) => stringIn(id, objectiveIds)) &&
+        Array.isArray(row.evidenceReferences) &&
+        row.evidenceReferences.every(validPinnedEvidence),
     )
   )
     return false
@@ -1066,7 +1213,8 @@ export function restoreLifecycleState(text: string): LifecycleState {
       ['sequence', 'capability', 'cycle', 'practiceMinute', 'summary'],
       (row) =>
         Number.isSafeInteger(row.sequence) &&
-        stringIn(row.capability, capabilityIds) &&
+        (stringIn(row.capability, capabilityIds) ||
+          row.capability === 'EVIDENCE_PIN') &&
         Number.isSafeInteger(row.cycle) &&
         Number.isSafeInteger(row.practiceMinute) &&
         typeof row.summary === 'string',
@@ -1085,7 +1233,73 @@ export function restoreLifecycleState(text: string): LifecycleState {
     )
   )
     throw new Error('Saved lifecycle state failed validation.')
+  const beforeReferences = state.pinnedEvidence.filter(
+    (item) => item.phase === 'before',
+  )
+  if (
+    state.h1 &&
+    (state.h1.digest !== h1Digest(state) ||
+      stableStringify(state.h1.evidenceReferences) !==
+        stableStringify(beforeReferences) ||
+      stableStringify(state.h1.carriedGapIds) !==
+        stableStringify(state.carriedGaps.map((item) => item.gapId)) ||
+      stableStringify(state.h1.objectiveIds) !==
+        stableStringify(state.objectives))
+  )
+    throw new Error('Saved lifecycle H1 integrity check failed.')
+  const duringReferences = state.pinnedEvidence.filter(
+    (item) => item.phase === 'during',
+  )
+  const carried = state.supportItems.filter(
+    (item) => item.disposition === 'carried',
+  ).length
+  if (
+    state.h2 &&
+    (state.h2.digest !== h2Digest(state) ||
+      stableStringify(state.h2.evidenceReferences) !==
+        stableStringify(duringReferences) ||
+      state.h2.carried !== carried ||
+      state.h2.setAside !== state.supportItems.length - carried)
+  )
+    throw new Error('Saved lifecycle H2 integrity check failed.')
+  if (state.previousCycle && state.previousCycle.cycle !== state.cycle - 1)
+    throw new Error('Saved lifecycle previous-cycle relationship failed.')
   return state
+}
+
+export function migrateLifecycleV1State(text: string): LifecycleState {
+  const value: unknown = JSON.parse(text)
+  const initial = createInitialLifecycleState()
+  const legacyKeys = Object.keys(initial).filter(
+    (key) => key !== 'pinnedEvidence',
+  )
+  if (
+    !exactKeys(value, legacyKeys) ||
+    value.schema !== legacyLifecycleStorageKey
+  )
+    throw new Error('Saved lifecycle v1 state is not supported.')
+  const legacy = value as Omit<LifecycleState, 'schema' | 'pinnedEvidence'> & {
+    schema: typeof legacyLifecycleStorageKey
+    h1: null | Omit<NonNullable<LifecycleState['h1']>, 'evidenceReferences'>
+    h2: null | Omit<NonNullable<LifecycleState['h2']>, 'evidenceReferences'>
+    previousCycle: null | Omit<
+      NonNullable<LifecycleState['previousCycle']>,
+      'evidenceReferences'
+    >
+  }
+  const migrated: LifecycleState = {
+    ...legacy,
+    schema: lifecycleSchema,
+    pinnedEvidence: [],
+    h1: legacy.h1 ? { ...legacy.h1, evidenceReferences: [] } : null,
+    h2: legacy.h2 ? { ...legacy.h2, evidenceReferences: [] } : null,
+    previousCycle: legacy.previousCycle
+      ? { ...legacy.previousCycle, evidenceReferences: [] }
+      : null,
+  }
+  if (migrated.h1) migrated.h1.digest = h1Digest(migrated)
+  if (migrated.h2) migrated.h2.digest = h2Digest(migrated)
+  return restoreLifecycleState(JSON.stringify(migrated))
 }
 
 export function revealedInjects(state: LifecycleState) {
@@ -1249,6 +1463,16 @@ export function generateCloseoutPacket(state: LifecycleState) {
     practiceStamp,
     `Schema: ${lifecycleSchema}`,
     `Cycle digest: ${digest}`,
+    `## Pinned public evidence\n${
+      state.pinnedEvidence.length
+        ? state.pinnedEvidence
+            .map(
+              (item) =>
+                `${item.phase} | ${item.snapshotId} | generated ${item.generatedAt} | valid ${item.validUntil ?? 'unknown'} | ${item.overallStatus} | triggers ${item.triggerCount ?? 'unavailable'} | unavailable event sources ${item.eventUnavailableSourceCount ?? 'unknown'} | domains ${item.domainCount ?? 'unavailable'} | unavailable domains ${item.unavailableDomainCount ?? 'unavailable'} | event feed ${item.eventTriggerState}/${item.eventTriggerStatus} | operational feed ${item.operationalStatusState}/${item.operationalStatusStatus}`,
+            )
+            .join('\n')
+        : 'No public evidence snapshot pinned.'
+    }`,
   ]
   if (state.packetSections.includes('cycle summary')) {
     sections.push(
@@ -1299,6 +1523,39 @@ export function applyLifecycleAction(
   if (state.h1 && beforeActionTypes.has(action.type))
     throw new Error('H1 is immutable. Start response practice to continue.')
   switch (action.type) {
+    case 'pin-evidence': {
+      if (
+        (state.phase === 'before' && state.h1) ||
+        (state.phase === 'during' && state.h2)
+      )
+        throw new Error('The current phase handoff is sealed and immutable.')
+      if (
+        state.pinnedEvidence.some(
+          (item) =>
+            item.phase === action.reference.phase &&
+            item.snapshotId === action.reference.snapshotId,
+        )
+      )
+        throw new Error('This snapshot is already pinned in the current phase.')
+      const pinnedEvidence = [
+        ...state.pinnedEvidence,
+        structuredClone(action.reference),
+      ]
+      return {
+        ...state,
+        pinnedEvidence,
+        ledger: [
+          ...state.ledger,
+          {
+            sequence: state.ledger.length + 1,
+            capability: 'EVIDENCE_PIN',
+            cycle: state.cycle,
+            practiceMinute: state.practiceMinute,
+            summary: `Pinned public evidence snapshot ${action.reference.snapshotId} in ${action.reference.phase}.`,
+          },
+        ],
+      }
+    }
     case 'lock-event': {
       if (state.event) throw new Error('Reset is required to change the event.')
       return recordCapability(
@@ -1460,18 +1717,7 @@ export function applyLifecycleAction(
     case 'seal-h1': {
       if (!h1Ready(state))
         throw new Error('Complete every Before handoff gate first.')
-      const digest = fnvDigest(
-        stableStringify({
-          event: state.event,
-          gaps: state.carriedGaps,
-          objectives: state.objectives,
-          timing: state.timing,
-          assumptions: state.assumptions,
-          scope: state.simulationScope,
-          injects: state.injects,
-          evidence: state.evidence,
-        }),
-      )
+      const digest = h1Digest(state)
       return recordCapability(
         {
           ...state,
@@ -1480,6 +1726,9 @@ export function applyLifecycleAction(
             sealedMinute: state.practiceMinute,
             carriedGapIds: state.carriedGaps.map((item) => item.gapId),
             objectiveIds: state.objectives,
+            evidenceReferences: state.pinnedEvidence.filter(
+              (item) => item.phase === 'before',
+            ),
           },
         },
         'B10',
@@ -1727,17 +1976,13 @@ export function applyLifecycleAction(
         (item) => item.disposition === 'carried',
       )
       const h2 = {
-        digest: fnvDigest(
-          stableStringify(
-            state.supportItems.map((item) => ({
-              id: item.id,
-              disposition: item.disposition,
-            })),
-          ),
-        ),
+        digest: h2Digest(state),
         sealedMinute: state.practiceMinute,
         carried: carriedItems.length,
         setAside: state.supportItems.length - carriedItems.length,
+        evidenceReferences: state.pinnedEvidence.filter(
+          (item) => item.phase === 'during',
+        ),
       }
       return recordCapability(
         {
@@ -1933,6 +2178,7 @@ export function applyLifecycleAction(
         digest,
         carriedGapIds: nextGapIds,
         carriedObjectiveIds,
+        evidenceReferences: state.pinnedEvidence,
       }
       next.carriedGaps = nextGapIds.map((gapId, index) => ({
         gapId,

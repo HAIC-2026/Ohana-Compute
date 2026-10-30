@@ -69,7 +69,7 @@ var observedSourceRoutes = map[string]string{
 	"/api/v1/community/acs": "acs-5-year", "/api/v1/community/svi": "cdc-svi-2022",
 	"/api/v1/community/empower": "hhs-empower", "/api/v1/community/fema-risk": "fema-nri",
 	"/api/v1/community/profile": "", "/api/v1/planning/event-triggers": "",
-	"/api/v1/planning/live-status":            "",
+	"/api/v1/planning/live-status": "", "/api/v1/lifecycle/evidence": "",
 	"/api/v1/transportation/planned-closures": "hdot-planned-lane-closures",
 }
 
