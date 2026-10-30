@@ -20,12 +20,15 @@ import {
   lifecycleGatesMet,
   lifecycleStorageKey,
   objectiveCatalog,
+  packetSectionChoices,
   practicePartners,
   practiceRoles,
   practiceStamp,
   restoreLifecycleState,
   revealedInjects,
   serviceAreas,
+  serviceRecordNeedsRecheck,
+  serviceRecordStale,
 } from '../lib/practice-lifecycle'
 import type {
   CapabilityId,
@@ -42,12 +45,14 @@ export const Route = createFileRoute('/lifecycle')({
   }),
 })
 
-const packetChoices: LifecycleState['packetSections'] = [
-  'cycle summary',
-  'handoffs',
-  'recovery register',
-  'objective review',
+const channelChoices: Array<LifecycleState['channel']> = [
+  'trusted voice',
+  'printed handout',
+  'local radio',
 ]
+const formatChoices: Array<
+  LifecycleState['formats'][keyof LifecycleState['formats']]
+> = ['planned', 'gap', 'unknown']
 const defaultObjectives: LifecycleState['objectives'] = [
   'timing',
   'outreach',
@@ -123,8 +128,12 @@ function PracticeLifecycle() {
   const [selectedObjectives, setSelectedObjectives] =
     useState<LifecycleState['objectives']>(defaultObjectives)
   const [comparisonText, setComparisonText] = useState('')
-  const [packetSections, setPacketSections] =
-    useState<LifecycleState['packetSections']>(packetChoices)
+  const [packetSections, setPacketSections] = useState<
+    LifecycleState['packetSections']
+  >(() => createInitialLifecycleState().packetSections)
+  const [channel, setChannel] = useState<LifecycleState['channel']>(
+    () => createInitialLifecycleState().channel,
+  )
   const [incomingRole, setIncomingRole] =
     useState<PracticeRole>('Recovery lead')
 
@@ -138,6 +147,7 @@ function PracticeLifecycle() {
           next.objectives.length ? next.objectives : defaultObjectives,
         )
         setPacketSections(next.packetSections)
+        setChannel(next.channel)
       }
     } catch (error) {
       setMessage(
@@ -171,9 +181,12 @@ function PracticeLifecycle() {
   const h1 = h1Gates(state)
   const gates = lifecycleGates(state)
   const injects = revealedInjects(state)
-  const staleEvidence = state.evidence.filter(
-    (item) => item.state === 'stale' && item.supersedes === null,
-  )
+  const staleEvidence = state.evidence.filter((item) => item.state === 'stale')
+  const sealedChoice = state.assumptions.chosen ?? 'r1'
+  const sealedRevision = state.assumptions[sealedChoice]
+  const packetSelectionSaved =
+    packetSections.length === state.packetSections.length &&
+    packetSections.every((section) => state.packetSections.includes(section))
   const currentPhaseIndex = ['before', 'during', 'after', 'complete'].indexOf(
     state.phase,
   )
@@ -523,29 +536,48 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             title="Plan accessible outreach formats"
             marker={marked('B06')}
           >
+            <label>
+              Practice channel class
+              <select
+                value={channel}
+                onChange={(event) =>
+                  setChannel(event.target.value as LifecycleState['channel'])
+                }
+              >
+                {channelChoices.map((choice) => (
+                  <option key={choice}>{choice}</option>
+                ))}
+              </select>
+            </label>
             {Object.entries(state.formats).map(([format, status]) => (
-              <div className="lifecycle-row" key={format}>
-                <span>
+              <div className="lifecycle-choice-group" key={format}>
+                <strong>
                   {format}: {status}
-                </span>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() =>
-                    act({
-                      type: 'set-format',
-                      format: format as keyof LifecycleState['formats'],
-                      state: status === 'planned' ? 'gap' : 'planned',
-                      channel: 'trusted voice',
-                    })
-                  }
-                >
-                  Mark {status === 'planned' ? 'gap' : 'planned'}
-                </button>
+                </strong>
+                {formatChoices
+                  .filter((choice) => choice !== status)
+                  .map((choice) => (
+                    <button
+                      type="button"
+                      className="secondary"
+                      key={choice}
+                      onClick={() =>
+                        act({
+                          type: 'set-format',
+                          format: format as keyof LifecycleState['formats'],
+                          state: choice,
+                          channel,
+                        })
+                      }
+                    >
+                      Mark {format} {choice}
+                    </button>
+                  ))}
               </div>
             ))}
             <p className="lifecycle-output">
-              Channel class: {state.channel}; no recipient or delivery record.
+              Recorded channel class: {state.channel}; no recipient or delivery
+              record.
             </p>
           </Capability>
 
@@ -674,6 +706,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <li key={inject.id}>
                   {inject.id} · {inject.stage} · T+{inject.minute} ·{' '}
                   {inject.area}
+                  {state.simulationScope[inject.area] !== 'simulated' &&
+                    ' · area unavailable; re-simulate before H1'}
                 </li>
               ))}
             </ol>
@@ -777,33 +811,35 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 .map((area) => (
                   <div className="lifecycle-choice-group" key={area}>
                     <strong>{area}</strong>
-                    {(['unknown', 'unavailable'] as const).map(
-                      (serviceState) => (
-                        <button
-                          type="button"
-                          className="secondary"
-                          key={serviceState}
-                          onClick={() =>
-                            act({
-                              type: 'record-service-area',
-                              area,
-                              state: serviceState,
-                              recheckMinutes: 30,
-                            })
-                          }
-                        >
-                          Record {area} as {serviceState}
-                        </button>
-                      ),
-                    )}
+                    {(
+                      ['condition reported', 'unknown', 'unavailable'] as const
+                    ).map((serviceState) => (
+                      <button
+                        type="button"
+                        className="secondary"
+                        key={serviceState}
+                        onClick={() =>
+                          act({
+                            type: 'record-service-area',
+                            area,
+                            state: serviceState,
+                            recheckMinutes: 30,
+                          })
+                        }
+                      >
+                        Record {area} as {serviceState}
+                      </button>
+                    ))}
                   </div>
                 ))}
             </div>
             <ul className="lifecycle-output-list">
               {state.serviceRecords.map((record) => (
                 <li key={record.area}>
-                  {record.area} · {record.state} · recheck in{' '}
+                  {record.area} · {record.state} · recheck interval{' '}
                   {record.recheckMinutes}m
+                  {serviceRecordStale(record, state.practiceMinute) &&
+                    ' · stale'}
                 </li>
               ))}
             </ul>
@@ -820,7 +856,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   {item.id} · {item.response} ·{' '}
                   {practicePartners[index % practicePartners.length]}
                 </strong>
-                {(['hold', 'decline'] as const).map((response) => (
+                {(['hold', 'decline', 'unknown'] as const).map((response) => (
                   <button
                     type="button"
                     className="secondary"
@@ -852,31 +888,39 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             title="Escalate a blocked or overdue item"
             marker={marked('D05')}
           >
-            {state.supportItems.map((item) => (
-              <div className="lifecycle-row" key={item.id}>
-                <span>
-                  {item.id} · owner {item.owner}
-                </span>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() =>
-                    act({
-                      type: 'escalate-item',
-                      supportItemId: item.id,
-                      reason:
-                        item.response === 'decline'
-                          ? 'all responses declined'
-                          : 'evidence needs review',
-                      owner: 'Mass-care lead',
-                      deadlineMinutes: 30,
-                    })
-                  }
-                >
-                  Escalate with bounded deadline
-                </button>
-              </div>
-            ))}
+            {state.supportItems.map((item) => {
+              const reason =
+                item.response === 'decline'
+                  ? ('all responses declined' as const)
+                  : item.dueMinute < state.practiceMinute
+                    ? ('overdue' as const)
+                    : null
+              return (
+                <div className="lifecycle-row" key={item.id}>
+                  <span>
+                    {item.id} · owner {item.owner} ·{' '}
+                    {reason ?? 'not blocked or overdue'}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={!reason}
+                    onClick={() => {
+                      if (reason)
+                        act({
+                          type: 'escalate-item',
+                          supportItemId: item.id,
+                          reason,
+                          owner: 'Mass-care lead',
+                          deadlineMinutes: 30,
+                        })
+                    }}
+                  >
+                    Escalate with bounded deadline
+                  </button>
+                </div>
+              )
+            })}
           </Capability>
 
           <Capability
@@ -898,8 +942,15 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               Add r2 after revealed inject
             </button>
             <p className="lifecycle-output">
-              r1 remains 10% / 3 days · r2 delta:{' '}
-              {state.assumptions.r2?.demandDeltaFromR1 ?? 'not added'}
+              r1: {state.assumptions.r1.uptakePercent}% /{' '}
+              {state.assumptions.r1.supportDays} days · sealed:{' '}
+              {state.assumptions.chosen
+                ? `${state.assumptions.chosen} ${sealedRevision.uptakePercent}% / ${sealedRevision.supportDays} days`
+                : 'not chosen'}{' '}
+              · r2:{' '}
+              {state.assumptions.r2
+                ? `${state.assumptions.r2.uptakePercent}% / ${state.assumptions.r2.supportDays} days · delta ${state.assumptions.r2.demandDeltaFromSealed} practice meals from sealed ${sealedChoice}`
+                : 'not added'}
             </p>
           </Capability>
 
@@ -1081,6 +1132,14 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 </button>
               </div>
             ))}
+            <p className="lifecycle-output">
+              Recovery review revision:{' '}
+              {state.assumptions.r2
+                ? `r2 ${state.assumptions.r2.uptakePercent}% / ${state.assumptions.r2.supportDays} days · delta ${state.assumptions.r2.demandDeltaFromSealed} practice meals from sealed ${sealedChoice}`
+                : state.assumptions.chosen
+                  ? `sealed ${state.assumptions.chosen}; r2 not added`
+                  : 'not chosen'}
+            </p>
           </Capability>
 
           <Capability
@@ -1160,7 +1219,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             <div className="lifecycle-button-list">
               {state.serviceRecords
                 .filter((record) =>
-                  ['unknown', 'unavailable'].includes(record.state),
+                  serviceRecordNeedsRecheck(record, state.practiceMinute),
                 )
                 .map((record) => (
                   <button
@@ -1356,7 +1415,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <fieldset>
               <legend>Packet sections</legend>
-              {packetChoices.map((section) => (
+              {packetSectionChoices.map((section) => (
                 <Choice
                   key={section}
                   label={section}
@@ -1386,12 +1445,10 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             <button
               type="button"
               className="secondary"
+              disabled={!packetSelectionSaved}
               onClick={() => {
                 try {
-                  const packet = generateCloseoutPacket({
-                    ...state,
-                    packetSections,
-                  })
+                  const packet = generateCloseoutPacket(state)
                   download(packet.filename, packet.text)
                   setMessage(
                     'Closeout packet downloaded locally and not added to offline field-packet storage.',
@@ -1407,6 +1464,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             >
               Download {practiceStamp} packet
             </button>
+            {!packetSelectionSaved && (
+              <p className="lifecycle-output">
+                Save the section selection to download it.
+              </p>
+            )}
           </Capability>
 
           <Capability
@@ -1440,10 +1502,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             type="button"
             className="secondary"
             onClick={() => {
+              const initial = createInitialLifecycleState()
               window.localStorage.removeItem(lifecycleStorageKey)
-              setState(createInitialLifecycleState())
+              setState(initial)
               setSelectedObjectives(defaultObjectives)
-              setPacketSections(packetChoices)
+              setPacketSections(initial.packetSections)
+              setChannel(initial.channel)
               setComparisonText('')
               setMessage('Local practice lifecycle reset.')
             }}

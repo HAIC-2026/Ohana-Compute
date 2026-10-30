@@ -102,6 +102,12 @@ export const unmetNeedBands = [
   '10–49 aggregate',
   '50+ aggregate',
 ] as const
+export const packetSectionChoices = [
+  'cycle summary',
+  'handoffs',
+  'recovery register',
+  'objective review',
+] as const
 
 type GapId = (typeof gapCatalog)[number]['id']
 type ObjectiveId = (typeof objectiveCatalog)[number]['id']
@@ -210,7 +216,7 @@ export type LifecycleState = {
     r2: null | {
       uptakePercent: number
       supportDays: number
-      demandDeltaFromR1: number
+      demandDeltaFromSealed: number
     }
   }
   formats: Record<
@@ -257,9 +263,11 @@ export type LifecycleState = {
   }>
   recoveryDraft: null | {
     status: typeof practiceStamp
-    classifications: Record<
-      GuidanceBlock,
-      'withdrawn' | 'unknown' | 'carried into recovery draft r1'
+    classifications: Partial<
+      Record<
+        GuidanceBlock,
+        'withdrawn' | 'unknown' | 'carried into recovery draft r1'
+      >
     >
   }
   objectiveReview: Array<{
@@ -269,9 +277,7 @@ export type LifecycleState = {
     disposition: 'undecided' | 'carry-forward' | 'note-only'
   }>
   gateDecision: null | 'gates-met' | 'gates-unmet-carry-forward'
-  packetSections: Array<
-    'cycle summary' | 'handoffs' | 'recovery register' | 'objective review'
-  >
+  packetSections: Array<(typeof packetSectionChoices)[number]>
   previousCycle: null | {
     cycle: number
     digest: string
@@ -734,12 +740,6 @@ function validCanonicalRecord(
     'carry-forward',
     'note-only',
   ] as const
-  const packetChoices = [
-    'cycle summary',
-    'handoffs',
-    'recovery register',
-    'objective review',
-  ] as const
   const validEvent =
     record.event === null ||
     (exactKeys(record.event, ['id', 'label', 'hazard']) &&
@@ -806,11 +806,11 @@ function validCanonicalRecord(
       (exactKeys(assumptions.r2, [
         'uptakePercent',
         'supportDays',
-        'demandDeltaFromR1',
+        'demandDeltaFromSealed',
       ]) &&
         Number.isSafeInteger(assumptions.r2.uptakePercent) &&
         Number.isSafeInteger(assumptions.r2.supportDays) &&
-        Number.isSafeInteger(assumptions.r2.demandDeltaFromR1))
+        Number.isSafeInteger(assumptions.r2.demandDeltaFromSealed))
     ) ||
     !exactKeys(formats, ['Plain language', 'Large text', 'Audio script']) ||
     Object.values(formats).some((item) => !stringIn(item, formatStates)) ||
@@ -979,9 +979,12 @@ function validCanonicalRecord(
       ['status', 'classifications'],
       (row) =>
         row.status === practiceStamp &&
-        exactKeys(row.classifications, [...guidanceBlocks]) &&
-        Object.values(row.classifications).every((item) =>
-          stringIn(item, classifications),
+        row.classifications !== null &&
+        typeof row.classifications === 'object' &&
+        !Array.isArray(row.classifications) &&
+        Object.entries(row.classifications).every(
+          ([block, item]) =>
+            stringIn(block, guidanceBlocks) && stringIn(item, classifications),
         ),
     ) ||
     !arrayOfExact(
@@ -1002,7 +1005,7 @@ function validCanonicalRecord(
     ) ||
     !Array.isArray(record.packetSections) ||
     record.packetSections.some(
-      (section) => !stringIn(section, packetChoices),
+      (section) => !stringIn(section, packetSectionChoices),
     ) ||
     !validHandoff(
       record.previousCycle,
@@ -1057,7 +1060,29 @@ export function restoreLifecycleState(text: string): LifecycleState {
     state.cycle < 1 ||
     !Number.isSafeInteger(state.practiceMinute) ||
     !Array.isArray(state.capabilityMarkers) ||
-    state.capabilityMarkers.some((id) => !capabilityIds.includes(id))
+    state.capabilityMarkers.some((id) => !capabilityIds.includes(id)) ||
+    !arrayOfExact(
+      value.ledger,
+      ['sequence', 'capability', 'cycle', 'practiceMinute', 'summary'],
+      (row) =>
+        Number.isSafeInteger(row.sequence) &&
+        stringIn(row.capability, capabilityIds) &&
+        Number.isSafeInteger(row.cycle) &&
+        Number.isSafeInteger(row.practiceMinute) &&
+        typeof row.summary === 'string',
+    ) ||
+    !(
+      value.comparison === null ||
+      (exactKeys(value.comparison, ['digest', 'cycle', 'phase']) &&
+        typeof value.comparison.digest === 'string' &&
+        Number.isSafeInteger(value.comparison.cycle) &&
+        stringIn(value.comparison.phase, [
+          'before',
+          'during',
+          'after',
+          'complete',
+        ] as const))
+    )
   )
     throw new Error('Saved lifecycle state failed validation.')
   return state
@@ -1065,6 +1090,26 @@ export function restoreLifecycleState(text: string): LifecycleState {
 
 export function revealedInjects(state: LifecycleState) {
   return state.injects.filter((inject) => inject.minute <= state.practiceMinute)
+}
+
+export function serviceRecordStale(
+  serviceRecord: ServiceAreaRecord,
+  practiceMinute: number,
+) {
+  return (
+    practiceMinute - serviceRecord.recordedMinute >=
+    serviceRecord.recheckMinutes
+  )
+}
+
+export function serviceRecordNeedsRecheck(
+  serviceRecord: ServiceAreaRecord,
+  practiceMinute: number,
+) {
+  return (
+    serviceRecord.state !== 'condition reported' ||
+    serviceRecordStale(serviceRecord, practiceMinute)
+  )
 }
 
 export function h1Gates(state: LifecycleState) {
@@ -1077,7 +1122,11 @@ export function h1Gates(state: LifecycleState) {
       Number.isSafeInteger(state.timing.marginMinutes),
     assumptions: state.assumptions.chosen !== null,
     scope: Object.values(state.simulationScope).includes('simulated'),
-    inject: state.injects.length > 0,
+    inject:
+      state.injects.length > 0 &&
+      state.injects.every(
+        (inject) => state.simulationScope[inject.area] === 'simulated',
+      ),
     evidence:
       state.evidence.length > 0 &&
       state.evidence.every((item) =>
@@ -1106,7 +1155,7 @@ export function lifecycleGates(state: LifecycleState) {
       state.holdReview.refusedItemIds.length === 0,
     rechecks: state.serviceRecords
       .filter((serviceRecord) =>
-        ['unknown', 'unavailable'].includes(serviceRecord.state),
+        serviceRecordNeedsRecheck(serviceRecord, state.practiceMinute),
       )
       .every((serviceRecord) =>
         state.recheckPlans.some((plan) => plan.area === serviceRecord.area),
@@ -1462,7 +1511,8 @@ export function applyLifecycleAction(
         state.practiceMinute + action.minutes,
       )
       const evidence = state.evidence.map((item) =>
-        item.supersedes === null && practiceMinute - item.recordedMinute >= 60
+        item.state !== 'superseded' &&
+        practiceMinute - item.recordedMinute >= 60
           ? { ...item, state: 'stale' as const }
           : item,
       )
@@ -1513,8 +1563,29 @@ export function applyLifecycleAction(
     }
     case 'escalate-item': {
       assertWholeBounded(action.deadlineMinutes, 15, 60, 'Deadline')
+      const target = state.supportItems.find(
+        (item) => item.id === action.supportItemId,
+      )
+      if (!target) throw new Error('Support item not found.')
+      const blocked = target.response === 'decline'
+      const overdue = target.dueMinute < state.practiceMinute
+      const evidenceNeedsReview = state.evidence.some(
+        (item) =>
+          item.gapId === target.gapId &&
+          (item.state === 'stale' || item.state === 'unknown'),
+      )
+      const reasonHolds =
+        action.reason === 'overdue'
+          ? overdue
+          : action.reason === 'all responses declined'
+            ? blocked
+            : (blocked || overdue) && evidenceNeedsReview
+      if (!reasonHolds)
+        throw new Error(
+          'Escalation needs a blocked or overdue item and a reason that matches its state.',
+        )
       const supportItems = state.supportItems.map((item) =>
-        item.id === action.supportItemId
+        item.id === target.id
           ? {
               ...item,
               owner: action.owner,
@@ -1526,8 +1597,6 @@ export function applyLifecycleAction(
             }
           : item,
       )
-      if (!supportItems.some((item) => item.id === action.supportItemId))
-        throw new Error('Support item not found.')
       return recordCapability(
         { ...state, supportItems },
         'D05',
@@ -1539,12 +1608,11 @@ export function applyLifecycleAction(
         throw new Error('Reveal an inject before adding r2.')
       assertWholeBounded(action.uptakePercent, 1, 100, 'Uptake')
       assertWholeBounded(action.supportDays, 1, 14, 'Support days')
-      const demandDeltaFromR1 =
+      const sealedChoice = state.assumptions.chosen ?? 'r1'
+      const sealed = state.assumptions[sealedChoice]
+      const demandDeltaFromSealed =
         assumptionDemand(action.uptakePercent, action.supportDays) -
-        assumptionDemand(
-          state.assumptions.r1.uptakePercent,
-          state.assumptions.r1.supportDays,
-        )
+        assumptionDemand(sealed.uptakePercent, sealed.supportDays)
       return recordCapability(
         {
           ...state,
@@ -1553,12 +1621,12 @@ export function applyLifecycleAction(
             r2: {
               uptakePercent: action.uptakePercent,
               supportDays: action.supportDays,
-              demandDeltaFromR1,
+              demandDeltaFromSealed,
             },
           },
         },
         'D06',
-        `Added r2 with a ${demandDeltaFromR1}-meal practice delta from sealed r1.`,
+        `Added r2 with a ${demandDeltaFromSealed}-meal practice delta from the sealed ${sealedChoice} revision.`,
       )
     }
     case 'create-guidance': {
@@ -1616,10 +1684,7 @@ export function applyLifecycleAction(
     }
     case 'replace-evidence': {
       const old = state.evidence.find(
-        (item) =>
-          item.id === action.evidenceId &&
-          item.state === 'stale' &&
-          item.supersedes === null,
+        (item) => item.id === action.evidenceId && item.state === 'stale',
       )
       if (!old) throw new Error('Choose a stale current evidence claim.')
       const oldUpdated = state.evidence.map((item) =>
@@ -1732,7 +1797,7 @@ export function applyLifecycleAction(
         .map((item) => item.id)
       const refusedItemIds = heldIds.filter((id) => {
         const row = state.recoveryRows.find((item) => item.supportItemId === id)
-        return !row || row.state !== 'follow-up-ready'
+        return row !== undefined && row.state !== 'follow-up-ready'
       })
       return recordCapability(
         {
@@ -1749,8 +1814,10 @@ export function applyLifecycleAction(
       const source = state.serviceRecords.find(
         (item) => item.area === action.area,
       )
-      if (!source || !['unknown', 'unavailable'].includes(source.state))
-        throw new Error('Rechecks apply to unknown or unavailable records.')
+      if (!source || !serviceRecordNeedsRecheck(source, state.practiceMinute))
+        throw new Error(
+          'Rechecks apply to stale, unknown, or unavailable records.',
+        )
       const recheckPlans = [
         ...state.recheckPlans.filter((item) => item.area !== action.area),
         {
@@ -1770,14 +1837,17 @@ export function applyLifecycleAction(
         throw new Error(
           'Create a guidance version during the practice response.',
         )
-      const classifications = {
-        Situation: 'unknown',
-        'Accessible formats': 'unknown',
-        'Support options': 'unknown',
-        'Next review': 'unknown',
+      const merged: NonNullable<
+        LifecycleState['recoveryDraft']
+      >['classifications'] = {
         ...state.recoveryDraft?.classifications,
         [action.block]: action.classification,
-      } as NonNullable<LifecycleState['recoveryDraft']>['classifications']
+      }
+      const classifications: typeof merged = {}
+      for (const block of guidanceBlocks) {
+        const classification = merged[block]
+        if (classification) classifications[block] = classification
+      }
       return recordCapability(
         {
           ...state,
@@ -1821,17 +1891,24 @@ export function applyLifecycleAction(
       )
     }
     case 'select-packet-sections': {
-      if (action.sections.length === 0)
+      const packetSections = packetSectionChoices.filter((section) =>
+        action.sections.includes(section),
+      )
+      if (packetSections.length === 0)
         throw new Error('Choose at least one packet section.')
       return recordCapability(
-        { ...state, packetSections: [...new Set(action.sections)] },
+        { ...state, packetSections },
         'A09',
-        `Selected ${action.sections.length} deterministic packet sections.`,
+        `Selected ${packetSections.length} deterministic packet sections.`,
       )
     }
     case 'start-next-cycle': {
       if (!state.gateDecision)
         throw new Error('Record an end-of-cycle gate decision first.')
+      if (state.gateDecision === 'gates-met' && !lifecycleGatesMet(state))
+        throw new Error(
+          'Gates changed after the gates-met decision; record the gate decision again.',
+        )
       const carriedGapIds = state.objectiveReview
         .filter((item) => item.disposition === 'carry-forward')
         .flatMap((item) =>

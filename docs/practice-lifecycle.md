@@ -18,18 +18,27 @@ Every draft, strict record, and closeout packet is labeled
 
 - **H1 — Before to During:** the facilitator locks a fictional event, carries
   owned readiness gaps, selects 1–3 objectives, computes the preparation
-  margin, chooses an assumption revision, plans accessible formats, records
-  fixed-choice evidence, declares simulation scope, schedules deterministic
-  injects, and seals the handoff. Sealing is not an authorization decision.
+  margin, chooses an assumption revision, assigns a practice channel class and
+  marks each accessible format planned, gap, or unknown, records fixed-choice
+  evidence, declares simulation scope, schedules deterministic injects, and
+  seals the handoff. H1 cannot be sealed while any scheduled inject is in an
+  area that is no longer simulated. Sealing is not an authorization decision.
 - **H2 — During to After:** H1 becomes one aggregate support item per carried
   gap. Practice time advances only through explicit T+ controls. Service-area
-  records, partner response categories, bounded escalations, assumption r2,
-  guidance versions, shift snapshots, and evidence replacements remain
-  traceable. Every support item is carried or set aside before H2 is sealed.
+  records become stale after their recheck interval. Partner responses are
+  hold, decline, or unknown. Escalation needs a blocked or overdue item and a
+  matching reason. Assumption r2 is compared with the revision sealed in H1.
+  Guidance versions, shift snapshots, and evidence replacements remain
+  traceable; only current stale evidence can be replaced. Every support item is
+  carried or set aside before H2 is sealed.
 - **H3 — After to next Before:** carried H2 items become a recovery register.
   Aggregate CMIST bands, linked hold review, service rechecks, recovery guidance,
   objective scores, and six end-of-cycle gates determine what carries into the
-  next cycle. The prior cycle becomes read-only.
+  next cycle. Hold review refuses carried held items without a follow-up-ready
+  row; set-aside items do not block it. Stale, unknown, and unavailable service
+  records need a recheck plan. Every guidance block is classified individually.
+  Starting the next cycle refuses a gates-met decision if a gate has since
+  regressed. The prior cycle becomes read-only.
 
 ## Capability contract
 
@@ -46,9 +55,10 @@ reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
 
-Closeout packets contain only selected sections and the canonical digest in the
-filename. They are ordinary browser downloads and do not enter or evict the
-offline field-packet cache.
+Closeout packets contain only the saved section selection, in a fixed section
+order, and the canonical cycle digest shown in the toolbar in the filename.
+Download stays disabled until the current selection is saved. They are ordinary
+browser downloads and do not enter or evict the offline field-packet cache.
 
 ## Offline behavior
 
@@ -66,15 +76,16 @@ mutations remain outside the shell cache.
 1. Run `npm run dev:stack` and open <http://127.0.0.1:3000/lifecycle>.
 2. In **Before**, lock Practice Event Amber, carry two gaps, freeze the default
    three objectives, compute the 120−60 minute margin, carry the comparison,
-   plan one format, record one evidence claim, simulate two service areas,
-   schedule their injects, and seal H1.
+   choose a channel class and plan one format, record one evidence claim,
+   simulate two service areas, schedule their injects, and seal H1.
 3. In **During**, start the queue, advance 60 minutes, record the two service
-   areas, capture hold/decline partner responses, escalate one item, add r2,
-   create guidance v1, freeze the shift snapshot, replace stale evidence,
-   disposition both items, and seal H2.
+   areas, capture hold/decline partner responses, escalate the declined item,
+   add r2, create guidance v1, freeze the shift snapshot, replace stale
+   evidence, disposition both items, and seal H2.
 4. In **After**, make the carried row follow-up-ready, record all five aggregate
    bands, review the hold, plan all required rechecks, classify all four guidance
    blocks, score the three objectives, record gates met, download and pin the
-   strict record, download the closeout packet, then seal H3.
+   strict record, save the packet section selection, download the closeout
+   packet, then seal H3.
 5. Reload to verify local persistence. Open `/exercise` to verify it resolves to
    the same workspace. Use **Reset lifecycle** for a clean run.

@@ -47,10 +47,18 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'B04')
     .getByRole('button', { name: 'Compute bounded margin' })
     .click()
+  await expect(capability(page, 'D06')).toContainText('sealed: not chosen')
   await capability(page, 'B05')
     .getByRole('button', { name: 'Carry comparison' })
     .click()
+  await expect(capability(page, 'D06')).toContainText('sealed: comparison')
+  await capability(page, 'B06')
+    .getByLabel('Practice channel class')
+    .selectOption('printed handout')
   await capability(page, 'B06').getByRole('button').first().click()
+  await expect(capability(page, 'B06')).toContainText(
+    'Recorded channel class: printed handout',
+  )
   await capability(page, 'B07')
     .getByRole('button', { name: /Record criteria present for/ })
     .first()
@@ -85,6 +93,11 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .nth(1)
     .click()
   await capability(page, 'D04')
+    .getByRole('button', { name: /Record unknown from/ })
+    .first()
+    .click()
+  await expect(capability(page, 'D04')).toContainText('S-1-1 · unknown')
+  await capability(page, 'D04')
     .getByRole('button', { name: /Record hold/ })
     .first()
     .click()
@@ -92,10 +105,15 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: /Record decline/ })
     .nth(1)
     .click()
+  await expect(
+    capability(page, 'D05').getByRole('button').nth(0),
+  ).toBeDisabled()
+  await expect(capability(page, 'D05')).toContainText('not blocked or overdue')
   await capability(page, 'D05').getByRole('button').nth(1).click()
   await capability(page, 'D06')
     .getByRole('button', { name: 'Add r2 after revealed inject' })
     .click()
+  await expect(capability(page, 'D06')).toContainText('from sealed comparison')
   await capability(page, 'D07')
     .getByRole('button', { name: 'Create next guidance version' })
     .click()
@@ -119,6 +137,9 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .click()
 
   await capability(page, 'A01').getByRole('button').click()
+  await expect(capability(page, 'A01')).toContainText(
+    'Recovery review revision: r2',
+  )
   const unmetGroups = capability(page, 'A02').locator('.lifecycle-choice-group')
   for (let index = 0; index < 5; index++) {
     await unmetGroups
@@ -186,20 +207,31 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .click()
   await expect(capability(page, 'A08')).toContainText('content not merged')
 
+  await capability(page, 'A09').getByLabel('recovery register').check()
+  const packetButton = capability(page, 'A09').getByRole('button', {
+    name: new RegExp(`Download ${practiceStamp}`),
+  })
+  await expect(packetButton).toBeDisabled()
   await capability(page, 'A09')
     .getByRole('button', { name: 'Save packet section selection' })
     .click()
+  await expect(packetButton).toBeEnabled()
+  const digest = await page
+    .locator('.lifecycle-toolbar div')
+    .filter({ hasText: 'Cycle digest' })
+    .locator('strong')
+    .innerText()
+  expect(digest).toMatch(/^[a-f0-9]{16}$/)
   const packetDownload = page.waitForEvent('download')
-  await capability(page, 'A09')
-    .getByRole('button', { name: new RegExp(`Download ${practiceStamp}`) })
-    .click()
+  await packetButton.click()
   const packet = await packetDownload
-  expect(packet.suggestedFilename()).toMatch(
-    /^practice-closeout-[a-f0-9]{16}-PRACTICE-UNSENT\.txt$/,
+  expect(packet.suggestedFilename()).toBe(
+    `practice-closeout-${digest}-PRACTICE-UNSENT.txt`,
   )
   const packetText = await readFile(await packet.path(), 'utf8')
   expect(packetText).toContain(practiceStamp)
   expect(packetText).toContain('## Handoffs')
+  expect(packetText).toContain('## Recovery register')
 
   await capability(page, 'A10')
     .getByRole('button', {
