@@ -1,8 +1,19 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import type { LifecycleState } from '../src/lib/practice-lifecycle'
+import type {
+  LifecycleAction,
+  LifecycleState,
+} from '../src/lib/practice-lifecycle'
+import {
+  applyLifecycleAction,
+  createInitialLifecycleState,
+} from '../src/lib/practice-lifecycle'
 import { parseLifecycleEvidence } from '../src/lib/lifecycle-evidence'
-import { sourceSnapshot, sourceTestTime } from './fixtures/lifecycle-source'
+import {
+  displayedSource,
+  sourceSnapshot,
+  sourceTestTime,
+} from './fixtures/lifecycle-source'
 
 const capability = (page: Page, id: string) =>
   page.locator(`[data-capability="${id}"]`)
@@ -310,4 +321,132 @@ test('offline remount reconciles cached transport without an extra fetch', async
   await expect(shelters).not.toContainText('Retrieval: fresh')
   expect(requests).toBe(checksBeforeUnmount)
   expect(await saved(page)).toEqual(before)
+})
+
+test('non-string enum refreshes retain validated cache and persist only source-unavailable rechecks', async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date(sourceTestTime) })
+  const actions: LifecycleAction[] = [
+    { type: 'lock-event', eventId: 'hurricane-amber' },
+    {
+      type: 'carry-gap',
+      gapId: 'transportation',
+      owner: 'Planning lead',
+      dueBand: 'T+30',
+    },
+    { type: 'set-objectives', objectiveIds: ['timing'] },
+    { type: 'set-timing', warningMinutes: 120, preparationMinutes: 60 },
+    {
+      type: 'choose-assumption',
+      choice: 'comparison',
+      uptakePercent: 20,
+      supportDays: 5,
+    },
+    {
+      type: 'record-evidence',
+      gapId: 'transportation',
+      state: 'unknown',
+      partner: 'Practice Partner A',
+    },
+    { type: 'set-scope', area: 'Transportation support', state: 'simulated' },
+    {
+      type: 'schedule-inject',
+      stage: 'MAP',
+      minute: 15,
+      area: 'Transportation support',
+    },
+    {
+      type: 'accept-source',
+      gapId: 'transportation',
+      displayed: displayedSource(),
+      acceptedAt: sourceTestTime,
+    },
+    { type: 'seal-h1' },
+    { type: 'start-during' },
+    {
+      type: 'set-support-disposition',
+      supportItemId: 'S-1-1',
+      disposition: 'carried',
+    },
+    { type: 'seal-h2' },
+  ]
+  const initial = actions.reduce(
+    applyLifecycleAction,
+    createInitialLifecycleState(),
+  )
+  await page.addInitScript((state) => {
+    localStorage.setItem('practice-lifecycle.v3', JSON.stringify(state))
+  }, initial)
+  let payload: unknown = sourceSnapshot()
+  let malformed = false
+  const conditionalTags: Array<string | undefined> = []
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) => {
+    conditionalTags.push(route.request().headers()['if-none-match'])
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: {
+        ETag: malformed ? 'W/"malformed-enum"' : 'W/"source-a"',
+        'Access-Control-Expose-Headers': 'ETag',
+      },
+      body: JSON.stringify(payload),
+    })
+  })
+  await page.goto('/lifecycle')
+  const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
+  const shelters = page.getByRole('region', {
+    name: 'FEMA-reported shelter context',
+  })
+  const checks = page.getByRole('region', { name: 'Accepted source rechecks' })
+  await expect(shelters).toContainText('Reported shelter A')
+  await expect(shelters.getByRole('status')).toContainText('Retrieval: fresh')
+  const before = await saved(page)
+  malformed = true
+  let count = 0
+  for (const [field, member] of [
+    ['coverage', 'partial'],
+    ['state', 'stale'],
+    ['status', 'partial'],
+  ]) {
+    for (const invalid of [[member], { value: member }, 0]) {
+      const snapshot = sourceSnapshot()
+      snapshot.snapshot_id = 'malformed-enum'
+      snapshot.shelter_context.items = []
+      Object.assign(field === 'status' ? snapshot : snapshot.shelter_context, {
+        [field]: invalid,
+      })
+      payload = snapshot
+      await checks
+        .getByRole('button', { name: 'Recheck source SA-1-1', exact: true })
+        .click()
+      await expect(checks.locator('[data-source-recheck]')).toHaveCount(++count)
+      await expect(
+        checks.locator('[data-source-recheck]').last(),
+      ).toHaveAttribute('data-source-recheck', 'source-unavailable')
+      await expect(panel).toContainText('Malformed lifecycle evidence')
+      await expect(panel).toContainText('LAST KNOWN')
+      await expect(panel).toContainText('snapshot-source-a')
+      await expect(panel).not.toContainText('malformed-enum')
+      await expect(shelters.getByRole('status')).toContainText(
+        'Retrieval: unavailable',
+      )
+      await expect(shelters).toContainText('Last-known reported facts retained')
+      await expect(shelters).toContainText('Reported shelter A')
+      const current = await saved(page)
+      expect(current.sourceRechecks.at(-1)).toMatchObject({
+        result: 'source-unavailable',
+        reading: {
+          snapshotId: 'snapshot-source-a',
+          transport: 'unavailable',
+          claim: before.sourceEvidence[0].displayed.claim,
+        },
+      })
+      expect(current.sourceEvidence).toEqual(before.sourceEvidence)
+      expect(current.h1).toEqual(before.h1)
+      expect(current.h2).toEqual(before.h2)
+      expect(authority(current)).toEqual(authority(before))
+      expect(conditionalTags.at(-1)).toBe('W/"source-a"')
+    }
+  }
 })

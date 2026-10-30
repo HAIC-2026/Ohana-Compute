@@ -121,6 +121,9 @@ age remains **unknown**, even after a successful retrieval. Transient errors kee
 validated last-known facts with an unavailable label. Lifecycle evidence JSON
 is bounded and runtime-validated before entering the cache; an invalid payload
 does not replace validated data.
+Source, transport, and aggregate enum fields require actual strings before
+membership checks. Coercible arrays, objects, and numbers are malformed, never
+fresh evidence or a basis for a `not-returned` recheck.
 Every mount reconciles offline transport, including cache hits after navigation:
 validated facts remain last-known/unavailable without issuing another request.
 

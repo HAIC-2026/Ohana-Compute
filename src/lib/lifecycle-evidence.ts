@@ -4,6 +4,7 @@ import { backendConditionalGet } from './backend-api'
 import { rejectDuplicateKeys } from './record-digest'
 import {
   boundedText,
+  stringIn,
   validShelterContext,
   validSourceTime,
 } from './source-evidence'
@@ -108,8 +109,8 @@ function object(value: unknown): value is Record<string, unknown> {
 function validFeed(value: unknown): value is Record<string, unknown> {
   return (
     object(value) &&
-    ['fresh', 'stale', 'unavailable'].includes(String(value.state)) &&
-    ['complete', 'partial', 'unavailable'].includes(String(value.status)) &&
+    stringIn(value.state, ['fresh', 'stale', 'unavailable']) &&
+    stringIn(value.status, ['complete', 'partial', 'unavailable']) &&
     Number.isSafeInteger(value.unavailable_count) &&
     Number(value.unavailable_count) >= 0 &&
     Number(value.unavailable_count) <= 99 &&
@@ -146,7 +147,7 @@ export function parseLifecycleEvidence(
     value.schema_version !== 'lifecycle-evidence.v1' ||
     !boundedText(value.snapshot_id, 128) ||
     !validSourceTime(value.generated_at) ||
-    !['complete', 'partial', 'unavailable'].includes(String(value.status)) ||
+    !stringIn(value.status, ['complete', 'partial', 'unavailable']) ||
     (value.valid_until !== undefined && !validSourceTime(value.valid_until)) ||
     !boundedText(value.planning_disclaimer, 4096) ||
     !validFeed(value.event_triggers) ||
@@ -160,7 +161,7 @@ export function parseLifecycleEvidence(
     (!object(events) ||
       events.schema_version !== 'event-trigger-snapshot.v1' ||
       !validSourceTime(events.generated_at) ||
-      !['complete', 'partial'].includes(String(events.status)) ||
+      !stringIn(events.status, ['complete', 'partial']) ||
       !Array.isArray(events.triggers) ||
       events.triggers.length > 2000 ||
       !events.triggers.every(
@@ -180,7 +181,7 @@ export function parseLifecycleEvidence(
             (row) =>
               object(row) &&
               boundedText(row.id, 128) &&
-              ['fresh', 'stale'].includes(String(row.status)) &&
+              stringIn(row.status, ['fresh', 'stale']) &&
               validSourceTime(row.retrieved_at) &&
               validSourceTime(row.fresh_until),
           ))
@@ -193,16 +194,14 @@ export function parseLifecycleEvidence(
     (!object(operations) ||
       operations.schema_version !== 'live-operational-status.v1' ||
       !validSourceTime(operations.generated_at) ||
-      !['partial', 'unavailable'].includes(String(operations.status)) ||
+      !stringIn(operations.status, ['partial', 'unavailable']) ||
       !Array.isArray(operations.domains) ||
       operations.domains.length > 20 ||
       !operations.domains.every(
         (row) =>
           object(row) &&
           boundedText(row.domain, 128) &&
-          ['reported_live', 'stale', 'unavailable'].includes(
-            String(row.status),
-          ) &&
+          stringIn(row.status, ['reported_live', 'stale', 'unavailable']) &&
           object(row.freshness) &&
           ['retrieved_at', 'fresh_until', 'expires_at'].every(
             (key) =>

@@ -58,6 +58,13 @@ export type SourceFreshness = 'fresh' | 'stale' | 'unknown' | 'unavailable'
 export type SourceRecheckResult =
   'unchanged' | 'changed' | 'not-returned' | 'source-unavailable'
 
+export function stringIn<T extends readonly string[]>(
+  value: unknown,
+  choices: T,
+): value is T[number] {
+  return typeof value === 'string' && choices.includes(value)
+}
+
 export function exactObject(
   value: unknown,
   keys: string[],
@@ -177,8 +184,8 @@ export function validSourceContext(
     value.derivation_version === sourceDerivationVersion &&
     value.source_id === sourceId &&
     value.query_scope === sourceScope &&
-    ['fresh', 'stale', 'unavailable'].includes(String(value.state)) &&
-    ['complete', 'partial', 'unavailable'].includes(String(value.coverage)) &&
+    stringIn(value.state, ['fresh', 'stale', 'unavailable']) &&
+    stringIn(value.coverage, ['complete', 'partial', 'unavailable']) &&
     nullableTime(value.retrieved_at) &&
     nullableTime(value.fresh_until) &&
     (value.retrieved_at === null ||
@@ -226,7 +233,7 @@ export function validSourceReading(value: unknown): value is SourceReading {
     (value.snapshotId === null || boundedText(value.snapshotId, 128)) &&
     nullableTime(value.generatedAt) &&
     nullableTime(value.checkedAt) &&
-    ['ok', 'unavailable'].includes(String(value.transport)) &&
+    stringIn(value.transport, ['ok', 'unavailable']) &&
     (value.context === null || validSourceContext(value.context)) &&
     (value.claim === null || validSourceClaim(value.claim)) &&
     (value.snapshotId !== null

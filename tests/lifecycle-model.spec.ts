@@ -1173,6 +1173,70 @@ test('source acceptance and rechecks enforce bounded counts', () => {
   ).toThrow(/bounded/)
 })
 
+test('non-string enums cannot be accepted, rechecked, or persisted as not-returned', () => {
+  const before = readyBefore()
+  const accepted = acceptSource(before)
+  const after = sealH2(
+    apply(apply(accepted, { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  const recheck: LifecycleAction = {
+    type: 'recheck-source',
+    acceptedId: 'SA-1-1',
+    reading: displayedSource(null),
+    checkedAt: sourceTestTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  }
+  const checked = apply(after, recheck)
+  expect(checked.sourceRechecks[0].result).toBe('not-returned')
+  const original = JSON.stringify(after)
+  for (const [field, member] of [
+    ['coverage', 'partial'],
+    ['state', 'stale'],
+    ['transport', 'unavailable'],
+  ]) {
+    for (const invalid of [
+      [member],
+      [[member]],
+      { value: member },
+      0,
+      null,
+      false,
+    ]) {
+      const displayed = displayedSource()
+      Object.assign(field === 'transport' ? displayed : displayed.context!, {
+        [field]: invalid,
+      })
+      expect(() => acceptSource(before, displayed)).toThrow(
+        /validated displayed/,
+      )
+      const reading = { ...displayed, claim: null }
+      expect(() => apply(after, { ...recheck, reading })).toThrow(
+        /explicit source check/,
+      )
+      expect(JSON.stringify(after)).toBe(original)
+      const badAccepted = structuredClone(accepted)
+      badAccepted.sourceEvidence[0].displayed = displayed
+      const { recordDigest: _acceptedDigest, ...acceptedContents } =
+        badAccepted.sourceEvidence[0]
+      badAccepted.sourceEvidence[0].recordDigest =
+        contentDigest(acceptedContents)
+      const badRecheck = structuredClone(checked)
+      badRecheck.sourceRechecks[0].reading = reading
+      const { recordDigest: _recheckDigest, ...recheckContents } =
+        badRecheck.sourceRechecks[0]
+      badRecheck.sourceRechecks[0].recordDigest = contentDigest(recheckContents)
+      for (const tampered of [badAccepted, badRecheck]) {
+        expect(() => restoreLifecycleState(JSON.stringify(tampered))).toThrow()
+        expect(() =>
+          parseLifecycleComparison(exportLifecycleRecord(tampered)),
+        ).toThrow()
+      }
+    }
+  }
+  assertBoundedRoundTrip(after)
+})
+
 test('strict v2 restore rejects missing or malformed pinned evidence', () => {
   const state = createInitialLifecycleState()
   const missing = JSON.parse(JSON.stringify(state)) as Record<string, unknown>

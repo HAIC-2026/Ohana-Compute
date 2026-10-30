@@ -11,6 +11,7 @@ import {
   sourceRecheckResult,
   sourceRetrievalState,
   validSourceClaim,
+  validSourceReading,
 } from '../src/lib/source-evidence'
 import { contentDigest } from '../src/lib/record-digest'
 import {
@@ -192,4 +193,79 @@ test('valid empty is retained, partial/unavailable and expired 304 cannot imply 
   expect(fallback.claim).toEqual(sourceClaim())
   expect(fallback.transport).toBe('unavailable')
   expect(sourceObservationState(fallback, now)).toBe('unavailable')
+})
+
+test('non-string enums are rejected at every lifecycle evidence JSON boundary', () => {
+  const snapshot = sourceSnapshot()
+  snapshot.event_triggers.data!.source_states = [
+    {
+      id: 'fixture-source',
+      status: 'fresh',
+      retrieved_at: sourceTestTime,
+      fresh_until: '2026-10-30T16:05:00Z',
+    },
+  ]
+  const fields: Array<[Record<string, unknown>, string, string]> = [
+    [snapshot.shelter_context, 'coverage', 'partial'],
+    [snapshot.shelter_context, 'state', 'stale'],
+    [snapshot, 'status', 'partial'],
+    [snapshot.event_triggers, 'state', 'stale'],
+    [snapshot.event_triggers, 'status', 'partial'],
+    [snapshot.operational_status, 'state', 'stale'],
+    [snapshot.operational_status, 'status', 'partial'],
+    [snapshot.event_triggers.data!, 'status', 'partial'],
+    [snapshot.event_triggers.data!.source_states[0], 'status', 'stale'],
+    [snapshot.operational_status.data!, 'status', 'unavailable'],
+    [snapshot.operational_status.data!.domains[0], 'status', 'unavailable'],
+  ]
+  for (const [target, field, member] of fields) {
+    const original = target[field]
+    for (const invalid of [
+      [member],
+      [[member]],
+      { value: member },
+      0,
+      null,
+      false,
+    ]) {
+      target[field] = invalid
+      expect(
+        () => parseLifecycleEvidence(snapshot),
+        `${field}: ${JSON.stringify(invalid)}`,
+      ).toThrow(/Malformed/)
+      expect(() =>
+        parseLifecycleEvidenceJSON(JSON.stringify(snapshot)),
+      ).toThrow(/Malformed/)
+    }
+    target[field] = original
+  }
+  expect(parseLifecycleEvidence(snapshot)).toEqual(snapshot)
+})
+
+test('non-string transport and source enums cannot validate a source reading', () => {
+  const reading = displayedSource(null)
+  const fields: Array<[Record<string, unknown>, string, string]> = [
+    [reading, 'transport', 'unavailable'],
+    [reading.context!, 'state', 'stale'],
+    [reading.context!, 'coverage', 'partial'],
+  ]
+  for (const [target, field, member] of fields) {
+    const original = target[field]
+    for (const invalid of [
+      [member],
+      [[member]],
+      { value: member },
+      0,
+      null,
+      false,
+    ]) {
+      target[field] = invalid
+      expect(
+        validSourceReading(reading),
+        `${field}: ${JSON.stringify(invalid)}`,
+      ).toBe(false)
+    }
+    target[field] = original
+  }
+  expect(validSourceReading(reading)).toBe(true)
 })

@@ -9,6 +9,7 @@ import {
   maxSourceRechecks,
   sourceObservationState,
   sourceRecheckResult,
+  stringIn,
   validSourceReading,
   validSourceTime,
 } from './source-evidence'
@@ -805,13 +806,6 @@ function exactKeys(
 const canonicalKeys = Object.keys(
   canonicalLifecycleRecord(createInitialLifecycleState()),
 )
-
-function stringIn<T extends readonly string[]>(
-  value: unknown,
-  choices: T,
-): value is T[number] {
-  return typeof value === 'string' && choices.includes(value)
-}
 
 function arrayOfExact(
   value: unknown,
