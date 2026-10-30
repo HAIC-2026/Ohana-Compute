@@ -144,22 +144,10 @@ function validErrors(value: unknown) {
   )
 }
 
-function validLifecycleApplicability(product: NWSProduct) {
-  if (product.applicability_basis === 'affected_zones')
-    return (
-      product.geometry.status === 'absent' &&
-      product.zone_evidence !== undefined &&
-      product.zone_evidence.result === product.applicability &&
-      product.zone_evidence.reason === product.applicability_reason
-    )
-  if (product.applicability_basis === 'none')
-    return (
-      product.applicability === 'unknown' &&
-      product.applicability_reason === 'no_polygon' &&
-      product.geometry.status === 'absent' &&
-      product.zone_evidence === undefined
-    )
-  if (product.applicability_basis !== 'inline_geometry') return false
+function validInlineApplicability(
+  product: NWSProduct,
+  allowLegacyNoPolygon: boolean,
+) {
   switch (product.applicability_reason) {
     case 'strict_interior':
       return (
@@ -177,7 +165,11 @@ function validLifecycleApplicability(product: NWSProduct) {
         product.geometry.status === 'valid'
       )
     case 'no_polygon':
-      return false
+      return (
+        allowLegacyNoPolygon &&
+        product.applicability === 'unknown' &&
+        product.geometry.status === 'absent'
+      )
     case 'unsupported':
       return (
         product.applicability === 'unknown' &&
@@ -193,6 +185,29 @@ function validLifecycleApplicability(product: NWSProduct) {
     default:
       return false
   }
+}
+
+function validLifecycleApplicability(product: NWSProduct) {
+  if (product.applicability_basis === 'affected_zones')
+    return (
+      product.geometry.status === 'absent' &&
+      product.zone_evidence !== undefined &&
+      product.zone_evidence.result === product.applicability &&
+      product.zone_evidence.reason === product.applicability_reason
+    )
+  if (product.applicability_basis === 'none')
+    return (
+      product.applicability === 'unknown' &&
+      product.applicability_reason === 'no_polygon' &&
+      product.geometry.status === 'absent' &&
+      product.zone_evidence === undefined
+    )
+  if (product.applicability_basis === undefined)
+    return (
+      product.zone_evidence === undefined &&
+      validInlineApplicability(product, true)
+    )
+  return validInlineApplicability(product, false)
 }
 
 function validCoordinate(value: unknown, minimum: number, maximum: number) {

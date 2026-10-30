@@ -257,7 +257,11 @@ skew is possible. The browser accepts the previous contract only when
 `applicability_basis` and zone evidence are both absent; that preserves the
 legacy inline/no-polygon result. It never infers affected-zone applicability
 from absent geometry or accepts `zone_evidence` without an explicit
-`affected_zones` basis.
+`affected_zones` basis. This compatibility is one-way: the old frontend rejects
+the new backend's added applicability keys. Deploy the new frontend before the
+new backend, or deploy both atomically; backend-first deployment can make old
+clients discard an otherwise valid lifecycle snapshot until they refresh to the
+new frontend.
 
 A successful empty query means **no products returned**, not no hazard or
 order. `outside` is never an all-clear or proof the location is unaffected;

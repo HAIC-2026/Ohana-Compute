@@ -307,8 +307,49 @@ function validZoneEvidence(value: unknown): value is NWSZoneEvidence {
             row.result === 'outside' &&
             row.reason === 'strict_exterior',
         ))) &&
+    (value.reason !== 'strict_interior' ||
+      (value.coverage !== 'pending' &&
+        value.zones.some(
+          (row) =>
+            row.state === 'fresh' &&
+            row.result === 'inside' &&
+            row.reason === 'strict_interior',
+        ))) &&
+    (value.reason !== 'boundary' ||
+      (value.coverage === 'complete' &&
+        value.zones.some(
+          (row) =>
+            row.state === 'fresh' &&
+            row.result === 'unknown' &&
+            row.reason === 'boundary',
+        ) &&
+        value.zones.every(
+          (row) =>
+            row.state === 'fresh' &&
+            ((row.result === 'outside' && row.reason === 'strict_exterior') ||
+              (row.result === 'unknown' && row.reason === 'boundary')),
+        ))) &&
+    (value.reason !== 'zone_incomplete' || value.coverage === 'partial') &&
+    (value.reason !== 'zone_pending' || value.coverage === 'pending') &&
     (value.coverage !== 'pending' ||
       value.zones.some((row) => row.state === 'pending'))
+  )
+}
+
+function zoneIdentity(row: { url: string; id: string; type: string }) {
+  return `${row.type}:${row.id}:${row.url}`
+}
+
+function zoneEvidenceMatchesAffectedZones(product: NWSProduct) {
+  if (!product.affected_zones || !product.zone_evidence) return false
+  const affected = product.affected_zones.map(zoneIdentity)
+  const evidence = product.zone_evidence.zones.map(zoneIdentity)
+  const affectedSet = new Set(affected)
+  const evidenceSet = new Set(evidence)
+  return (
+    evidenceSet.size === evidence.length &&
+    affectedSet.size === evidenceSet.size &&
+    affected.every((identity) => evidenceSet.has(identity))
   )
 }
 
@@ -474,6 +515,7 @@ export function validNWSProduct(
     (product.applicability_basis === 'affected_zones' &&
       (product.geometry.status !== 'absent' ||
         !product.zone_evidence ||
+        !zoneEvidenceMatchesAffectedZones(product) ||
         product.zone_evidence.result !== product.applicability ||
         product.zone_evidence.reason !== product.applicability_reason)) ||
     (product.applicability_basis !== 'affected_zones' &&

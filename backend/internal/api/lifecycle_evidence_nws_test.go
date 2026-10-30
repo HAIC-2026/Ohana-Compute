@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -443,6 +445,17 @@ func TestLifecycleEvidenceUsesBoundedZoneEvidenceOnlyForAbsentInlineGeometry(t *
 		encoded, err := json.Marshal(projected)
 		if err != nil {
 			t.Fatal(err)
+		}
+		goldenBody, err := os.ReadFile("../../../tests/fixtures/real-zone-lifecycle-product.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var golden eventtriggers.NWSProduct
+		if err := json.Unmarshal(goldenBody, &golden); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(*projected, golden) {
+			t.Fatalf("real resolver projection drifted from browser fixture:\ngot:  %s\nwant: %s", encoded, goldenBody)
 		}
 		if strings.Contains(string(encoded), `"coordinates"`) ||
 			!containsAll(

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { expect, test } from '@playwright/test'
 import { parseLifecycleEvidence } from '../src/lib/lifecycle-evidence'
 import {
@@ -10,6 +12,7 @@ import {
   retrievalState,
   validNWSProduct,
 } from '../src/lib/nws-product'
+import { currentZoneApplicability } from '../src/components/NWSProductDetails'
 import {
   nwsProduct,
   weatherLegacySnapshot,
@@ -18,6 +21,12 @@ import {
 } from './fixtures/nws-product'
 
 const now = Date.parse(weatherTime)
+const realZoneProduct = JSON.parse(
+  readFileSync(
+    new URL('./fixtures/real-zone-lifecycle-product.json', import.meta.url),
+    'utf8',
+  ),
+)
 
 test('lifecycle projection retains source product provenance rather than only a title', () => {
   const snapshot = weatherSnapshot()
@@ -46,18 +55,50 @@ test('lifecycle projection retains source product provenance rather than only a 
   ).toEqual(lifecycleNullable)
 })
 
-test('deployment skew accepts old no-zone evidence but never infers a missing basis', () => {
-  const legacy = {
+test('deployment skew accepts only safe legacy lifecycle applicability', () => {
+  const legacyNoPolygon = {
     ...nwsProduct(),
     geometry: { status: 'absent' as const, type: null, shape: null },
     applicability: 'unknown' as const,
     applicability_reason: 'no_polygon' as const,
   }
-  delete legacy.applicability_basis
-  expect(validNWSProduct(legacy, now)).toBe(true)
+  delete legacyNoPolygon.applicability_basis
+  expect(
+    parseLifecycleEvidence(weatherSnapshot(legacyNoPolygon)).event_triggers
+      .data!.triggers[0].nws_product,
+  ).toEqual(legacyNoPolygon)
+
+  const legacyInline = {
+    ...nwsProduct(),
+    geometry: {
+      status: 'valid' as const,
+      type: 'Polygon',
+      shape: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+            [0, 2],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+    applicability: 'inside' as const,
+    applicability_reason: 'strict_interior' as const,
+  }
+  delete legacyInline.applicability_basis
+  expect(
+    parseLifecycleEvidence(weatherSnapshot(legacyInline)).event_triggers.data!
+      .triggers[0].nws_product,
+  ).toEqual(legacyInline)
+
+  expect(validNWSProduct(legacyNoPolygon, now)).toBe(true)
   expect(
     validNWSProduct({
-      ...legacy,
+      ...legacyNoPolygon,
       zone_evidence: {
         result: 'inside',
         reason: 'strict_interior',
@@ -80,6 +121,107 @@ test('deployment skew accepts old no-zone evidence but never infers a missing ba
       },
     }),
   ).toBe(false)
+  expect(() =>
+    parseLifecycleEvidence(
+      weatherSnapshot({
+        ...legacyNoPolygon,
+        zone_evidence: {
+          result: 'inside',
+          reason: 'strict_interior',
+          coverage: 'complete',
+          zones: [
+            {
+              url: 'https://api.weather.gov/zones/forecast/HIZ006',
+              id: 'HIZ006',
+              type: 'forecast',
+              source_revision: 'a'.repeat(64),
+              effective: '2026-01-01T00:00:00Z',
+              expires: '2200-01-01T00:00:00Z',
+              retrieved_at: '2026-10-30T17:55:00Z',
+              fresh_until: '2026-10-31T17:55:00Z',
+              state: 'fresh',
+              result: 'inside',
+              reason: 'strict_interior',
+            },
+          ],
+        },
+      }),
+    ),
+  ).toThrow(/Malformed/)
+})
+
+test('zone evidence cannot strengthen partial backend coverage in the browser', () => {
+  const product = {
+    ...nwsProduct(),
+    affected_zones: [
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ001',
+        id: 'HIZ001',
+        type: 'forecast' as const,
+      },
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ002',
+        id: 'HIZ002',
+        type: 'forecast' as const,
+      },
+    ],
+    applicability: 'unknown' as const,
+    applicability_reason: 'zone_incomplete' as const,
+    applicability_basis: 'affected_zones' as const,
+    zone_evidence: {
+      result: 'unknown' as const,
+      reason: 'zone_incomplete' as const,
+      coverage: 'partial' as const,
+      zones: [
+        {
+          url: 'https://api.weather.gov/zones/forecast/HIZ001',
+          id: 'HIZ001',
+          type: 'forecast' as const,
+          source_revision: 'a'.repeat(64),
+          effective: '2026-01-01T00:00:00Z',
+          expires: '2200-01-01T00:00:00Z',
+          retrieved_at: '2026-10-30T17:55:00Z',
+          fresh_until: '2026-10-31T17:55:00Z',
+          state: 'fresh' as const,
+          result: 'outside' as const,
+          reason: 'strict_exterior' as const,
+        },
+      ],
+    },
+  }
+  expect(validNWSProduct(product, now)).toBe(false)
+  expect(() => parseLifecycleEvidence(weatherSnapshot(product))).toThrow(
+    /Malformed/,
+  )
+  expect(currentZoneApplicability(product, now)).toEqual({
+    result: 'unknown',
+    reason: 'zone_incomplete',
+    coverage: 'partial',
+  })
+})
+
+test('real resolver projection crosses the lifecycle browser boundary unchanged', () => {
+  const generatedAt = '2026-10-30T20:00:00Z'
+  const snapshot = weatherSnapshot(realZoneProduct)
+  snapshot.generated_at = generatedAt
+  snapshot.valid_until = '2026-10-30T20:05:00Z'
+  snapshot.event_triggers.data!.generated_at = generatedAt
+  snapshot.event_triggers.data!.source_states![0] = {
+    id: 'nws-hi-alerts',
+    status: 'fresh',
+    retrieved_at: generatedAt,
+    fresh_until: '2026-10-30T20:05:00Z',
+  }
+  const parsed =
+    parseLifecycleEvidence(snapshot).event_triggers.data!.triggers[0]
+      .nws_product!
+  expect(parsed).toEqual(realZoneProduct)
+  expect(currentZoneApplicability(parsed, Date.parse(generatedAt))).toEqual({
+    result: 'inside',
+    reason: 'strict_interior',
+    coverage: 'partial',
+  })
+  expect(JSON.stringify(parsed)).not.toContain('coordinates')
 })
 
 test('wall-time product expiry is independent of retrieval deadlines, checks and practice time', () => {

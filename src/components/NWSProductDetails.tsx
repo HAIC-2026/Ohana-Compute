@@ -14,7 +14,7 @@ function freshZoneRow(row: NWSZoneEvidence['zones'][number], now: number) {
   )
 }
 
-function currentZoneApplicability(product: NWSProduct, now: number) {
+export function currentZoneApplicability(product: NWSProduct, now: number) {
   const evidence = product.zone_evidence
   if (product.applicability_basis !== 'affected_zones' || !evidence)
     return {
@@ -25,47 +25,60 @@ function currentZoneApplicability(product: NWSProduct, now: number) {
 
   let inside = false
   let boundary = false
-  let incomplete = false
-  let pending = false
+  let incomplete = evidence.coverage !== 'complete'
+  let pending = evidence.coverage === 'pending'
+  let completeOutside = evidence.coverage === 'complete'
   for (const row of evidence.zones) {
     if (row.state === 'pending') {
       pending = true
       incomplete = true
+      completeOutside = false
       continue
     }
     if (!freshZoneRow(row, now)) {
       incomplete = true
+      completeOutside = false
       continue
     }
-    if (row.result === 'inside' && row.reason === 'strict_interior')
+    if (row.result === 'inside' && row.reason === 'strict_interior') {
       inside = true
-    else if (row.result === 'unknown' && row.reason === 'boundary')
+      completeOutside = false
+    } else if (row.result === 'unknown' && row.reason === 'boundary') {
       boundary = true
-    else if (row.result !== 'outside' || row.reason !== 'strict_exterior')
+      completeOutside = false
+    } else if (row.result !== 'outside' || row.reason !== 'strict_exterior') {
       incomplete = true
+      completeOutside = false
+    }
   }
-  if (inside)
+  if (evidence.result === 'inside' && inside)
     return {
       result: 'inside' as const,
       reason: 'strict_interior',
       coverage: incomplete ? ('partial' as const) : ('complete' as const),
     }
-  if (incomplete)
+  if (evidence.result === 'outside' && completeOutside)
     return {
-      result: 'unknown' as const,
-      reason: pending ? 'zone_pending' : 'zone_incomplete',
-      coverage: pending ? ('pending' as const) : ('partial' as const),
+      result: 'outside' as const,
+      reason: 'strict_exterior',
+      coverage: 'complete' as const,
     }
-  if (boundary)
+  if (
+    evidence.result === 'unknown' &&
+    evidence.reason === 'boundary' &&
+    !incomplete &&
+    !inside &&
+    boundary
+  )
     return {
       result: 'unknown' as const,
       reason: 'boundary',
       coverage: 'complete' as const,
     }
   return {
-    result: 'outside' as const,
-    reason: 'strict_exterior',
-    coverage: 'complete' as const,
+    result: 'unknown' as const,
+    reason: pending ? 'zone_pending' : 'zone_incomplete',
+    coverage: pending ? ('pending' as const) : ('partial' as const),
   }
 }
 
