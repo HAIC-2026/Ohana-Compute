@@ -35,10 +35,14 @@ test('lifecycle projection retains source product provenance rather than only a 
   const nullable = nwsProduct()
   nullable.onset = null
   nullable.ends = null
+  const lifecycleNullable = {
+    ...nullable,
+    applicability_reason: 'no_polygon' as const,
+  }
   expect(
     parseLifecycleEvidence(weatherSnapshot(nullable)).event_triggers.data!
       .triggers[0].nws_product,
-  ).toEqual(nullable)
+  ).toEqual(lifecycleNullable)
 })
 
 test('wall-time product expiry is independent of retrieval deadlines, checks and practice time', () => {
@@ -181,10 +185,14 @@ test('ordered references, same-ID changes, query scope and unknown geography sur
     relationship: 'cancel' as const,
     eligibility: 'cancellation' as const,
   }
+  const lifecycleChanged = {
+    ...changed,
+    applicability_reason: 'no_polygon' as const,
+  }
   expect(
     parseLifecycleEvidence(weatherSnapshot(changed)).event_triggers.data!
       .triggers[0].nws_product,
-  ).toEqual(changed)
+  ).toEqual(lifecycleChanged)
   expect(changed.id).toBe(parsed.id)
   expect(parsed.query_scope.coverage).toBe('statewide')
   expect(parsed.area_desc).toBe(product.area_desc)
@@ -285,6 +293,7 @@ test('runtime validation rejects malformed nested facts, coerced enums, and unbo
     Object.assign(snapshot.event_triggers.data!.triggers[0], {
       nws_product: malformed,
     })
+
     expect(() => parseLifecycleEvidence(snapshot)).toThrow(/Malformed/)
     const legacy = weatherLegacySnapshot()
     Object.assign(legacy.triggers[0], { nws_product: malformed })
@@ -339,4 +348,44 @@ test('runtime validation rejects malformed nested facts, coerced enums, and unbo
       },
     }),
   ).toBe(false)
+})
+
+test('lifecycle applicability reasons agree with retained geometry status', () => {
+  const product = nwsProduct()
+  const polygon = {
+    status: 'valid' as const,
+    type: 'Polygon',
+    shape: {
+      type: 'Polygon' as const,
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+    },
+  }
+  expect(() =>
+    parseLifecycleEvidence(
+      weatherSnapshot({
+        ...product,
+        geometry: polygon,
+        applicability: 'unknown',
+        applicability_reason: 'no_polygon',
+      }),
+    ),
+  ).toThrow(/Malformed/)
+  expect(
+    parseLifecycleEvidence(
+      weatherSnapshot({
+        ...product,
+        geometry: polygon,
+        applicability: 'unknown',
+        applicability_reason: 'invalid_topology',
+      }),
+    ).event_triggers.data!.triggers[0].nws_product?.applicability_reason,
+  ).toBe('invalid_topology')
 })

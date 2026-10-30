@@ -30,6 +30,10 @@ test.beforeEach(async ({ page }) => {
         status: 'partial',
         valid_until: '2026-10-29T21:00:00Z',
         planning_disclaimer: 'Planning context only.',
+        planning_location: {
+          point: ['-158.193546', '21.450442'],
+          algorithm_version: 'rfc7946-planar-rational-v1',
+        },
         shelter_context: shelterContext(),
         event_triggers: {
           state: 'fresh',
@@ -166,6 +170,10 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
         generated_at: '2026-10-29T20:01:00Z',
         status: 'unavailable',
         planning_disclaimer: 'Planning context only.',
+        planning_location: {
+          point: ['-158.193546', '21.450442'],
+          algorithm_version: 'rfc7946-planar-rational-v1',
+        },
         shelter_context: {
           ...shelterContext([]),
           state: 'unavailable',

@@ -178,7 +178,9 @@ export function parseEventTriggerSnapshotJSON(
         ) &&
         (row.nws_product === undefined ||
           (row.source === 'nws' &&
-            validNWSProduct(row.nws_product, Date.parse(row.generated_at)))),
+            validNWSProduct(row.nws_product, Date.parse(row.generated_at)) &&
+            row.nws_product.applicability === 'unknown' &&
+            row.nws_product.applicability_reason === 'not_evaluated')),
     ) ||
     !(
       value.source_errors === undefined ||

@@ -47,7 +47,16 @@ export type NWSProduct = {
     coverage: 'statewide'
     url: 'https://api.weather.gov/alerts/active?area=HI'
   }
-  applicability: 'unknown'
+  applicability: 'inside' | 'outside' | 'unknown'
+  applicability_reason:
+    | 'strict_interior'
+    | 'strict_exterior'
+    | 'no_polygon'
+    | 'boundary'
+    | 'invalid_topology'
+    | 'bad_point'
+    | 'unsupported'
+    | 'not_evaluated'
   eligibility:
     | 'eligible'
     | 'non_actual'
@@ -219,6 +228,7 @@ export function validNWSProduct(
       'geometry',
       'query_scope',
       'applicability',
+      'applicability_reason',
       'eligibility',
       'validity',
       'relationship',
@@ -275,7 +285,17 @@ export function validNWSProduct(
     value.query_scope.area === 'HI' &&
     value.query_scope.coverage === 'statewide' &&
     value.query_scope.url === 'https://api.weather.gov/alerts/active?area=HI' &&
-    value.applicability === 'unknown' &&
+    stringIn(value.applicability, ['inside', 'outside', 'unknown']) &&
+    stringIn(value.applicability_reason, [
+      'strict_interior',
+      'strict_exterior',
+      'no_polygon',
+      'boundary',
+      'invalid_topology',
+      'bad_point',
+      'unsupported',
+      'not_evaluated',
+    ]) &&
     stringIn(value.eligibility, [
       'eligible',
       'non_actual',
@@ -298,7 +318,23 @@ export function validNWSProduct(
       'error',
       'unknown',
     ])
-  if (!valid) return false
+  if (
+    !valid ||
+    (value.applicability === 'inside' &&
+      value.applicability_reason !== 'strict_interior') ||
+    (value.applicability === 'outside' &&
+      value.applicability_reason !== 'strict_exterior') ||
+    (value.applicability === 'unknown' &&
+      !stringIn(value.applicability_reason, [
+        'no_polygon',
+        'boundary',
+        'invalid_topology',
+        'bad_point',
+        'unsupported',
+        'not_evaluated',
+      ]))
+  )
+    return false
   const product = value as NWSProduct
   return (
     product.eligibility === nwsEligibility(product) &&

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -31,7 +32,21 @@ func fixtureNWSProduct(now time.Time) nws.Product {
 		},
 		AffectedZones: []nws.Zone{{URL: "https://api.weather.gov/zones/forecast/HIZ001", ID: "HIZ001", Type: "forecast"}},
 		Geocode:       nws.Geocode{UGC: []string{"HIZ001"}, SAME: []string{"015003"}},
-		Geometry:      nws.Geometry{Status: "absent"},
+		Geometry:      fixtureGeometry(`[[[-158.3,21.4],[-158.1,21.4],[-158.1,21.5],[-158.3,21.5],[-158.3,21.4]]]`),
+	}
+}
+
+func fixtureGeometry(coordinates string) nws.Geometry {
+	return nws.Geometry{
+		Status: "valid", Type: textPointer("Polygon"),
+		Shape: json.RawMessage(`{"type":"Polygon","coordinates":` + coordinates + `}`),
+	}
+}
+
+func fixtureMultiGeometry(coordinates string) nws.Geometry {
+	return nws.Geometry{
+		Status: "valid", Type: textPointer("MultiPolygon"),
+		Shape: json.RawMessage(`{"type":"MultiPolygon","coordinates":` + coordinates + `}`),
 	}
 }
 
@@ -60,6 +75,9 @@ func (fixture weatherFixture) ActiveAlerts(context.Context) (nws.Snapshot, error
 	case "cancel", "update", "ack", "error":
 		messages := map[string]string{"cancel": "Cancel", "update": "Update", "ack": "Ack", "error": "Error"}
 		product.MessageType = textPointer(messages[fixture.mode])
+		if fixture.mode == "update" {
+			product.Geometry = fixtureGeometry(`[[[-158.3,21.4],[-158.25,21.4],[-158.25,21.5],[-158.3,21.5],[-158.3,21.4]]]`)
+		}
 	case "test", "exercise", "draft", "system":
 		statuses := map[string]string{"test": "Test", "exercise": "Exercise", "draft": "Draft", "system": "System"}
 		product.Status = textPointer(statuses[fixture.mode])
@@ -69,8 +87,15 @@ func (fixture weatherFixture) ActiveAlerts(context.Context) (nws.Snapshot, error
 		product.Onset, product.Ends = nil, nil
 	case "missing":
 		product.Sent = nil
+	case "no-polygon":
+		product.Geometry = nws.Geometry{Status: "absent"}
 	case "invalid-geometry":
 		product.Geometry = nws.Geometry{Status: "invalid", Type: textPointer("Polygon")}
+	case "topology-invalid":
+		product.Geometry = fixtureMultiGeometry(`[
+			[[[-158.3,21.4],[-158.1,21.4],[-158.1,21.5],[-158.3,21.5],[-158.3,21.4]]],
+			[[[-158.2,21.4],[-158.1,21.45],[-158.2,21.5],[-158.3,21.45],[-158.2,21.4]]]
+		]`)
 	case "stale":
 		source.RetrievedAt = now.Add(-10 * time.Minute)
 		source.FreshUntil = now.Add(-5 * time.Minute)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/operationalstatus"
 )
 
@@ -82,14 +83,14 @@ func TestLifecycleEvidenceSnapshotIDIgnoresGeneratedAtOnlyChanges(t *testing.T) 
 		context.Background(),
 		eventTriggerReaderStub{snapshot: firstEvents},
 		operationalStatusReaderStub{snapshot: firstOperations},
-		21.45, -158.19, firstTime,
+		21.45, -158.19, geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, firstTime,
 	)
 	second := loadLifecycleEvidence(
 		context.Background(),
 		context.Background(),
 		eventTriggerReaderStub{snapshot: secondEvents},
 		operationalStatusReaderStub{snapshot: secondOperations},
-		21.45, -158.19, firstTime.Add(time.Minute),
+		21.45, -158.19, geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, firstTime.Add(time.Minute),
 	)
 	if first.SnapshotID != second.SnapshotID {
 		t.Fatalf("generated-at-only change altered snapshot ID: %s != %s", first.SnapshotID, second.SnapshotID)
@@ -112,7 +113,7 @@ func TestLifecycleEvidenceSnapshotIDIgnoresGeneratedAtOnlyChanges(t *testing.T) 
 		context.Background(),
 		eventTriggerReaderStub{snapshot: secondEvents},
 		operationalStatusReaderStub{snapshot: secondOperations},
-		21.45, -158.19, firstTime.Add(2*time.Minute),
+		21.45, -158.19, geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, firstTime.Add(2*time.Minute),
 	)
 	if first.SnapshotID == changed.SnapshotID {
 		t.Fatal("content change did not alter snapshot ID")
@@ -137,7 +138,7 @@ func TestLifecycleEvidencePreservesPartialAndUnavailableFeeds(t *testing.T) {
 			return events
 		}()},
 		operationalStatusReaderStub{err: errors.New("private upstream error")},
-		21.45, -158.19, now,
+		21.45, -158.19, geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now,
 	)
 	if partial.Status != "partial" || partial.EventTriggers.Data == nil ||
 		partial.EventTriggers.Status != "partial" ||
@@ -153,7 +154,7 @@ func TestLifecycleEvidencePreservesPartialAndUnavailableFeeds(t *testing.T) {
 		context.Background(),
 		eventTriggerReaderStub{err: errors.New("events failed")},
 		operationalStatusReaderStub{err: errors.New("operations failed")},
-		21.45, -158.19, now,
+		21.45, -158.19, geoapplicability.Point{Longitude: "-158.19", Latitude: "21.45"}, now,
 	)
 	if unavailable.Status != "unavailable" ||
 		unavailable.EventTriggers.State != "unavailable" ||
