@@ -86,6 +86,7 @@ export async function backendConditionalGet<T>(
   path: string,
   params: Record<string, string | number>,
   etag?: string | null,
+  decode?: (text: string) => T,
 ): Promise<ConditionalGetResult<T>> {
   const url = new URL(path, `${getBackendApiUrl()}/`)
   for (const [key, value] of Object.entries(params)) {
@@ -123,7 +124,9 @@ export async function backendConditionalGet<T>(
     }
     return {
       status: 'ok',
-      data: (await response.json()) as T,
+      data: decode
+        ? decode(await response.text())
+        : ((await response.json()) as T),
       etag: response.headers.get('ETag'),
     }
   } catch (error) {

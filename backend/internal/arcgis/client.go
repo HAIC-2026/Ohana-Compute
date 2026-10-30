@@ -40,14 +40,16 @@ type Result struct {
 	Collection FeatureCollection `json:"collection"`
 	Source     SourceStatus      `json:"source"`
 	Warnings   []string          `json:"warnings,omitempty"`
+	Partial    bool              `json:"-"`
 }
 
 type Request struct {
-	SourceID  string
-	Authority string
-	URL       string
-	Params    url.Values
-	CacheTTL  time.Duration
+	SourceID             string
+	Authority            string
+	URL                  string
+	Params               url.Values
+	CacheTTL             time.Duration
+	AllowPartialFeatures bool
 }
 
 type Config struct {
@@ -73,10 +75,10 @@ type Client struct {
 }
 
 type responseEnvelope struct {
-	Type                  string       `json:"type"`
-	Features              []rawFeature `json:"features"`
-	Error                 *arcGISError `json:"error"`
-	ExceededTransferLimit bool         `json:"exceededTransferLimit"`
+	Type                  string            `json:"type"`
+	Features              []json.RawMessage `json:"features"`
+	Error                 *arcGISError      `json:"error"`
+	ExceededTransferLimit bool              `json:"exceededTransferLimit"`
 }
 
 type rawFeature struct {
@@ -184,6 +186,14 @@ func (client *Client) query(
 	if err := decoder.Decode(&envelope); err != nil {
 		return staleOrError(stale, hasStale, now, fmt.Errorf("decode %s: %w", query.SourceID, err))
 	}
+	if query.AllowPartialFeatures {
+		if err := decoder.Decode(new(any)); err != io.EOF {
+			return staleOrError(stale, hasStale, now, fmt.Errorf("%s returned trailing response data", query.SourceID))
+		}
+		if envelope.Features == nil || (envelope.Type != "" && envelope.Type != "FeatureCollection") {
+			return staleOrError(stale, hasStale, now, fmt.Errorf("%s returned an invalid feature collection", query.SourceID))
+		}
+	}
 	if envelope.Error != nil {
 		return staleOrError(
 			stale,
@@ -197,7 +207,7 @@ func (client *Client) query(
 			),
 		)
 	}
-	if envelope.ExceededTransferLimit {
+	if envelope.ExceededTransferLimit && !query.AllowPartialFeatures {
 		return staleOrError(stale, hasStale, now, fmt.Errorf("%s exceeded the ArcGIS transfer limit; refusing truncated results", query.SourceID))
 	}
 
@@ -206,10 +216,23 @@ func (client *Client) query(
 		collectionType = "FeatureCollection"
 	}
 	features := make([]Feature, 0, len(envelope.Features))
-	for _, raw := range envelope.Features {
+	partial := envelope.ExceededTransferLimit
+	for _, encoded := range envelope.Features {
+		var raw rawFeature
+		if err := json.Unmarshal(encoded, &raw); err != nil {
+			if query.AllowPartialFeatures {
+				partial = true
+				continue
+			}
+			return staleOrError(stale, hasStale, now, fmt.Errorf("decode %s feature: %w", query.SourceID, err))
+		}
 		properties := raw.Properties
 		if properties == nil {
 			properties = raw.Attributes
+		}
+		if query.AllowPartialFeatures && (properties == nil || (raw.Type != "" && raw.Type != "Feature")) {
+			partial = true
+			continue
 		}
 		featureType := raw.Type
 		if featureType == "" {
@@ -223,6 +246,7 @@ func (client *Client) query(
 		})
 	}
 	result := Result{
+		Partial: partial,
 		Collection: FeatureCollection{
 			Type:     collectionType,
 			Features: features,

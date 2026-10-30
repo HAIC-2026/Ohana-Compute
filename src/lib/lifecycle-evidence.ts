@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { backendConditionalGet } from './backend-api'
+import { rejectDuplicateKeys } from './record-digest'
+import {
+  boundedText,
+  validShelterContext,
+  validSourceTime,
+} from './source-evidence'
+import type { ShelterContext, SourceReading } from './source-evidence'
 
 export type LifecycleEvidenceFeedState = 'fresh' | 'stale' | 'unavailable'
 
@@ -56,29 +63,303 @@ export type LifecycleEvidenceSnapshot = {
   planning_disclaimer: string
   event_triggers: LifecycleEvidenceFeed<EventTriggerEvidence>
   operational_status: LifecycleEvidenceFeed<OperationalEvidence>
+  shelter_context: ShelterContext
 }
 
-export type LifecycleEvidenceState = {
-  status: 'loading' | 'ready' | 'error'
+export type EvidenceCheck = {
   snapshot: LifecycleEvidenceSnapshot | null
   error: string | null
   checkedAt: string | null
+  lastShelterSnapshot: LifecycleEvidenceSnapshot | null
+}
+
+export type LifecycleEvidenceState = EvidenceCheck & {
+  status: 'loading' | 'ready' | 'error'
   lastKnown: boolean
   refreshing: boolean
-  refresh: () => void
+  now: number
+  refresh: () => Promise<EvidenceCheck>
 }
 
 type CacheEntry = {
   snapshot: LifecycleEvidenceSnapshot | null
+  lastShelterSnapshot: LifecycleEvidenceSnapshot | null
   etag: string | null
   error: string | null
   checkedAt: string | null
   loading: boolean
   listeners: Set<() => void>
-  request: Promise<void> | null
+  request: Promise<EvidenceCheck> | null
 }
 
 const cache = new Map<string, CacheEntry>()
+
+export function parseLifecycleEvidenceJSON(text: string) {
+  if (new TextEncoder().encode(text).length > 2 * 1024 * 1024)
+    throw new Error('Lifecycle evidence exceeds the 2 MiB limit.')
+  rejectDuplicateKeys(text)
+  return parseLifecycleEvidence(JSON.parse(text))
+}
+
+function object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function validFeed(value: unknown): value is Record<string, unknown> {
+  return (
+    object(value) &&
+    ['fresh', 'stale', 'unavailable'].includes(String(value.state)) &&
+    ['complete', 'partial', 'unavailable'].includes(String(value.status)) &&
+    Number.isSafeInteger(value.unavailable_count) &&
+    Number(value.unavailable_count) >= 0 &&
+    Number(value.unavailable_count) <= 99 &&
+    (value.error === undefined || boundedText(value.error, 2048)) &&
+    (value.data !== undefined ||
+      (value.state === 'unavailable' && value.status === 'unavailable'))
+  )
+}
+
+function validErrors(value: unknown) {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.length <= 99 &&
+      value.every(
+        (row) =>
+          object(row) &&
+          boundedText(row.source, 128) &&
+          boundedText(row.error, 2048),
+      ))
+  )
+}
+
+export function parseLifecycleEvidence(
+  value: unknown,
+): LifecycleEvidenceSnapshot {
+  const invalid = () =>
+    new Error(
+      'Malformed lifecycle evidence; retained validated last-known facts.',
+    )
+  if (
+    !object(value) ||
+    new TextEncoder().encode(JSON.stringify(value)).length > 2 * 1024 * 1024 ||
+    value.schema_version !== 'lifecycle-evidence.v1' ||
+    !boundedText(value.snapshot_id, 128) ||
+    !validSourceTime(value.generated_at) ||
+    !['complete', 'partial', 'unavailable'].includes(String(value.status)) ||
+    (value.valid_until !== undefined && !validSourceTime(value.valid_until)) ||
+    !boundedText(value.planning_disclaimer, 4096) ||
+    !validFeed(value.event_triggers) ||
+    !validFeed(value.operational_status) ||
+    !validShelterContext(value.shelter_context)
+  )
+    throw invalid()
+  const events = value.event_triggers.data
+  if (
+    events !== undefined &&
+    (!object(events) ||
+      events.schema_version !== 'event-trigger-snapshot.v1' ||
+      !validSourceTime(events.generated_at) ||
+      !['complete', 'partial'].includes(String(events.status)) ||
+      !Array.isArray(events.triggers) ||
+      events.triggers.length > 2000 ||
+      !events.triggers.every(
+        (row) =>
+          object(row) &&
+          boundedText(row.source, 128) &&
+          boundedText(row.lifecycle, 128) &&
+          boundedText(row.planning_state, 128) &&
+          boundedText(row.title, 2048),
+      ) ||
+      !validErrors(events.source_errors) ||
+      !(
+        events.source_states === undefined ||
+        (Array.isArray(events.source_states) &&
+          events.source_states.length <= 99 &&
+          events.source_states.every(
+            (row) =>
+              object(row) &&
+              boundedText(row.id, 128) &&
+              ['fresh', 'stale'].includes(String(row.status)) &&
+              validSourceTime(row.retrieved_at) &&
+              validSourceTime(row.fresh_until),
+          ))
+      ))
+  )
+    throw invalid()
+  const operations = value.operational_status.data
+  if (
+    operations !== undefined &&
+    (!object(operations) ||
+      operations.schema_version !== 'live-operational-status.v1' ||
+      !validSourceTime(operations.generated_at) ||
+      !['partial', 'unavailable'].includes(String(operations.status)) ||
+      !Array.isArray(operations.domains) ||
+      operations.domains.length > 20 ||
+      !operations.domains.every(
+        (row) =>
+          object(row) &&
+          boundedText(row.domain, 128) &&
+          ['reported_live', 'stale', 'unavailable'].includes(
+            String(row.status),
+          ) &&
+          object(row.freshness) &&
+          ['retrieved_at', 'fresh_until', 'expires_at'].every(
+            (key) =>
+              row.freshness &&
+              object(row.freshness) &&
+              (row.freshness[key] === undefined ||
+                validSourceTime(row.freshness[key])),
+          ),
+      ) ||
+      !validErrors(operations.source_errors))
+  )
+    throw invalid()
+  // Only the validated, consumed contract is retained; raw adapter extras stay out of the cache.
+  const snapshot = value as LifecycleEvidenceSnapshot
+  return {
+    schema_version: snapshot.schema_version,
+    snapshot_id: snapshot.snapshot_id,
+    generated_at: snapshot.generated_at,
+    status: snapshot.status,
+    ...(snapshot.valid_until ? { valid_until: snapshot.valid_until } : {}),
+    planning_disclaimer: snapshot.planning_disclaimer,
+    event_triggers: {
+      state: snapshot.event_triggers.state,
+      status: snapshot.event_triggers.status,
+      unavailable_count: snapshot.event_triggers.unavailable_count,
+      ...(snapshot.event_triggers.error
+        ? { error: snapshot.event_triggers.error }
+        : {}),
+      ...(snapshot.event_triggers.data
+        ? {
+            data: {
+              schema_version: snapshot.event_triggers.data.schema_version,
+              generated_at: snapshot.event_triggers.data.generated_at,
+              status: snapshot.event_triggers.data.status,
+              triggers: snapshot.event_triggers.data.triggers.map(
+                ({ source, lifecycle, planning_state, title }) => ({
+                  source,
+                  lifecycle,
+                  planning_state,
+                  title,
+                }),
+              ),
+              ...(snapshot.event_triggers.data.source_states
+                ? {
+                    source_states:
+                      snapshot.event_triggers.data.source_states.map(
+                        ({ id, status, retrieved_at, fresh_until }) => ({
+                          id,
+                          status,
+                          retrieved_at,
+                          fresh_until,
+                        }),
+                      ),
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    },
+    operational_status: {
+      state: snapshot.operational_status.state,
+      status: snapshot.operational_status.status,
+      unavailable_count: snapshot.operational_status.unavailable_count,
+      ...(snapshot.operational_status.error
+        ? { error: snapshot.operational_status.error }
+        : {}),
+      ...(snapshot.operational_status.data
+        ? {
+            data: {
+              schema_version: snapshot.operational_status.data.schema_version,
+              generated_at: snapshot.operational_status.data.generated_at,
+              status: snapshot.operational_status.data.status,
+              domains: snapshot.operational_status.data.domains.map(
+                ({ domain, status, freshness }) => ({
+                  domain,
+                  status,
+                  freshness: {
+                    ...(freshness.retrieved_at
+                      ? { retrieved_at: freshness.retrieved_at }
+                      : {}),
+                    ...(freshness.fresh_until
+                      ? { fresh_until: freshness.fresh_until }
+                      : {}),
+                    ...(freshness.expires_at
+                      ? { expires_at: freshness.expires_at }
+                      : {}),
+                  },
+                }),
+              ),
+            },
+          }
+        : {}),
+    },
+    shelter_context: structuredClone(snapshot.shelter_context),
+  }
+}
+
+function checkedEvidence(entry: CacheEntry): EvidenceCheck {
+  return {
+    snapshot: entry.snapshot,
+    error: entry.error,
+    checkedAt: entry.checkedAt,
+    lastShelterSnapshot: entry.lastShelterSnapshot,
+  }
+}
+
+export function displayedShelterEvidence(check: EvidenceCheck) {
+  const unavailable =
+    Boolean(check.error) ||
+    !check.snapshot ||
+    check.snapshot.shelter_context.coverage === 'unavailable'
+  return {
+    snapshot: unavailable
+      ? (check.lastShelterSnapshot ?? check.snapshot)
+      : check.snapshot,
+    transport: unavailable ? ('unavailable' as const) : ('ok' as const),
+  }
+}
+
+export function sourceReading(
+  check: EvidenceCheck,
+  itemId: string,
+): SourceReading {
+  const { snapshot, transport } = displayedShelterEvidence(check)
+  const context = snapshot?.shelter_context
+  const { items: _items, ...metadata } = context ?? { items: [] }
+  return structuredClone({
+    snapshotId: snapshot?.snapshot_id ?? null,
+    generatedAt: snapshot?.generated_at ?? null,
+    checkedAt: check.checkedAt,
+    transport,
+    context: context ? (metadata as Omit<ShelterContext, 'items'>) : null,
+    claim: context?.items.find((item) => item.item_id === itemId) ?? null,
+  })
+}
+
+export function evidenceFeedState(
+  check: EvidenceCheck,
+  feed: 'event_triggers' | 'operational_status',
+  now: number,
+) {
+  const snapshot = check.snapshot
+  if (!snapshot || check.error || snapshot[feed].state === 'unavailable')
+    return 'unavailable'
+  if (
+    snapshot[feed].state === 'stale' ||
+    (snapshot.valid_until && now >= Date.parse(snapshot.valid_until))
+  )
+    return 'stale'
+  if (
+    !snapshot.valid_until ||
+    snapshot[feed].status !== 'complete' ||
+    Date.parse(snapshot.generated_at) > now
+  )
+    return 'unknown'
+  return 'fresh'
+}
 
 function coordinateKey(coordinates: [number, number]) {
   return `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`
@@ -89,6 +370,7 @@ function entryFor(key: string) {
   if (!entry) {
     entry = {
       snapshot: null,
+      lastShelterSnapshot: null,
       etag: null,
       error: null,
       checkedAt: null,
@@ -115,12 +397,22 @@ function loadEvidence(coordinates: [number, number]) {
     '/api/v1/lifecycle/evidence',
     { lat: coordinates[1], lon: coordinates[0] },
     entry.etag,
+    parseLifecycleEvidenceJSON,
   )
     .then((result) => {
-      if (result.status === 'ok') entry.snapshot = result.data
+      if (result.status === 'ok') {
+        const snapshot = result.data
+        entry.snapshot = snapshot
+        if (snapshot.shelter_context.coverage !== 'unavailable')
+          entry.lastShelterSnapshot = snapshot
+      } else if (!entry.snapshot) {
+        throw new Error('Evidence returned 304 without validated cached facts.')
+      }
       entry.etag = result.etag
       entry.checkedAt = new Date().toISOString()
-      entry.error = null
+      entry.error = navigator.onLine
+        ? null
+        : 'Offline; source check is not current.'
     })
     .catch((error: unknown) => {
       entry.checkedAt = new Date().toISOString()
@@ -132,6 +424,7 @@ function loadEvidence(coordinates: [number, number]) {
       entry.request = null
       notify(entry)
     })
+    .then(() => checkedEvidence(entry))
   return entry.request
 }
 
@@ -153,15 +446,16 @@ export function useLifecycleEvidence(
 ): LifecycleEvidenceState {
   const key = coordinateKey(coordinates)
   const [, render] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
   const refresh = useCallback(() => {
     if (!navigator.onLine) {
       const entry = entryFor(key)
       entry.error = 'Offline; evidence was not checked.'
       entry.checkedAt = new Date().toISOString()
       notify(entry)
-      return
+      return Promise.resolve(checkedEvidence(entry))
     }
-    void loadEvidence(coordinates)
+    return loadEvidence(coordinates)
   }, [coordinates, key])
 
   useEffect(() => {
@@ -171,6 +465,7 @@ export function useLifecycleEvidence(
     if (!entry.snapshot && !entry.request) refresh()
 
     const refreshIfActive = () => {
+      setNow(Date.now())
       if (document.visibilityState === 'visible' && navigator.onLine) refresh()
     }
     const onVisibility = () => {
@@ -179,13 +474,20 @@ export function useLifecycleEvidence(
     window.addEventListener('focus', refreshIfActive)
     window.addEventListener('online', refreshIfActive)
     document.addEventListener('visibilitychange', onVisibility)
+    const onOffline = () => {
+      void refresh()
+    }
+    window.addEventListener('offline', onOffline)
     const interval = window.setInterval(refreshIfActive, 60_000)
+    const clock = window.setInterval(() => setNow(Date.now()), 1000)
     return () => {
       entry.listeners.delete(listener)
       window.removeEventListener('focus', refreshIfActive)
       window.removeEventListener('online', refreshIfActive)
       document.removeEventListener('visibilitychange', onVisibility)
       window.clearInterval(interval)
+      window.clearInterval(clock)
+      window.removeEventListener('offline', onOffline)
     }
   }, [key, refresh])
 
@@ -200,8 +502,10 @@ export function useLifecycleEvidence(
     snapshot: entry.snapshot,
     error: entry.error,
     checkedAt: entry.checkedAt,
+    lastShelterSnapshot: entry.lastShelterSnapshot,
     lastKnown: Boolean(entry.snapshot && entry.error),
     refreshing: Boolean(entry.snapshot && entry.loading),
+    now,
     refresh,
   }
 }

@@ -1,8 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { OperationsLayout } from '../components/OperationsLayout'
 import {
+  ReportedShelterContext,
+  SourceAcceptance,
+  SourceRechecks,
+} from '../components/LifecycleSourceContext'
+import {
+  evidenceFeedState,
   lifecycleEvidenceCounts,
   useLifecycleEvidence,
 } from '../lib/lifecycle-evidence'
@@ -25,6 +31,8 @@ import {
   lifecycleStorageKey,
   legacyLifecycleStorageKey,
   migrateLifecycleV1State,
+  migrateLifecycleV2State,
+  v2LifecycleStorageKey,
   objectiveCatalog,
   packetSectionChoices,
   practicePartners,
@@ -130,6 +138,9 @@ function download(filename: string, text: string, type = 'text/plain') {
 function PracticeLifecycle() {
   const [state, setState] = useState(createInitialLifecycleState)
   const [restored, setRestored] = useState(false)
+  const [restoreFailed, setRestoreFailed] = useState(false)
+  const stateRef = useRef(state)
+  stateRef.current = state
   const [message, setMessage] = useState('')
   const [announcement, setAnnouncement] = useState('')
   const [selectedObjectives, setSelectedObjectives] =
@@ -148,13 +159,19 @@ function PracticeLifecycle() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(lifecycleStorageKey)
-      const legacy = saved
+      const v2 = saved
         ? null
-        : window.localStorage.getItem(legacyLifecycleStorageKey)
-      if (saved || legacy) {
+        : window.localStorage.getItem(v2LifecycleStorageKey)
+      const legacy =
+        saved || v2
+          ? null
+          : window.localStorage.getItem(legacyLifecycleStorageKey)
+      if (saved || v2 || legacy) {
         const next = saved
           ? restoreLifecycleState(saved)
-          : migrateLifecycleV1State(legacy!)
+          : v2
+            ? migrateLifecycleV2State(v2)
+            : migrateLifecycleV1State(legacy!)
         setState(next)
         setSelectedObjectives(
           next.objectives.length ? next.objectives : defaultObjectives,
@@ -163,6 +180,7 @@ function PracticeLifecycle() {
         setChannel(next.channel)
       }
     } catch (error) {
+      setRestoreFailed(true)
       setMessage(
         error instanceof Error
           ? `${error.message} Reset to start a new local practice cycle.`
@@ -174,13 +192,25 @@ function PracticeLifecycle() {
   }, [])
 
   useEffect(() => {
-    if (!restored) return
-    window.localStorage.setItem(lifecycleStorageKey, JSON.stringify(state))
-  }, [restored, state])
+    if (!restored || restoreFailed) return
+    try {
+      window.localStorage.setItem(lifecycleStorageKey, JSON.stringify(state))
+    } catch {
+      setMessage(
+        'Local persistence failed. Keep this page open and export the strict record before leaving.',
+      )
+    }
+  }, [restored, restoreFailed, state])
 
   const act = (action: LifecycleAction) => {
     try {
-      setState(applyLifecycleAction(state, action))
+      if (restoreFailed)
+        throw new Error(
+          'Reset the invalid saved record before recording new actions.',
+        )
+      const next = applyLifecycleAction(stateRef.current, action)
+      stateRef.current = next
+      setState(next)
       setMessage('')
       setAnnouncement(
         `Recorded ${action.type.replaceAll('-', ' ')} in the local practice ledger.`,
@@ -326,7 +356,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <span>Overall</span>
                 <strong>{liveEvidence.snapshot.status}</strong>
                 <small>
-                  Valid until{' '}
+                  Retrieval deadline{' '}
                   {liveEvidence.snapshot.valid_until
                     ? new Date(
                         liveEvidence.snapshot.valid_until,
@@ -338,7 +368,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <span>Event triggers</span>
                 <strong>
                   {evidenceCounts?.triggers ?? 'unavailable'} ·{' '}
-                  {liveEvidence.snapshot.event_triggers.state}
+                  {evidenceFeedState(
+                    liveEvidence,
+                    'event_triggers',
+                    liveEvidence.now,
+                  )}
                 </strong>
                 <small>
                   Feed {liveEvidence.snapshot.event_triggers.status} ·{' '}
@@ -350,7 +384,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <span>Operational domains</span>
                 <strong>
                   {evidenceCounts?.domains ?? 'unavailable'} ·{' '}
-                  {liveEvidence.snapshot.operational_status.state}
+                  {evidenceFeedState(
+                    liveEvidence,
+                    'operational_status',
+                    liveEvidence.now,
+                  )}
                 </strong>
                 <small>
                   {evidenceCounts?.unavailableDomains ?? 'unknown'} unavailable
@@ -388,10 +426,16 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                     unavailableDomainCount: evidenceCounts.unavailableDomains,
                     eventUnavailableSourceCount:
                       evidenceCounts.unavailableEventSources,
-                    eventTriggerState:
-                      liveEvidence.snapshot.event_triggers.state,
-                    operationalStatusState:
-                      liveEvidence.snapshot.operational_status.state,
+                    eventTriggerState: evidenceFeedState(
+                      liveEvidence,
+                      'event_triggers',
+                      Date.now(),
+                    ),
+                    operationalStatusState: evidenceFeedState(
+                      liveEvidence,
+                      'operational_status',
+                      Date.now(),
+                    ),
                     eventTriggerStatus:
                       liveEvidence.snapshot.event_triggers.status,
                     operationalStatusStatus:
@@ -803,6 +847,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 </li>
               ))}
             </ul>
+            <SourceAcceptance
+              key={state.cycle}
+              state={state}
+              live={liveEvidence}
+              act={act}
+            />
           </Capability>
 
           <Capability
@@ -971,6 +1021,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             title="Record service-area conditions"
             marker={marked('D03')}
           >
+            <ReportedShelterContext live={liveEvidence} />
+            <h4>Manual practice service-area condition</h4>
             <div className="lifecycle-button-list">
               {serviceAreas
                 .filter((area) => state.simulationScope[area] === 'simulated')
@@ -1409,6 +1461,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               Recheck plans: {state.recheckPlans.length}; last recorded service
               states remain unchanged.
             </p>
+            <SourceRechecks state={state} live={liveEvidence} act={act} />
           </Capability>
 
           <Capability
@@ -1671,6 +1724,9 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               const initial = createInitialLifecycleState()
               window.localStorage.removeItem(lifecycleStorageKey)
               window.localStorage.removeItem(legacyLifecycleStorageKey)
+              window.localStorage.removeItem(v2LifecycleStorageKey)
+              setRestoreFailed(false)
+              stateRef.current = initial
               setState(initial)
               setSelectedObjectives(defaultObjectives)
               setPacketSections(initial.packetSections)

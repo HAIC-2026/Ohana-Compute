@@ -352,7 +352,7 @@ func run() error {
 			)
 		}
 	}
-	server := api.NewServer(api.Config{
+	serverConfig := api.Config{
 		Alerts:            fixtures,
 		Cyclones:          fixtures,
 		TsunamiProducts:   fixtures,
@@ -376,10 +376,10 @@ func run() error {
 			os.Getenv("E2E_FRONTEND_ORIGIN"),
 		},
 		Logger: slog.New(slog.NewTextHandler(os.Stdout, nil)),
-	})
+	}
 	httpServer := &http.Server{
 		Addr:              ":" + port,
-		Handler:           server.Handler(),
+		Handler:           lifecycleFixtureHandler(serverConfig, time.Now),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	serverErrors := make(chan error, 1)

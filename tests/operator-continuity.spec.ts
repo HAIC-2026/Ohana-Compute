@@ -104,7 +104,7 @@ test('practice lifecycle keeps decisions local and uses deterministic time', asy
   ).toBeVisible()
   expect(apiWrites).toEqual([])
   expect(
-    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v2')),
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
   ).not.toBeNull()
   await expect(page.locator('body')).toHaveJSProperty(
     'scrollWidth',
