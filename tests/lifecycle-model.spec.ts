@@ -211,7 +211,9 @@ test('all 30 capabilities form one deterministic immutable practice chain', () =
   expect(state.cycle).toBe(2)
   expect(state.phase).toBe('before')
   expect(state.previousCycle?.cycle).toBe(1)
-  expect(state.capabilityMarkers).toEqual(expect.arrayContaining(capabilityIds))
+  expect(state.capabilityMarkers).toEqual(
+    expect.arrayContaining([...capabilityIds]),
+  )
   expect(new Set(state.capabilityMarkers).size).toBe(30)
   for (const id of capabilityIds) {
     expect(state.ledger.some((event) => event.capability === id)).toBe(true)

@@ -535,7 +535,7 @@ function assertWholeBounded(
     throw new Error(`${label} must be a whole number from ${min} to ${max}.`)
 }
 
-function record(
+function recordCapability(
   state: LifecycleState,
   capability: CapabilityId,
   summary: string,
@@ -1105,9 +1105,11 @@ export function lifecycleGates(state: LifecycleState) {
       state.holdReview.attempted &&
       state.holdReview.refusedItemIds.length === 0,
     rechecks: state.serviceRecords
-      .filter((record) => ['unknown', 'unavailable'].includes(record.state))
-      .every((record) =>
-        state.recheckPlans.some((plan) => plan.area === record.area),
+      .filter((serviceRecord) =>
+        ['unknown', 'unavailable'].includes(serviceRecord.state),
+      )
+      .every((serviceRecord) =>
+        state.recheckPlans.some((plan) => plan.area === serviceRecord.area),
       ),
     recoveryDraft:
       Boolean(latestGuidance) &&
@@ -1250,7 +1252,7 @@ export function applyLifecycleAction(
   switch (action.type) {
     case 'lock-event': {
       if (state.event) throw new Error('Reset is required to change the event.')
-      return record(
+      return recordCapability(
         { ...state, event: eventCatalog[action.eventId] },
         'B01',
         `Locked ${eventCatalog[action.eventId].label}.`,
@@ -1270,7 +1272,7 @@ export function applyLifecycleAction(
           rank: existing.length + 1,
         },
       ].map((item, index) => ({ ...item, rank: index + 1 }))
-      return record(
+      return recordCapability(
         { ...state, carriedGaps: next },
         'B02',
         `Carried ${action.gapId} with ${action.owner} and ${action.dueBand}.`,
@@ -1280,7 +1282,7 @@ export function applyLifecycleAction(
       const unique = [...new Set(action.objectiveIds)]
       if (unique.length < 1 || unique.length > 3)
         throw new Error('Choose 1–3 practice objectives.')
-      return record(
+      return recordCapability(
         { ...state, objectives: unique },
         'B03',
         `Selected ${unique.length} measurable objectives.`,
@@ -1290,7 +1292,7 @@ export function applyLifecycleAction(
       assertWholeBounded(action.warningMinutes, 0, 1440, 'Warning time')
       assertWholeBounded(action.preparationMinutes, 0, 1440, 'Preparation time')
       const marginMinutes = action.warningMinutes - action.preparationMinutes
-      return record(
+      return recordCapability(
         {
           ...state,
           timing: {
@@ -1316,7 +1318,7 @@ export function applyLifecycleAction(
           state.assumptions.r1.uptakePercent,
           state.assumptions.r1.supportDays,
         )
-      return record(
+      return recordCapability(
         {
           ...state,
           assumptions: {
@@ -1331,7 +1333,7 @@ export function applyLifecycleAction(
       )
     }
     case 'set-format': {
-      return record(
+      return recordCapability(
         {
           ...state,
           formats: { ...state.formats, [action.format]: action.state },
@@ -1348,7 +1350,7 @@ export function applyLifecycleAction(
         (item) => item.gapId !== action.gapId || item.supersedes !== null,
       )
       const id = `E-${state.cycle}-${action.gapId}-${evidence.length + 1}`
-      return record(
+      return recordCapability(
         {
           ...state,
           evidence: [
@@ -1368,7 +1370,7 @@ export function applyLifecycleAction(
       )
     }
     case 'set-scope': {
-      return record(
+      return recordCapability(
         {
           ...state,
           simulationScope: {
@@ -1385,7 +1387,7 @@ export function applyLifecycleAction(
       if (state.simulationScope[action.area] !== 'simulated')
         throw new Error('Injects require a simulated service area.')
       const id = `I-${state.cycle}-${state.injects.length + 1}`
-      return record(
+      return recordCapability(
         {
           ...state,
           injects: [
@@ -1421,7 +1423,7 @@ export function applyLifecycleAction(
           evidence: state.evidence,
         }),
       )
-      return record(
+      return recordCapability(
         {
           ...state,
           h1: {
@@ -1448,7 +1450,7 @@ export function applyLifecycleAction(
         escalation: null,
         disposition: 'undecided' as const,
       }))
-      return record(
+      return recordCapability(
         { ...state, phase: 'during', practiceMinute: 0, supportItems },
         'D01',
         `Materialized ${supportItems.length} aggregate support items from H1.`,
@@ -1464,7 +1466,7 @@ export function applyLifecycleAction(
           ? { ...item, state: 'stale' as const }
           : item,
       )
-      return record(
+      return recordCapability(
         { ...state, practiceMinute, evidence },
         'D02',
         `Advanced deterministic practice time to T+${practiceMinute}.`,
@@ -1479,7 +1481,7 @@ export function applyLifecycleAction(
         recheckMinutes: action.recheckMinutes,
         recordedMinute: state.practiceMinute,
       }
-      return record(
+      return recordCapability(
         {
           ...state,
           serviceRecords: [
@@ -1503,7 +1505,7 @@ export function applyLifecycleAction(
       )
       if (!supportItems.some((item) => item.id === action.supportItemId))
         throw new Error('Support item not found.')
-      return record(
+      return recordCapability(
         { ...state, supportItems },
         'D04',
         `${action.partner} recorded ${action.response} for ${action.supportItemId}.`,
@@ -1526,7 +1528,7 @@ export function applyLifecycleAction(
       )
       if (!supportItems.some((item) => item.id === action.supportItemId))
         throw new Error('Support item not found.')
-      return record(
+      return recordCapability(
         { ...state, supportItems },
         'D05',
         `Escalated ${action.supportItemId} to ${action.owner}.`,
@@ -1543,7 +1545,7 @@ export function applyLifecycleAction(
           state.assumptions.r1.uptakePercent,
           state.assumptions.r1.supportDays,
         )
-      return record(
+      return recordCapability(
         {
           ...state,
           assumptions: {
@@ -1584,7 +1586,7 @@ export function applyLifecycleAction(
           'Next review': `Review at T+${state.practiceMinute + 30}.`,
         },
       })
-      return record(
+      return recordCapability(
         { ...state, guidanceVersions },
         'D07',
         `Created guidance version ${version} as ${practiceStamp}.`,
@@ -1606,7 +1608,7 @@ export function applyLifecycleAction(
         staleEvidence: state.evidence.filter((item) => item.state === 'stale')
           .length,
       }
-      return record(
+      return recordCapability(
         { ...state, shiftSnapshot },
         'D08',
         `Froze shift handoff from ${action.outgoing} to ${action.incoming}.`,
@@ -1630,7 +1632,7 @@ export function applyLifecycleAction(
         recordedMinute: state.practiceMinute,
         supersedes: old.id,
       }
-      return record(
+      return recordCapability(
         { ...state, evidence: [...oldUpdated, replacement] },
         'D09',
         `Replaced stale evidence ${old.id} with ${replacement.id}.`,
@@ -1644,7 +1646,7 @@ export function applyLifecycleAction(
       )
       if (!supportItems.some((item) => item.id === action.supportItemId))
         throw new Error('Support item not found.')
-      return record(
+      return recordCapability(
         { ...state, supportItems },
         'D10',
         `${action.supportItemId} marked ${action.disposition}.`,
@@ -1672,7 +1674,7 @@ export function applyLifecycleAction(
         carried: carriedItems.length,
         setAside: state.supportItems.length - carriedItems.length,
       }
-      return record(
+      return recordCapability(
         {
           ...state,
           phase: 'after',
@@ -1698,7 +1700,7 @@ export function applyLifecycleAction(
         !recoveryRows.some((row) => row.supportItemId === action.supportItemId)
       )
         throw new Error('Recovery row not found.')
-      return record(
+      return recordCapability(
         { ...state, recoveryRows },
         'A01',
         `${action.supportItemId} set ${action.state} for ${action.horizon}.`,
@@ -1718,7 +1720,7 @@ export function applyLifecycleAction(
           owner: action.owner,
         },
       ]
-      return record(
+      return recordCapability(
         { ...state, unmetNeeds },
         'A02',
         `${action.domain} recorded as ${action.band}.`,
@@ -1732,7 +1734,7 @@ export function applyLifecycleAction(
         const row = state.recoveryRows.find((item) => item.supportItemId === id)
         return !row || row.state !== 'follow-up-ready'
       })
-      return record(
+      return recordCapability(
         {
           ...state,
           holdReview: { attempted: true, refusedItemIds },
@@ -1757,7 +1759,7 @@ export function applyLifecycleAction(
           horizon: action.horizon,
         },
       ]
-      return record(
+      return recordCapability(
         { ...state, recheckPlans },
         'A04',
         `Planned ${action.area} recheck for ${action.horizon}.`,
@@ -1776,7 +1778,7 @@ export function applyLifecycleAction(
         ...state.recoveryDraft?.classifications,
         [action.block]: action.classification,
       } as NonNullable<LifecycleState['recoveryDraft']>['classifications']
-      return record(
+      return recordCapability(
         {
           ...state,
           recoveryDraft: { status: practiceStamp, classifications },
@@ -1795,7 +1797,7 @@ export function applyLifecycleAction(
         ),
         { ...scored, disposition: action.disposition },
       ]
-      return record(
+      return recordCapability(
         { ...state, objectiveReview },
         'A06',
         `${action.objectiveId} scored ${scored.score} and marked ${action.disposition}.`,
@@ -1804,7 +1806,7 @@ export function applyLifecycleAction(
     case 'decide-gates': {
       if (action.decision === 'gates-met' && !lifecycleGatesMet(state))
         throw new Error('Every end-of-cycle gate must pass first.')
-      return record(
+      return recordCapability(
         { ...state, gateDecision: action.decision },
         'A07',
         `Cycle gate decision: ${action.decision}.`,
@@ -1812,7 +1814,7 @@ export function applyLifecycleAction(
     }
     case 'pin-comparison': {
       const comparison = parseLifecycleComparison(action.text)
-      return record(
+      return recordCapability(
         { ...state, comparison },
         'A08',
         `Pinned cycle ${comparison.cycle} comparison ${comparison.digest}.`,
@@ -1821,7 +1823,7 @@ export function applyLifecycleAction(
     case 'select-packet-sections': {
       if (action.sections.length === 0)
         throw new Error('Choose at least one packet section.')
-      return record(
+      return recordCapability(
         { ...state, packetSections: [...new Set(action.sections)] },
         'A09',
         `Selected ${action.sections.length} deterministic packet sections.`,
@@ -1864,7 +1866,7 @@ export function applyLifecycleAction(
       next.objectives = carriedObjectiveIds
       next.capabilityMarkers = [...state.capabilityMarkers]
       next.ledger = [...state.ledger]
-      return record(
+      return recordCapability(
         next,
         'A10',
         `Sealed H3 ${digest} and started practice cycle ${next.cycle}.`,
