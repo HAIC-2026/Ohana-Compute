@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 
 import { expect, test } from '@playwright/test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { parseLifecycleEvidence } from '../src/lib/lifecycle-evidence'
 import {
   currentEventTrigger,
@@ -12,7 +14,10 @@ import {
   retrievalState,
   validNWSProduct,
 } from '../src/lib/nws-product'
-import { currentZoneApplicability } from '../src/components/NWSProductDetails'
+import {
+  currentZoneApplicability,
+  NWSProductDetails,
+} from '../src/components/NWSProductDetails'
 import {
   nwsProduct,
   weatherLegacySnapshot,
@@ -27,6 +32,21 @@ const realZoneProduct = JSON.parse(
     'utf8',
   ),
 )
+
+function realZoneSnapshot(product = realZoneProduct) {
+  const generatedAt = '2026-10-30T20:00:00Z'
+  const snapshot = weatherSnapshot(product)
+  snapshot.generated_at = generatedAt
+  snapshot.valid_until = '2026-10-30T20:05:00Z'
+  snapshot.event_triggers.data!.generated_at = generatedAt
+  snapshot.event_triggers.data!.source_states![0] = {
+    id: 'nws-hi-alerts',
+    status: 'fresh',
+    retrieved_at: generatedAt,
+    fresh_until: '2026-10-30T20:05:00Z',
+  }
+  return snapshot
+}
 
 test('lifecycle projection retains source product provenance rather than only a title', () => {
   const snapshot = weatherSnapshot()
@@ -202,18 +222,8 @@ test('zone evidence cannot strengthen partial backend coverage in the browser', 
 
 test('real resolver projection crosses the lifecycle browser boundary unchanged', () => {
   const generatedAt = '2026-10-30T20:00:00Z'
-  const snapshot = weatherSnapshot(realZoneProduct)
-  snapshot.generated_at = generatedAt
-  snapshot.valid_until = '2026-10-30T20:05:00Z'
-  snapshot.event_triggers.data!.generated_at = generatedAt
-  snapshot.event_triggers.data!.source_states![0] = {
-    id: 'nws-hi-alerts',
-    status: 'fresh',
-    retrieved_at: generatedAt,
-    fresh_until: '2026-10-30T20:05:00Z',
-  }
   const parsed =
-    parseLifecycleEvidence(snapshot).event_triggers.data!.triggers[0]
+    parseLifecycleEvidence(realZoneSnapshot()).event_triggers.data!.triggers[0]
       .nws_product!
   expect(parsed).toEqual(realZoneProduct)
   expect(currentZoneApplicability(parsed, Date.parse(generatedAt))).toEqual({
@@ -222,6 +232,59 @@ test('real resolver projection crosses the lifecycle browser boundary unchanged'
     coverage: 'partial',
   })
   expect(JSON.stringify(parsed)).not.toContain('coordinates')
+})
+
+test('fresh inside evidence remains inside while another zone is pending', () => {
+  const pending = structuredClone(realZoneProduct)
+  pending.zone_evidence.coverage = 'pending'
+  pending.zone_evidence.zones[1] = {
+    ...pending.zone_evidence.zones[1],
+    source_revision: null,
+    effective: null,
+    expires: null,
+    retrieved_at: null,
+    fresh_until: null,
+    state: 'pending',
+    result: 'unknown',
+    reason: 'zone_pending',
+  }
+  const generatedAt = Date.parse('2026-10-30T20:00:00Z')
+  expect(validNWSProduct(pending, generatedAt)).toBe(true)
+  const parsed = parseLifecycleEvidence(realZoneSnapshot(pending))
+    .event_triggers.data!.triggers[0].nws_product!
+  expect(currentZoneApplicability(parsed, generatedAt)).toEqual({
+    result: 'inside',
+    reason: 'strict_interior',
+    coverage: 'pending',
+  })
+  const markup = renderToStaticMarkup(
+    createElement(NWSProductDetails, {
+      product: parsed,
+      now: generatedAt,
+    }),
+  )
+  expect(markup).toContain(
+    'Some referenced zones are still being checked; coverage is pending',
+  )
+  expect(markup).toContain('do not establish address-level impact, authority')
+  expect(markup).toContain('This is not an all-clear')
+
+  const noFreshInside = structuredClone(pending)
+  noFreshInside.zone_evidence.zones[0] = {
+    ...noFreshInside.zone_evidence.zones[0],
+    source_revision: null,
+    effective: null,
+    expires: null,
+    retrieved_at: null,
+    fresh_until: null,
+    state: 'pending',
+    result: 'unknown',
+    reason: 'zone_pending',
+  }
+  expect(validNWSProduct(noFreshInside, generatedAt)).toBe(false)
+  expect(() => parseLifecycleEvidence(realZoneSnapshot(noFreshInside))).toThrow(
+    /Malformed/,
+  )
 })
 
 test('wall-time product expiry is independent of retrieval deadlines, checks and practice time', () => {

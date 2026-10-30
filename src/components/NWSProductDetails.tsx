@@ -55,7 +55,11 @@ export function currentZoneApplicability(product: NWSProduct, now: number) {
     return {
       result: 'inside' as const,
       reason: 'strict_interior',
-      coverage: incomplete ? ('partial' as const) : ('complete' as const),
+      coverage: pending
+        ? ('pending' as const)
+        : incomplete
+          ? ('partial' as const)
+          : ('complete' as const),
     }
   if (evidence.result === 'outside' && completeOutside)
     return {
@@ -102,8 +106,10 @@ export function NWSProductDetails({
         ? `Inside at least one official NWS zone boundary. ${
             currentApplicability.coverage === 'complete'
               ? 'All referenced zones were evaluated.'
-              : 'Some referenced zones were unavailable, but one valid zone contains the point.'
-          } Zone boundaries are area-level and do not establish address-level impact, authority, an order, or an instruction.`
+              : currentApplicability.coverage === 'pending'
+                ? 'Some referenced zones are still being checked; coverage is pending, but one valid zone contains the point.'
+                : 'Some referenced zones were unavailable, but one valid zone contains the point.'
+          } Zone boundaries are area-level and do not establish address-level impact, authority, an order, or an instruction. This is not an all-clear.`
         : 'Inside the retained source polygon. This does not establish impact, authority, an order, or an instruction.',
     outside:
       product.applicability_basis === 'affected_zones'

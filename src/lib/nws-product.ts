@@ -308,13 +308,12 @@ function validZoneEvidence(value: unknown): value is NWSZoneEvidence {
             row.reason === 'strict_exterior',
         ))) &&
     (value.reason !== 'strict_interior' ||
-      (value.coverage !== 'pending' &&
-        value.zones.some(
-          (row) =>
-            row.state === 'fresh' &&
-            row.result === 'inside' &&
-            row.reason === 'strict_interior',
-        ))) &&
+      value.zones.some(
+        (row) =>
+          row.state === 'fresh' &&
+          row.result === 'inside' &&
+          row.reason === 'strict_interior',
+      )) &&
     (value.reason !== 'boundary' ||
       (value.coverage === 'complete' &&
         value.zones.some(
