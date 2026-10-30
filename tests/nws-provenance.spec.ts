@@ -293,6 +293,7 @@ test('runtime validation rejects malformed nested facts, coerced enums, and unbo
     Object.assign(snapshot.event_triggers.data!.triggers[0], {
       nws_product: malformed,
     })
+
     expect(() => parseLifecycleEvidence(snapshot)).toThrow(/Malformed/)
     const legacy = weatherLegacySnapshot()
     Object.assign(legacy.triggers[0], { nws_product: malformed })
@@ -347,4 +348,44 @@ test('runtime validation rejects malformed nested facts, coerced enums, and unbo
       },
     }),
   ).toBe(false)
+})
+
+test('lifecycle applicability reasons agree with retained geometry status', () => {
+  const product = nwsProduct()
+  const polygon = {
+    status: 'valid' as const,
+    type: 'Polygon',
+    shape: {
+      type: 'Polygon' as const,
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+          [0, 0],
+        ],
+      ],
+    },
+  }
+  expect(() =>
+    parseLifecycleEvidence(
+      weatherSnapshot({
+        ...product,
+        geometry: polygon,
+        applicability: 'unknown',
+        applicability_reason: 'no_polygon',
+      }),
+    ),
+  ).toThrow(/Malformed/)
+  expect(
+    parseLifecycleEvidence(
+      weatherSnapshot({
+        ...product,
+        geometry: polygon,
+        applicability: 'unknown',
+        applicability_reason: 'invalid_topology',
+      }),
+    ).event_triggers.data!.triggers[0].nws_product?.applicability_reason,
+  ).toBe('invalid_topology')
 })

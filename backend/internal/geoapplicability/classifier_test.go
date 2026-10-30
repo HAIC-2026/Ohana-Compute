@@ -122,6 +122,22 @@ func TestMultiPolygonOverlapAndInvariance(t *testing.T) {
 			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
 			[[[0,0],[2,0],[4,0],[4,4],[0,4],[0,0]]]
 		]`,
+		"inner diamond vertices on boundary": `[
+			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
+			[[[2,0],[4,2],[2,4],[0,2],[2,0]]]
+		]`,
+		"outer diamond through corners": `[
+			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
+			[[[2,-2],[6,2],[2,6],[-2,2],[2,-2]]]
+		]`,
+		"triangle vertices on boundary": `[
+			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
+			[[[2,0],[4,2],[0,2],[2,0]]]
+		]`,
+		"reordered reversed inner diamond": `[
+			[[[2,0],[0,2],[2,4],[4,2],[2,0]]],
+			[[[4,4],[0,4],[0,0],[4,0],[4,4]]]
+		]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, shape := geometry(kind, coordinates)
@@ -136,6 +152,13 @@ func TestMultiPolygonOverlapAndInvariance(t *testing.T) {
 	]`)
 	if got := Evaluate("valid", &kind, adjacent, Point{"1", "1"}); got != (Evaluation{ResultInside, ReasonStrictInterior}) {
 		t.Fatalf("adjacent touching members classified as %#v", got)
+	}
+	_, adjacentReversed := geometry(kind, `[
+		[[[0,0],[2,0],[2,2],[0,2],[0,0]]],
+		[[[2,0],[2,2],[4,2],[4,0],[2,0]]]
+	]`)
+	if got := Evaluate("valid", &kind, adjacentReversed, Point{"1", "1"}); got != (Evaluation{ResultInside, ReasonStrictInterior}) {
+		t.Fatalf("reversed adjacent touching members classified as %#v", got)
 	}
 	variants := []string{
 		`[[[[0,0],[4,0],[4,4],[0,4],[0,0]]],[[[6,0],[8,0],[8,2],[6,2],[6,0]]]]`,

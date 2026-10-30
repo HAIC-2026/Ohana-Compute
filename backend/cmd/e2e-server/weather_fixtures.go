@@ -43,6 +43,13 @@ func fixtureGeometry(coordinates string) nws.Geometry {
 	}
 }
 
+func fixtureMultiGeometry(coordinates string) nws.Geometry {
+	return nws.Geometry{
+		Status: "valid", Type: textPointer("MultiPolygon"),
+		Shape: json.RawMessage(`{"type":"MultiPolygon","coordinates":` + coordinates + `}`),
+	}
+}
+
 type weatherFixture struct{ mode string }
 
 func (weatherFixture) LatestProduct(context.Context) (ptwc.Snapshot, error) {
@@ -84,6 +91,11 @@ func (fixture weatherFixture) ActiveAlerts(context.Context) (nws.Snapshot, error
 		product.Geometry = nws.Geometry{Status: "absent"}
 	case "invalid-geometry":
 		product.Geometry = nws.Geometry{Status: "invalid", Type: textPointer("Polygon")}
+	case "topology-invalid":
+		product.Geometry = fixtureMultiGeometry(`[
+			[[[-158.3,21.4],[-158.1,21.4],[-158.1,21.5],[-158.3,21.5],[-158.3,21.4]]],
+			[[[-158.2,21.4],[-158.1,21.45],[-158.2,21.5],[-158.3,21.45],[-158.2,21.4]]]
+		]`)
 	case "stale":
 		source.RetrievedAt = now.Add(-10 * time.Minute)
 		source.FreshUntil = now.Add(-5 * time.Minute)

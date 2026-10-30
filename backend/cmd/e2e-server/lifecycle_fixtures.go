@@ -65,7 +65,7 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 		})
 		handlers[mode] = api.NewServer(fixtureConfig).Handler()
 	}
-	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "no-polygon", "invalid-geometry", "stale", "partial", "empty", "unavailable"} {
+	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "no-polygon", "invalid-geometry", "topology-invalid", "stale", "partial", "empty", "unavailable"} {
 		fixtureConfig := config
 		fixtureConfig.Registry = nil
 		fixtureConfig.EventTriggers = eventtriggers.NewService(eventtriggers.Config{

@@ -144,6 +144,45 @@ function validErrors(value: unknown) {
   )
 }
 
+function validLifecycleApplicability(product: NWSProduct) {
+  switch (product.applicability_reason) {
+    case 'strict_interior':
+      return (
+        product.applicability === 'inside' &&
+        product.geometry.status === 'valid'
+      )
+    case 'strict_exterior':
+      return (
+        product.applicability === 'outside' &&
+        product.geometry.status === 'valid'
+      )
+    case 'boundary':
+      return (
+        product.applicability === 'unknown' &&
+        product.geometry.status === 'valid'
+      )
+    case 'no_polygon':
+      return (
+        product.applicability === 'unknown' &&
+        product.geometry.status === 'absent'
+      )
+    case 'unsupported':
+      return (
+        product.applicability === 'unknown' &&
+        ['unsupported', 'too_large'].includes(product.geometry.status)
+      )
+    case 'invalid_topology':
+      return (
+        product.applicability === 'unknown' &&
+        ['valid', 'invalid'].includes(product.geometry.status)
+      )
+    case 'bad_point':
+      return product.applicability === 'unknown'
+    default:
+      return false
+  }
+}
+
 function validCoordinate(value: unknown, minimum: number, maximum: number) {
   if (
     typeof value !== 'string' ||
@@ -210,7 +249,7 @@ export function parseLifecycleEvidence(
                 row.nws_product,
                 Date.parse(events.generated_at as string),
               ) &&
-              row.nws_product.applicability_reason !== 'not_evaluated')),
+              validLifecycleApplicability(row.nws_product))),
       ) ||
       !validErrors(events.source_errors) ||
       !(

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/big"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -368,6 +369,9 @@ func polygonsOverlap(left, right polygon) bool {
 			}
 		}
 	}
+	if boundaryPiecesEnterPolygon(left, right) || boundaryPiecesEnterPolygon(right, left) {
+		return true
+	}
 	for _, candidate := range left[0][:len(left[0])-1] {
 		if locatePolygon(candidate, right) == ResultInside {
 			return true
@@ -379,6 +383,64 @@ func polygonsOverlap(left, right polygon) bool {
 		}
 	}
 	return canonicalRing(left[0]) == canonicalRing(right[0])
+}
+
+func boundaryPiecesEnterPolygon(source, target polygon) bool {
+	targetVertices := make([]point, 0)
+	for _, targetRing := range target {
+		targetVertices = append(targetVertices, targetRing[:len(targetRing)-1]...)
+	}
+	for _, sourceRing := range source {
+		for index := 0; index < len(sourceRing)-1; index++ {
+			start, end := sourceRing[index], sourceRing[index+1]
+			splits := []point{start, end}
+			for _, candidate := range targetVertices {
+				if onSegment(start, candidate, end) {
+					splits = append(splits, candidate)
+				}
+			}
+			splits = sortedUniquePointsOnSegment(splits, start, end)
+			for splitIndex := 0; splitIndex < len(splits)-1; splitIndex++ {
+				midpoint := point{
+					x: new(big.Rat).Quo(
+						new(big.Rat).Add(splits[splitIndex].x, splits[splitIndex+1].x),
+						big.NewRat(2, 1),
+					),
+					y: new(big.Rat).Quo(
+						new(big.Rat).Add(splits[splitIndex].y, splits[splitIndex+1].y),
+						big.NewRat(2, 1),
+					),
+				}
+				if locatePolygon(midpoint, target) == ResultInside {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func sortedUniquePointsOnSegment(values []point, start, end point) []point {
+	useX := start.x.Cmp(end.x) != 0
+	sort.Slice(values, func(left, right int) bool {
+		if useX {
+			if comparison := values[left].x.Cmp(values[right].x); comparison != 0 {
+				return comparison < 0
+			}
+			return values[left].y.Cmp(values[right].y) < 0
+		}
+		if comparison := values[left].y.Cmp(values[right].y); comparison != 0 {
+			return comparison < 0
+		}
+		return values[left].x.Cmp(values[right].x) < 0
+	})
+	result := values[:0]
+	for _, candidate := range values {
+		if len(result) == 0 || !equalPoint(result[len(result)-1], candidate) {
+			result = append(result, candidate)
+		}
+	}
+	return result
 }
 
 func shellsOverlapCollinearly(left, right ring) bool {

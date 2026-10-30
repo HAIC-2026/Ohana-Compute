@@ -89,6 +89,7 @@ test('real Go NWS provenance stays read-only across source states on desktop and
     ['null-times', 'eligible', 'current', 'inside'],
     ['no-polygon', 'eligible', 'current', 'unknown'],
     ['invalid-geometry', 'eligible', 'current', 'unknown'],
+    ['topology-invalid', 'eligible', 'current', 'unknown'],
     ['stale', 'eligible', 'current', 'inside'],
     ['partial', 'eligible', 'current', 'inside'],
     ['empty', '', '', ''],
@@ -118,7 +119,7 @@ test('real Go NWS provenance stays read-only across source states on desktop and
       await expect(weather).toContainText(
         'This does not establish impact, authority, an order, or an instruction.',
       )
-    if (scenario === 'invalid-geometry')
+    if (scenario === 'invalid-geometry' || scenario === 'topology-invalid')
       await expect(weather).toContainText('Unknown (invalid topology)')
     if (scenario === 'no-polygon')
       await expect(weather).toContainText(
