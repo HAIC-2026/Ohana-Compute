@@ -26,6 +26,7 @@ func TestEvaluatePolygonSemantics(t *testing.T) {
 		{"hole outside", "valid", kind, hole, Point{"2", "2"}, Evaluation{ResultOutside, ReasonStrictExterior}},
 		{"hole boundary", "valid", kind, hole, Point{"1", "2"}, Evaluation{ResultUnknown, ReasonBoundary}},
 		{"bad point", "valid", kind, square, Point{"NaN", "2"}, Evaluation{ResultUnknown, ReasonBadPoint}},
+		{"noncanonical point", "valid", kind, square, Point{"01", "2"}, Evaluation{ResultUnknown, ReasonBadPoint}},
 		{"no polygon", "absent", nil, nil, Point{"2", "2"}, Evaluation{ResultUnknown, ReasonNoPolygon}},
 		{"unsupported", "unsupported", nil, nil, Point{"2", "2"}, Evaluation{ResultUnknown, ReasonUnsupported}},
 	}
@@ -111,6 +112,30 @@ func TestMultiPolygonOverlapAndInvariance(t *testing.T) {
 	]`)
 	if got := Evaluate("valid", &kind, overlap, Point{"1", "1"}); got.Reason != ReasonInvalidTopology {
 		t.Fatalf("overlap classified as %#v", got)
+	}
+	for name, coordinates := range map[string]string{
+		"collinear overlap": `[
+			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
+			[[[2,0],[6,0],[6,4],[2,4],[2,0]]]
+		]`,
+		"same shell subdivided": `[
+			[[[0,0],[4,0],[4,4],[0,4],[0,0]]],
+			[[[0,0],[2,0],[4,0],[4,4],[0,4],[0,0]]]
+		]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, shape := geometry(kind, coordinates)
+			if got := Evaluate("valid", &kind, shape, Point{"1", "1"}); got.Reason != ReasonInvalidTopology {
+				t.Fatalf("collinear overlap classified as %#v", got)
+			}
+		})
+	}
+	_, adjacent := geometry(kind, `[
+		[[[0,0],[2,0],[2,2],[0,2],[0,0]]],
+		[[[2,0],[4,0],[4,2],[2,2],[2,0]]]
+	]`)
+	if got := Evaluate("valid", &kind, adjacent, Point{"1", "1"}); got != (Evaluation{ResultInside, ReasonStrictInterior}) {
+		t.Fatalf("adjacent touching members classified as %#v", got)
 	}
 	variants := []string{
 		`[[[[0,0],[4,0],[4,4],[0,4],[0,0]]],[[[6,0],[8,0],[8,2],[6,2],[6,0]]]]`,

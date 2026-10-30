@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
         valid_until: '2026-10-29T21:00:00Z',
         planning_disclaimer: 'Planning context only.',
         planning_location: {
-          point: [-158.193546, 21.450442],
+          point: ['-158.193546', '21.450442'],
           algorithm_version: 'rfc7946-planar-rational-v1',
         },
         shelter_context: shelterContext(),
@@ -171,7 +171,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
         status: 'unavailable',
         planning_disclaimer: 'Planning context only.',
         planning_location: {
-          point: [-158.193546, 21.450442],
+          point: ['-158.193546', '21.450442'],
           algorithm_version: 'rfc7946-planar-rational-v1',
         },
         shelter_context: {

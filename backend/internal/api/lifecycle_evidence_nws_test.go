@@ -158,7 +158,7 @@ func TestLifecycleEvidenceEvaluatesRequestCopyOnly(t *testing.T) {
 	if response.Code != http.StatusOK ||
 		!containsAll(
 			response.Body.String(),
-			`"planning_location":{"point":[-158.19,21.45],"algorithm_version":"rfc7946-planar-rational-v1"}`,
+			`"planning_location":{"point":["-158.19","21.45"],"algorithm_version":"rfc7946-planar-rational-v1"}`,
 			`"applicability":"inside"`,
 			`"applicability_reason":"strict_interior"`,
 		) {
@@ -178,5 +178,47 @@ func TestLifecycleEvidenceEvaluatesRequestCopyOnly(t *testing.T) {
 		!containsAll(outside.Body.String(), `"applicability":"outside"`, `"applicability_reason":"strict_exterior"`) ||
 		response.Header().Get("ETag") == outside.Header().Get("ETag") {
 		t.Fatalf("point/result did not affect projection and semantic hash: %d %s", outside.Code, outside.Body.String())
+	}
+}
+
+func TestLifecycleEvidenceBindsExactPointLexemes(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	events, operations := nwsEvidenceFixtures(now)
+	kind := "Polygon"
+	events.Triggers[0].NWSProduct.Geometry = nws.Geometry{
+		Status: "valid", Type: &kind,
+		Shape: json.RawMessage(`{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}`),
+	}
+	handler := lifecycleEvidenceHandler(
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil,
+		eventTriggerReaderStub{snapshot: events}, operationalStatusReaderStub{snapshot: operations},
+		func() time.Time { return now },
+	)
+	request := func(longitude string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(
+			http.MethodGet,
+			"/api/v1/lifecycle/evidence?lat=0.5&lon="+longitude,
+			nil,
+		))
+		return recorder
+	}
+	inside := request("0.9999999999999999999")
+	boundary := request("1")
+	if inside.Code != http.StatusOK || boundary.Code != http.StatusOK ||
+		!containsAll(
+			inside.Body.String(),
+			`"point":["0.9999999999999999999","0.5"]`,
+			`"applicability":"inside"`,
+		) ||
+		!containsAll(
+			boundary.Body.String(),
+			`"point":["1","0.5"]`,
+			`"applicability":"unknown"`,
+			`"applicability_reason":"boundary"`,
+		) ||
+		inside.Header().Get("ETag") == boundary.Header().Get("ETag") {
+		t.Fatalf("exact request point was not preserved: inside=%s boundary=%s", inside.Body.String(), boundary.Body.String())
 	}
 }

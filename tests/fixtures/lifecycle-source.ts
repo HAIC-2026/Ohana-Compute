@@ -81,7 +81,7 @@ export function sourceSnapshot(): LifecycleEvidenceSnapshot {
     planning_disclaimer:
       'Public planning context only; no operational authority.',
     planning_location: {
-      point: [-158.193546, 21.450442],
+      point: ['-158.193546', '21.450442'],
       algorithm_version: 'rfc7946-planar-rational-v1',
     },
     event_triggers: {

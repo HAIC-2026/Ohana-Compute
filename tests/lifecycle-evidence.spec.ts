@@ -101,6 +101,12 @@ test('lifecycle evidence validates item facts and malformed boundaries before ca
     { schema_version: 'wrong' },
     { generated_at: 'yesterday' },
     { generated_at: '2026-02-31T16:00:00Z' },
+    {
+      planning_location: {
+        ...snapshot.planning_location,
+        point: ['01', '21.450442'],
+      },
+    },
     { event_triggers: { ...snapshot.event_triggers, unavailable_count: -1 } },
     {
       operational_status: {

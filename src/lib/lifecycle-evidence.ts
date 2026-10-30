@@ -66,7 +66,7 @@ export type LifecycleEvidenceSnapshot = {
   valid_until?: string
   planning_disclaimer: string
   planning_location: {
-    point: [number, number]
+    point: [string, string]
     algorithm_version: 'rfc7946-planar-rational-v1'
   }
   event_triggers: LifecycleEvidenceFeed<EventTriggerEvidence>
@@ -144,6 +144,18 @@ function validErrors(value: unknown) {
   )
 }
 
+function validCoordinate(value: unknown, minimum: number, maximum: number) {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 128 ||
+    !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+  )
+    return false
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum
+}
+
 export function parseLifecycleEvidence(
   value: unknown,
   expectedCoordinates?: [number, number],
@@ -166,13 +178,11 @@ export function parseLifecycleEvidence(
       'rfc7946-planar-rational-v1' ||
     !Array.isArray(value.planning_location.point) ||
     value.planning_location.point.length !== 2 ||
-    !value.planning_location.point.every(
-      (coordinate) =>
-        typeof coordinate === 'number' && Number.isFinite(coordinate),
-    ) ||
+    !validCoordinate(value.planning_location.point[0], -180, 180) ||
+    !validCoordinate(value.planning_location.point[1], -90, 90) ||
     (expectedCoordinates !== undefined &&
-      (value.planning_location.point[0] !== expectedCoordinates[0] ||
-        value.planning_location.point[1] !== expectedCoordinates[1])) ||
+      (value.planning_location.point[0] !== String(expectedCoordinates[0]) ||
+        value.planning_location.point[1] !== String(expectedCoordinates[1]))) ||
     !validFeed(value.event_triggers) ||
     !validFeed(value.operational_status) ||
     !validShelterContext(value.shelter_context)

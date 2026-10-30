@@ -42,8 +42,8 @@ type lifecycleEvidenceSnapshot struct {
 }
 
 type lifecyclePlanningLocation struct {
-	Point            [2]float64 `json:"point"`
-	AlgorithmVersion string     `json:"algorithm_version"`
+	Point            [2]string `json:"point"`
+	AlgorithmVersion string    `json:"algorithm_version"`
 }
 
 type lifecycleEvidenceResult[T any] struct {
@@ -163,7 +163,7 @@ func loadLifecycleEvidence(
 		Status:             "complete",
 		PlanningDisclaimer: lifecycleEvidenceDisclaimer,
 		PlanningLocation: lifecyclePlanningLocation{
-			Point: [2]float64{longitude, latitude}, AlgorithmVersion: geoapplicability.AlgorithmVersion,
+			Point: [2]string{point.Longitude, point.Latitude}, AlgorithmVersion: geoapplicability.AlgorithmVersion,
 		},
 		EventTriggers:     eventEvidenceFeed(events),
 		OperationalStatus: operationalEvidenceFeed(operations),

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,8 @@ const (
 	ReasonBadPoint        = "bad_point"
 	ReasonUnsupported     = "unsupported"
 )
+
+var decimalPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
 
 type Point struct {
 	Longitude string
@@ -98,7 +101,7 @@ func parsePoint(longitude, latitude string) (point, error) {
 }
 
 func parseDecimal(value string) (*big.Rat, error) {
-	if value == "" || len(value) > 128 {
+	if value == "" || len(value) > 128 || !decimalPattern.MatchString(value) {
 		return nil, errors.New("invalid decimal")
 	}
 	sign := 1
@@ -355,6 +358,9 @@ func locateRing(candidate point, value ring) string {
 }
 
 func polygonsOverlap(left, right polygon) bool {
+	if shellsOverlapCollinearly(left[0], right[0]) {
+		return true
+	}
 	for _, leftRing := range left {
 		for _, rightRing := range right {
 			if ringsIntersect(leftRing, rightRing, false) {
@@ -373,6 +379,60 @@ func polygonsOverlap(left, right polygon) bool {
 		}
 	}
 	return canonicalRing(left[0]) == canonicalRing(right[0])
+}
+
+func shellsOverlapCollinearly(left, right ring) bool {
+	leftInterior := signedArea(left).Sign()
+	rightInterior := signedArea(right).Sign()
+	for leftIndex := 0; leftIndex < len(left)-1; leftIndex++ {
+		for rightIndex := 0; rightIndex < len(right)-1; rightIndex++ {
+			a, b := left[leftIndex], left[leftIndex+1]
+			c, d := right[rightIndex], right[rightIndex+1]
+			if orient(a, b, c) != 0 || orient(a, b, d) != 0 ||
+				!segmentsOverlapWithLength(a, b, c, d) {
+				continue
+			}
+			leftDX := new(big.Rat).Sub(b.x, a.x)
+			leftDY := new(big.Rat).Sub(b.y, a.y)
+			rightDX := new(big.Rat).Sub(d.x, c.x)
+			rightDY := new(big.Rat).Sub(d.y, c.y)
+			direction := new(big.Rat).Add(
+				new(big.Rat).Mul(leftDX, rightDX),
+				new(big.Rat).Mul(leftDY, rightDY),
+			).Sign()
+			if direction != 0 && leftInterior == rightInterior*direction {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func segmentsOverlapWithLength(a, b, c, d point) bool {
+	if a.x.Cmp(b.x) != 0 {
+		return intervalOverlapWithLength(a.x, b.x, c.x, d.x)
+	}
+	return intervalOverlapWithLength(a.y, b.y, c.y, d.y)
+}
+
+func intervalOverlapWithLength(a, b, c, d *big.Rat) bool {
+	left := maxRat(minRat(a, b), minRat(c, d))
+	right := minRat(maxRat(a, b), maxRat(c, d))
+	return left.Cmp(right) < 0
+}
+
+func minRat(left, right *big.Rat) *big.Rat {
+	if left.Cmp(right) <= 0 {
+		return left
+	}
+	return right
+}
+
+func maxRat(left, right *big.Rat) *big.Rat {
+	if left.Cmp(right) >= 0 {
+		return left
+	}
+	return right
 }
 
 func ringsOverlapOrTouch(left, right ring) bool {
