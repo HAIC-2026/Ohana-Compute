@@ -51,11 +51,12 @@ type Snapshot struct {
 }
 
 type Config struct {
-	HTTPClient *http.Client
-	AlertsURL  string
-	UserAgent  string
-	CacheTTL   time.Duration
-	Now        func() time.Time
+	HTTPClient     *http.Client
+	AlertsURL      string
+	UserAgent      string
+	CacheTTL       time.Duration
+	Now            func() time.Time
+	ZonePrefetcher ZonePrefetcher
 }
 
 type Client struct {
@@ -64,6 +65,7 @@ type Client struct {
 	userAgent  string
 	cacheTTL   time.Duration
 	now        func() time.Time
+	zones      ZonePrefetcher
 
 	mu       sync.RWMutex
 	cached   *Snapshot
@@ -143,6 +145,7 @@ func NewClient(config Config) *Client {
 		userAgent:  userAgent,
 		cacheTTL:   cacheTTL,
 		now:        now,
+		zones:      config.ZonePrefetcher,
 	}
 }
 
@@ -177,6 +180,7 @@ func (client *Client) ActiveAlerts(ctx context.Context) (Snapshot, error) {
 		refreshed.Source.RefreshAttemptedAt = nil
 		refreshed.Warnings = nil
 		client.store(refreshed, etag)
+		client.prefetchAffectedZones(refreshed.Alerts)
 		return refreshed, nil
 	}
 
@@ -238,7 +242,33 @@ func (client *Client) ActiveAlerts(ctx context.Context) (Snapshot, error) {
 		},
 	}
 	client.store(snapshot, response.Header.Get("ETag"))
+	client.prefetchAffectedZones(snapshot.Alerts)
 	return snapshot, nil
+}
+
+func (client *Client) prefetchAffectedZones(alerts []Alert) {
+	if client.zones == nil {
+		return
+	}
+	requests := make([]ZoneRequest, 0)
+	seen := make(map[string]struct{})
+	for _, alert := range alerts {
+		if alert.Product.Geometry.Status != "absent" {
+			continue
+		}
+		for _, zone := range alert.Product.AffectedZones {
+			key := canonicalZoneURL(zone)
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			requests = append(requests, ZoneRequest{Zone: zone})
+		}
+	}
+	client.zones.PrefetchZones(requests)
 }
 
 func (client *Client) freshSnapshot(now time.Time) (Snapshot, bool) {

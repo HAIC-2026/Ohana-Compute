@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+type captureZonePrefetcher struct {
+	requests []ZoneRequest
+}
+
+func (capture *captureZonePrefetcher) PrefetchZones(requests []ZoneRequest) {
+	capture.requests = append(capture.requests, requests...)
+}
+
 func TestActiveAlertsNormalizesAndCaches(t *testing.T) {
 	t.Parallel()
 
@@ -131,5 +139,48 @@ func TestActiveAlertsFailsWithoutCache(t *testing.T) {
 	client := NewClient(Config{AlertsURL: server.URL})
 	if _, err := client.ActiveAlerts(context.Background()); err == nil {
 		t.Fatal("expected an upstream error when no cache exists")
+	}
+}
+
+func TestActiveAlertsPrefetchesOnlyZoneDefinedProducts(t *testing.T) {
+	t.Parallel()
+	absent := strings.Replace(
+		sourceProductFixture,
+		`"geometry":{"type":"Polygon","coordinates":[[[-158,21],[-157,21],[-157,22],[-158,21]]]}`,
+		`"geometry":null`,
+		1,
+	)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) > 1 {
+			writer.WriteHeader(http.StatusNotModified)
+			return
+		}
+		writer.Header().Set("ETag", `"alerts-v1"`)
+		_, _ = writer.Write([]byte(
+			`{"updated":"2026-10-30T11:00:00Z","features":[` +
+				sourceProductFixture + `,` + absent + `]}`,
+		))
+	}))
+	defer server.Close()
+	capture := &captureZonePrefetcher{}
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	client := NewClient(Config{
+		AlertsURL: server.URL, ZonePrefetcher: capture,
+		CacheTTL: time.Minute, Now: func() time.Time { return now },
+	})
+	if _, err := client.ActiveAlerts(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.requests) != 3 {
+		t.Fatalf("prefetched %d zones, want only the 3 zone-defined product zones", len(capture.requests))
+	}
+	capture.requests = nil
+	now = now.Add(2 * time.Minute)
+	if _, err := client.ActiveAlerts(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.requests) != 3 {
+		t.Fatalf("304 prefetched %d zones, want retry of 3 zone-defined product zones", len(capture.requests))
 	}
 }

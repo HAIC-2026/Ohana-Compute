@@ -80,11 +80,9 @@ test('desktop selects an island response zone and creates local steps', async ({
 
   await page.getByRole('button', { name: 'Open response workspace' }).click()
   const responseWorkspace = page.locator('.planning-sheet:visible')
-  await expect(
-    responseWorkspace.getByRole('heading', {
-      name: 'Mass care plan for East Honolulu',
-    }),
-  ).toBeVisible()
+  await expect(responseWorkspace.locator('#planning-sheet-title')).toHaveText(
+    'Mass care plan for East Honolulu',
+  )
   await expect(
     responseWorkspace.getByRole('heading', {
       name: 'Local resource inventory',

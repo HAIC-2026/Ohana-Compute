@@ -19,6 +19,7 @@ import (
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/community"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/cphc"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/eventtriggers"
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/groundedplanning"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/identity"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
@@ -90,6 +91,14 @@ type EventTriggerReader interface {
 	Snapshot(context.Context) (eventtriggers.Snapshot, error)
 }
 
+type ZoneApplicabilityReader interface {
+	EvaluateZones(
+		[]nws.Zone,
+		*string,
+		geoapplicability.Point,
+	) nws.ZoneApplicability
+}
+
 type OperationalStatusReader interface {
 	Snapshot(context.Context, float64, float64) (operationalstatus.Snapshot, error)
 }
@@ -107,6 +116,7 @@ type Config struct {
 	ResourceDemand    ResourceDemandCalculator
 	PartnerMatching   PartnerMatcher
 	EventTriggers     EventTriggerReader
+	ZoneApplicability ZoneApplicabilityReader
 	OperationalStatus OperationalStatusReader
 	Identity          identity.Authenticator
 	Collaboration     collaboration.Store
@@ -326,6 +336,7 @@ func NewServer(config Config) *Server {
 			config.EventTriggers,
 			config.OperationalStatus,
 			time.Now,
+			config.ZoneApplicability,
 		),
 	)
 	mux.HandleFunc("GET /api/v1/community/acs", coordinateHandler(

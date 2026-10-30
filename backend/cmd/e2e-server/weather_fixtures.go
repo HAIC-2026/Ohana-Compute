@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/chokevin/hawaii-resilience-map/backend/internal/geoapplicability"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/nws"
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/ptwc"
 )
@@ -51,6 +53,67 @@ func fixtureMultiGeometry(coordinates string) nws.Geometry {
 }
 
 type weatherFixture struct{ mode string }
+type weatherZoneFixture struct{ mode string }
+
+func (fixture weatherZoneFixture) EvaluateZones(
+	zones []nws.Zone,
+	_ *string,
+	_ geoapplicability.Point,
+) nws.ZoneApplicability {
+	revision := strings.Repeat("a", 64)
+	effective := "2026-01-01T00:00:00Z"
+	expires := "2200-01-01T00:00:00Z"
+	retrieved := "2026-10-30T17:55:00Z"
+	freshUntil := "2026-10-31T17:55:00Z"
+	members := make([]nws.ZoneEvidence, len(zones))
+	for index, zone := range zones {
+		members[index] = nws.ZoneEvidence{
+			URL: zone.URL, ID: zone.ID, Type: zone.Type,
+			SourceRevision: &revision, Effective: &effective, Expires: &expires,
+			RetrievedAt: &retrieved, FreshUntil: &freshUntil, State: "fresh",
+			Result: "outside", Reason: "strict_exterior",
+		}
+	}
+	switch fixture.mode {
+	case "zone-inside", "zone-cancel":
+		members[0].Result, members[0].Reason = "inside", "strict_interior"
+		return nws.ZoneApplicability{
+			Result: "inside", Reason: "strict_interior", Coverage: "complete", Zones: members,
+		}
+	case "zone-boundary":
+		members[0].Result, members[0].Reason = "unknown", "boundary"
+		return nws.ZoneApplicability{
+			Result: "unknown", Reason: "boundary", Coverage: "complete", Zones: members,
+		}
+	case "zone-partial":
+		members[1].SourceRevision = nil
+		members[1].State, members[1].Result, members[1].Reason = "unavailable", "unknown", "http_503"
+		return nws.ZoneApplicability{
+			Result: "unknown", Reason: "zone_incomplete", Coverage: "partial", Zones: members,
+		}
+	case "zone-invalid":
+		members[0].SourceRevision = nil
+		members[0].State, members[0].Result, members[0].Reason = "unavailable", "unknown", "invalid_payload"
+		return nws.ZoneApplicability{
+			Result: "unknown", Reason: "zone_incomplete", Coverage: "partial", Zones: members,
+		}
+	case "zone-stale":
+		members[0].State, members[0].Result, members[0].Reason = "stale", "unknown", "request_failed"
+		return nws.ZoneApplicability{
+			Result: "unknown", Reason: "zone_incomplete", Coverage: "partial", Zones: members,
+		}
+	case "zone-pending":
+		members[0].SourceRevision = nil
+		members[0].State, members[0].Result, members[0].Reason = "pending", "unknown", "zone_pending"
+		return nws.ZoneApplicability{
+			Result: "unknown", Reason: "zone_pending", Coverage: "pending", Zones: members,
+		}
+	default:
+		return nws.ZoneApplicability{
+			Result: "outside", Reason: "strict_exterior", Coverage: "complete", Zones: members,
+		}
+	}
+}
 
 func (weatherFixture) LatestProduct(context.Context) (ptwc.Snapshot, error) {
 	return ptwc.Snapshot{}, errors.New("fixture unrelated PTWC failure")
@@ -89,6 +152,24 @@ func (fixture weatherFixture) ActiveAlerts(context.Context) (nws.Snapshot, error
 		product.Sent = nil
 	case "no-polygon":
 		product.Geometry = nws.Geometry{Status: "absent"}
+	case "zone-inside", "zone-outside", "zone-boundary", "zone-invalid", "zone-stale", "zone-pending":
+		product.Geometry = nws.Geometry{Status: "absent"}
+	case "zone-partial":
+		product.Geometry = nws.Geometry{Status: "absent"}
+		product.AffectedZones = append(product.AffectedZones, nws.Zone{
+			URL: "https://api.weather.gov/zones/forecast/HIZ007",
+			ID:  "HIZ007", Type: "forecast",
+		})
+	case "zone-update":
+		product.Geometry = nws.Geometry{Status: "absent"}
+		product.MessageType = textPointer("Update")
+		product.AffectedZones = []nws.Zone{{
+			URL: "https://api.weather.gov/zones/forecast/HIZ007",
+			ID:  "HIZ007", Type: "forecast",
+		}}
+	case "zone-cancel":
+		product.Geometry = nws.Geometry{Status: "absent"}
+		product.MessageType = textPointer("Cancel")
 	case "invalid-geometry":
 		product.Geometry = nws.Geometry{Status: "invalid", Type: textPointer("Polygon")}
 	case "topology-invalid":

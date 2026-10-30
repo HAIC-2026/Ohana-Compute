@@ -57,7 +57,12 @@ func lifecycleEvidenceHandler(
 	eventReader EventTriggerReader,
 	operationalReader OperationalStatusReader,
 	now func() time.Time,
+	zoneReaders ...ZoneApplicabilityReader,
 ) http.HandlerFunc {
+	var zoneReader ZoneApplicabilityReader
+	if len(zoneReaders) > 0 {
+		zoneReader = zoneReaders[0]
+	}
 	return func(writer http.ResponseWriter, request *http.Request) {
 		latitude, longitude, err := parseCoordinates(request)
 		if err != nil {
@@ -108,6 +113,7 @@ func lifecycleEvidenceHandler(
 			longitude,
 			point,
 			now().UTC(),
+			zoneReader,
 		)
 		if snapshot.EventTriggers.Error != "" {
 			logger.Warn("lifecycle evidence feed unavailable", "feed", "event_triggers")
@@ -136,7 +142,12 @@ func loadLifecycleEvidence(
 	longitude float64,
 	point geoapplicability.Point,
 	generatedAt time.Time,
+	zoneReaders ...ZoneApplicabilityReader,
 ) lifecycleEvidenceSnapshot {
+	var zoneReader ZoneApplicabilityReader
+	if len(zoneReaders) > 0 {
+		zoneReader = zoneReaders[0]
+	}
 	eventResult := make(chan lifecycleEvidenceResult[eventtriggers.Snapshot], 1)
 	operationalResult := make(chan lifecycleEvidenceResult[operationalstatus.Snapshot], 1)
 	go func() {
@@ -155,7 +166,7 @@ func loadLifecycleEvidence(
 	events := <-eventResult
 	operations := <-operationalResult
 	if events.err == nil {
-		events.value = lifecycleEventApplicability(events.value, point)
+		events.value = lifecycleEventApplicability(events.value, zoneReader, point)
 	}
 	snapshot := lifecycleEvidenceSnapshot{
 		SchemaVersion:      lifecycleEvidenceSchema,
@@ -193,6 +204,7 @@ func loadLifecycleEvidence(
 
 func lifecycleEventApplicability(
 	snapshot eventtriggers.Snapshot,
+	zoneReader ZoneApplicabilityReader,
 	point geoapplicability.Point,
 ) eventtriggers.Snapshot {
 	snapshot.Triggers = append([]eventtriggers.Trigger{}, snapshot.Triggers...)
@@ -203,14 +215,27 @@ func lifecycleEventApplicability(
 		}
 		copy := *product
 		copy.Product = nws.CloneProduct(copy.Product)
-		evaluation := geoapplicability.Evaluate(
-			copy.Geometry.Status,
-			copy.Geometry.Type,
-			copy.Geometry.Shape,
-			point,
-		)
-		copy.Applicability = evaluation.Result
-		copy.ApplicabilityReason = evaluation.Reason
+		if copy.Geometry.Status != "absent" {
+			evaluation := geoapplicability.Evaluate(
+				copy.Geometry.Status,
+				copy.Geometry.Type,
+				copy.Geometry.Shape,
+				point,
+			)
+			copy.Applicability = evaluation.Result
+			copy.ApplicabilityReason = evaluation.Reason
+			copy.ApplicabilityBasis = "inline_geometry"
+		} else if zoneReader != nil && len(copy.AffectedZones) > 0 {
+			evaluation := zoneReader.EvaluateZones(copy.AffectedZones, copy.Sent, point)
+			copy.Applicability = evaluation.Result
+			copy.ApplicabilityReason = evaluation.Reason
+			copy.ApplicabilityBasis = "affected_zones"
+			copy.ZoneEvidence = &evaluation
+		} else {
+			copy.Applicability = geoapplicability.ResultUnknown
+			copy.ApplicabilityReason = geoapplicability.ReasonNoPolygon
+			copy.ApplicabilityBasis = "none"
+		}
 		snapshot.Triggers[index].NWSProduct = &copy
 	}
 	return snapshot

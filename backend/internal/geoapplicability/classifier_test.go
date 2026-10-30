@@ -2,6 +2,8 @@ package geoapplicability
 
 import (
 	"encoding/json"
+	"errors"
+	"math/big"
 	"testing"
 )
 
@@ -187,5 +189,58 @@ func TestExactNearBoundaryMatrix(t *testing.T) {
 		if got := Evaluate("valid", kind, shape, test.point); got != test.want {
 			t.Fatalf("%s classified as %#v, want %#v", test.point.Longitude, got, test.want)
 		}
+	}
+}
+
+func TestPreparedGeometryMatchesEvaluateAndBoundsValidationWork(t *testing.T) {
+	t.Parallel()
+	kind, shape := geometry("MultiPolygon", `[
+		[[[0,0],[4,0],[4,4],[0,4],[0,0]],[[1,1],[1,2],[2,2],[2,1],[1,1]]],
+		[[[6,0],[8,0],[8,2],[6,2],[6,0]]]
+	]`)
+	prepared, err := Prepare(*kind, shape, DefaultValidationWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, point := range []Point{
+		{Longitude: "0.5", Latitude: "0.5"},
+		{Longitude: "1.5", Latitude: "1.5"},
+		{Longitude: "4", Latitude: "2"},
+		{Longitude: "7", Latitude: "1"},
+		{Longitude: "5", Latitude: "1"},
+	} {
+		if got, want := prepared.Evaluate(point), Evaluate("valid", kind, shape, point); got != want {
+			t.Fatalf("prepared result %#v != wrapper result %#v for %#v", got, want, point)
+		}
+	}
+
+	_, adversarial := geometry("Polygon", `[[[0,0],[4,0],[2,2],[4,4],[0,4],[2,2],[0,0]]]`)
+	polygons, err := decodeGeometry("Polygon", adversarial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateGeometry(polygons, &validationBudget{}); !errors.Is(err, ErrTooComplex) {
+		t.Fatalf("adversarial geometry error = %v, want ErrTooComplex", err)
+	}
+
+	var bounded ring
+	const steps = 100
+	add := func(x, y int64) {
+		bounded = append(bounded, point{x: big.NewRat(x, steps), y: big.NewRat(y, steps)})
+	}
+	for index := int64(0); index <= steps; index++ {
+		add(index, 0)
+	}
+	for index := int64(1); index <= steps; index++ {
+		add(steps, index)
+	}
+	for index := int64(steps - 1); index >= 0; index-- {
+		add(index, steps)
+	}
+	for index := int64(steps - 1); index >= 0; index-- {
+		add(0, index)
+	}
+	if err := validateRing(bounded, &validationBudget{remaining: 100}); !errors.Is(err, ErrTooComplex) {
+		t.Fatalf("bounding-box rejected pairs escaped work budget: %v", err)
 	}
 }

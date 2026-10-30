@@ -47,6 +47,19 @@ func TestProductRetainsExactSourceFactsAndOrderedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("canonicalizes accepted affected-zone URLs", func(t *testing.T) {
+		zone, ok := parseZone("https://api.weather.gov/zones/forecast/HIZ%30%30%36")
+		if !ok {
+			t.Fatal("expected encoded canonical zone path to remain accepted")
+		}
+		if zone != (Zone{
+			URL: "https://api.weather.gov/zones/forecast/HIZ006",
+			ID:  "HIZ006", Type: "forecast",
+		}) {
+			t.Fatalf("encoded zone was not canonicalized: %#v", zone)
+		}
+	})
 	product := snapshot.Alerts[0].Product
 	expected := map[string]string{
 		"id": "urn:oid:current", "url": "https://api.weather.gov/alerts/urn:oid:current",

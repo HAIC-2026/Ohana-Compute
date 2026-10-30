@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/chokevin/hawaii-resilience-map/backend/internal/api"
@@ -65,7 +66,7 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 		})
 		handlers[mode] = api.NewServer(fixtureConfig).Handler()
 	}
-	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "no-polygon", "invalid-geometry", "topology-invalid", "stale", "partial", "empty", "unavailable"} {
+	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "no-polygon", "invalid-geometry", "topology-invalid", "zone-inside", "zone-outside", "zone-boundary", "zone-partial", "zone-invalid", "zone-stale", "zone-pending", "zone-update", "zone-cancel", "stale", "partial", "empty", "unavailable"} {
 		fixtureConfig := config
 		fixtureConfig.Registry = nil
 		fixtureConfig.EventTriggers = eventtriggers.NewService(eventtriggers.Config{
@@ -73,6 +74,9 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 			ComCat: fixtureSources{}, HANS: hans.NewClient(nil),
 			Now: func() time.Time { return time.Date(2026, 10, 30, 18, 0, 0, 0, time.UTC) },
 		})
+		if strings.HasPrefix(mode, "zone-") {
+			fixtureConfig.ZoneApplicability = weatherZoneFixture{mode: mode}
+		}
 		weatherHandlers[mode] = api.NewServer(fixtureConfig).Handler()
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
