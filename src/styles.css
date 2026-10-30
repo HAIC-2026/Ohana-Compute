@@ -1077,6 +1077,42 @@ summary:focus-visible,
   padding-top: 8px;
 }
 
+.nws-product {
+  min-width: 0;
+  margin-block: 16px;
+  padding-block: 12px;
+  border-top: 1px solid var(--cp-border);
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.nws-product p {
+  margin-block: 0 10px;
+}
+
+.nws-product summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.nws-product-facts {
+  display: grid;
+  gap: 4px;
+}
+
+.nws-product-facts dt {
+  margin-block-start: 10px;
+  font-weight: 700;
+}
+
+.nws-product-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+
 .event-trigger-provenance summary {
   color: var(--cp-link);
   cursor: pointer;

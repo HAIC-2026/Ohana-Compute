@@ -133,6 +133,13 @@ func TestNWSAdvisoryWatchWarningAndCAPResponseNeverBecomeOrder(t *testing.T) {
 					ID: "one", Hazard: "flood", Event: test.event,
 					Headline: test.event, ResponseType: "Evacuate",
 					Expires: now.Add(time.Hour).Format(time.RFC3339),
+					Product: func() nws.Product {
+						product := validNWSProduct(now)
+						product.Event = &test.event
+						product.Headline = &test.event
+						product.Response = nwsPointer("Evacuate")
+						return product
+					}(),
 				}},
 				Source: nws.SourceStatus{
 					Authority:   "NOAA National Weather Service",

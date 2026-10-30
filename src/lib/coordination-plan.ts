@@ -85,6 +85,7 @@ export function usableTrigger(
     (!expires || Date.parse(expires) > now) &&
     terms[hazard].test(`${trigger.hazard_event_kind} ${trigger.title}`) &&
     trigger.source !== 'county_order' &&
+    trigger.source !== 'nws' &&
     trigger.jurisdiction_scope === 'statewide'
   )
 }

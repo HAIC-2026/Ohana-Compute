@@ -49,7 +49,7 @@ test('official context excludes expired, stale, wrong-hazard and local products'
   const now = Date.now()
   const trigger: EventTrigger = {
     ...eventTriggerSnapshot.triggers[0],
-    source: 'nws',
+    source: 'ptwc',
     lifecycle: 'active',
     jurisdiction_scope: 'statewide',
     hazard_event_kind: 'hurricane',
@@ -61,6 +61,9 @@ test('official context excludes expired, stale, wrong-hazard and local products'
     },
   } as EventTrigger
   expect(usableTrigger(trigger, 'hurricane', now)).toBe(true)
+  expect(usableTrigger({ ...trigger, source: 'nws' }, 'hurricane', now)).toBe(
+    false,
+  )
   expect(usableTrigger(trigger, 'wildfire', now)).toBe(false)
   expect(
     usableTrigger(

@@ -30,6 +30,7 @@ type Alert struct {
 	Instruction   string          `json:"instruction,omitempty"`
 	AffectedZones []string        `json:"affected_zones"`
 	Geometry      json.RawMessage `json:"geometry"`
+	Product       Product         `json:"nws_product"`
 }
 
 type SourceStatus struct {
@@ -81,20 +82,33 @@ type feature struct {
 }
 
 type properties struct {
-	ID            string   `json:"id"`
-	Area          string   `json:"areaDesc"`
+	ID            *string  `json:"id"`
+	URL           *string  `json:"@id"`
+	Area          *string  `json:"areaDesc"`
 	AffectedZones []string `json:"affectedZones"`
-	Effective     string   `json:"effective"`
-	Onset         string   `json:"onset"`
-	Expires       string   `json:"expires"`
-	Severity      string   `json:"severity"`
-	Certainty     string   `json:"certainty"`
-	Urgency       string   `json:"urgency"`
-	ResponseType  string   `json:"response"`
-	Event         string   `json:"event"`
-	Headline      string   `json:"headline"`
-	Description   string   `json:"description"`
-	Instruction   string   `json:"instruction"`
+	Geocode       struct {
+		UGC  []string `json:"UGC"`
+		SAME []string `json:"SAME"`
+	} `json:"geocode"`
+	References   []referenceProperties `json:"references"`
+	Sender       *string               `json:"sender"`
+	SenderName   *string               `json:"senderName"`
+	Sent         *string               `json:"sent"`
+	Effective    *string               `json:"effective"`
+	Onset        *string               `json:"onset"`
+	Expires      *string               `json:"expires"`
+	Ends         *string               `json:"ends"`
+	Status       *string               `json:"status"`
+	MessageType  *string               `json:"messageType"`
+	Scope        *string               `json:"scope"`
+	Severity     *string               `json:"severity"`
+	Certainty    *string               `json:"certainty"`
+	Urgency      *string               `json:"urgency"`
+	ResponseType *string               `json:"response"`
+	Event        *string               `json:"event"`
+	Headline     *string               `json:"headline"`
+	Description  string                `json:"description"`
+	Instruction  string                `json:"instruction"`
 }
 
 func NewClient(config Config) *Client {
@@ -160,6 +174,7 @@ func (client *Client) ActiveAlerts(ctx context.Context) (Snapshot, error) {
 		refreshed.Source.RetrievedAt = now
 		refreshed.Source.FreshUntil = now.Add(client.cacheTTL)
 		refreshed.Source.Status = "fresh"
+		refreshed.Source.RefreshAttemptedAt = nil
 		refreshed.Warnings = nil
 		client.store(refreshed, etag)
 		return refreshed, nil
@@ -174,35 +189,39 @@ func (client *Client) ActiveAlerts(ctx context.Context) (Snapshot, error) {
 		)
 	}
 
+	body, err := io.ReadAll(io.LimitReader(response.Body, (8<<20)+1))
+	if err != nil || len(body) > 8<<20 {
+		return client.staleOrError(cached, now, fmt.Errorf("NWS alerts response unreadable or exceeds size limit"))
+	}
 	var collection featureCollection
-	decoder := json.NewDecoder(io.LimitReader(response.Body, 8<<20))
-	if err := decoder.Decode(&collection); err != nil {
+	if err := json.Unmarshal(body, &collection); err != nil {
 		return client.staleOrError(cached, now, fmt.Errorf("decode NWS alerts: %w", err))
+	}
+	if collection.Features == nil || len(collection.Features) > MaxAlerts {
+		return client.staleOrError(cached, now, fmt.Errorf("NWS alerts missing features or exceeds product limit"))
 	}
 
 	alerts := make([]Alert, 0, len(collection.Features))
 	for _, item := range collection.Features {
-		id := item.Properties.ID
-		if id == "" {
-			id = item.ID
-		}
+		product := productFromFeature(item)
 		alerts = append(alerts, Alert{
-			ID:            id,
-			Hazard:        classifyHazard(item.Properties.Event),
-			Event:         item.Properties.Event,
-			Headline:      item.Properties.Headline,
-			Area:          item.Properties.Area,
-			Severity:      item.Properties.Severity,
-			Certainty:     item.Properties.Certainty,
-			Urgency:       item.Properties.Urgency,
-			ResponseType:  item.Properties.ResponseType,
-			Effective:     item.Properties.Effective,
-			Onset:         item.Properties.Onset,
-			Expires:       item.Properties.Expires,
+			ID:            stringValue(product.ID),
+			Hazard:        classifyHazard(stringValue(product.Event)),
+			Event:         stringValue(product.Event),
+			Headline:      stringValue(product.Headline),
+			Area:          stringValue(product.AreaDesc),
+			Severity:      stringValue(product.Severity),
+			Certainty:     stringValue(product.Certainty),
+			Urgency:       stringValue(product.Urgency),
+			ResponseType:  stringValue(product.Response),
+			Effective:     stringValue(product.Effective),
+			Onset:         stringValue(product.Onset),
+			Expires:       stringValue(product.Expires),
 			Description:   item.Properties.Description,
 			Instruction:   item.Properties.Instruction,
 			AffectedZones: item.Properties.AffectedZones,
-			Geometry:      item.Geometry,
+			Geometry:      product.Geometry.Shape,
+			Product:       product,
 		})
 	}
 
@@ -272,8 +291,11 @@ func (client *Client) staleOrError(
 }
 
 func cloneSnapshot(snapshot Snapshot) Snapshot {
-	snapshot.Alerts = append([]Alert(nil), snapshot.Alerts...)
+	if snapshot.Alerts != nil {
+		snapshot.Alerts = append([]Alert{}, snapshot.Alerts...)
+	}
 	for index := range snapshot.Alerts {
+		snapshot.Alerts[index].Product = cloneProduct(snapshot.Alerts[index].Product)
 		snapshot.Alerts[index].AffectedZones = append(
 			[]string(nil),
 			snapshot.Alerts[index].AffectedZones...,
@@ -289,6 +311,13 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 		snapshot.Source.RefreshAttemptedAt = &refreshAttemptedAt
 	}
 	return snapshot
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func classifyHazard(event string) string {

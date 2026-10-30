@@ -71,6 +71,7 @@ func (fixtureSources) ActiveAlerts(context.Context) (nws.Snapshot, error) {
 			Effective:   now.Add(-15 * time.Minute).Format(time.RFC3339),
 			Expires:     now.Add(90 * time.Minute).Format(time.RFC3339),
 			Instruction: "Follow authorized local instructions.",
+			Product:     fixtureNWSProduct(now),
 		}},
 		Source: nws.SourceStatus{
 			ID: "nws-hi-alerts", Authority: "NOAA National Weather Service",

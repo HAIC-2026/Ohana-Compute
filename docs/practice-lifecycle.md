@@ -147,12 +147,58 @@ At a limit, export and explicitly reset; no accepted record is auto-evicted.
 Exports and packets include the full source chain and its provenance in fixed
 canonical order. Existing sealed handoffs are not rewritten by refreshes.
 
+## Read-only NWS product provenance
+
+The lifecycle evidence panel retains bounded NWS product identity, canonical
+source link, sender attribution, CAP message state, explicit references,
+reported area, affected zones, and validated source geometry. Sent, effective,
+onset, expires, and ends are independent source facts. Issued time comes only
+from `sent`; absent onset and ends remain null. No retrieval time, practice
+clock, or other timestamp fills a missing source field.
+
+Retrieval freshness and product validity are separate. The browser evaluates
+product expiry on wall time even without another request, including after a
+304 response. A fresh retrieval cannot revive an expired product; stale retrieval
+does not rewrite the product's timestamps. Only actual, public Alert/Update
+messages with valid decision fields can be eligible. Test, Exercise, Draft,
+System, Cancel, Ack, and Error messages cannot become current warnings because
+their titles say “Warning” or their expiry is in the future. References retain
+source order and attribution; titles never establish a replacement chain.
+Cancellation is a message relationship, not an all-clear or restoration.
+
+The browser validates nested fields, enum types, and the consistency of
+eligibility, relationship, and validity at the source snapshot time before
+caching. A bounded but malformed source timestamp can be retained only with
+explicit unknown validity; it cannot be paired with a current-product claim.
+The ingestion boundary accepts at most 100 products in the existing 8 MiB
+response limit; reference/zone/code lists are bounded to 64 entries, and
+Polygon/MultiPolygon shapes to 16 KiB and 512 vertices. The existing 2 MiB
+browser evidence limit remains in force. Unsupported `expiredReferences` are
+not projected.
+
+The NWS query is statewide Hawaiʻi. Query membership, reported area names,
+issuing office, county membership, and missing geometry never establish local
+impact. Planning-location applicability is explicitly **unknown**, including
+for products carrying valid polygons. No point-in-polygon match is introduced
+in this slice. A successful empty query means **no products returned**, not no
+hazard or order. Partial retrieval and failures remain explicit; unrelated
+source failures do not change the NWS source's own retrieval state.
+
+These are read-only product details, not attachable lifecycle claims. Refreshes
+do not change B07/D03/A04 records, H1/H2/H3, manual service conditions, or
+`practice-lifecycle.v3` digests and migrations. B04 remains based solely on
+manual practice inputs: no warning/preparation margin, arrival, departure,
+legal order, passability, restoration, containment, or all-clear is computed
+from NWS fields. The legacy event-trigger panel also re-evaluates wall-time
+expiry and eligibility, refreshes instead of caching forever, and retains
+validated last-known source facts when a later payload is malformed or fails.
+
 ### Deliberately blocked domains and next slices
 
-1. **NWS product provenance:** next ranked source-bound slice. First separate
-   issued, effective, and onset timestamps and retain deterministic source
-   geography. B04 remains manual; the existing onset-as-issued mapping is not
-   timing evidence.
+1. **NWS applicability contract:** next ranked slice. Establish an explicitly
+   reviewed, deterministic geography contract before any planning-location
+   match or source-bound acceptance. Provenance alone is not applicability,
+   timing evidence, or a reason to migrate lifecycle records.
 2. **PTWC jurisdiction:** no attachable Hawaiʻi-applicable claim until a
    deterministic jurisdiction rule is implemented and tested. A ComCat tsunami
    flag remains an earthquake fact, never a tsunami alert or order.

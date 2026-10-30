@@ -13,6 +13,7 @@ import {
   useEventTriggers,
 } from '../lib/event-triggers'
 import type { EventTrigger, EventTriggerSource } from '../lib/event-triggers'
+import { NWSProductDetails } from './NWSProductDetails'
 
 const sourceLabels: Record<EventTriggerSource, string> = {
   nws: 'NWS',
@@ -46,7 +47,7 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
 }: {
   compact?: boolean
 }) {
-  const { status, snapshot, retry } = useEventTriggers()
+  const { status, snapshot, retry, error, now } = useEventTriggers()
   const operationalTriggers = useMemo(
     () =>
       snapshot?.triggers.filter(
@@ -56,17 +57,14 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
     [snapshot],
   )
   const defaultTrigger = primaryOperationalTrigger(snapshot)
+  const defaultKey = defaultTrigger
+    ? `${defaultTrigger.source}:${defaultTrigger.provenance.product_id ?? defaultTrigger.title}`
+    : ''
   const [selectedKey, setSelectedKey] = useState('')
 
   useEffect(() => {
-    if (!defaultTrigger) {
-      setSelectedKey('')
-      return
-    }
-    setSelectedKey(
-      `${defaultTrigger.source}:${defaultTrigger.provenance.product_id ?? defaultTrigger.title}`,
-    )
-  }, [defaultTrigger])
+    setSelectedKey(defaultKey)
+  }, [defaultKey])
 
   if (status === 'loading') {
     return (
@@ -88,7 +86,7 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
     )
   }
 
-  if (status === 'error' || !snapshot) {
+  if (!snapshot) {
     return (
       <section
         className={`event-trigger-panel is-error ${compact ? 'is-compact' : ''}`}
@@ -97,7 +95,7 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
         <AlertTriangle size={19} />
         <div>
           <strong>Official trigger sources unavailable</strong>
-          <p>Check official sources or retry.</p>
+          <p>{error ?? 'Check official sources or retry.'}</p>
           <span>County evacuation-order data unavailable</span>
           <small>Unavailable does not mean no order.</small>
         </div>
@@ -141,6 +139,14 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
         </div>
       </div>
 
+      {error && (
+        <p role="status">
+          LAST KNOWN · {error}{' '}
+          <button type="button" onClick={retry}>
+            Retry trigger sources
+          </button>
+        </p>
+      )}
       {operationalTriggers.length > 0 ? (
         <>
           <div
@@ -161,7 +167,11 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
                   onClick={() => setSelectedKey(key)}
                 >
                   <strong>{sourceLabels[trigger.source]}</strong>
-                  <span>{planningLabels[trigger.planning_state]}</span>
+                  <span>
+                    {trigger.lifecycle === 'active'
+                      ? planningLabels[trigger.planning_state]
+                      : `Not current · ${trigger.lifecycle}`}
+                  </span>
                 </button>
               )
             })}
@@ -180,6 +190,23 @@ export const EventTriggerPanel = memo(function EventTriggerPanel({
               </strong>
             </div>
             <p>{selected.planning_consequence}</p>
+            {selected.source === 'nws' &&
+              (selected.nws_product ? (
+                <NWSProductDetails
+                  product={selected.nws_product}
+                  now={now}
+                  retrieval={{
+                    status: selected.provenance.source_status,
+                    retrieved_at: selected.provenance.retrieved_at,
+                    fresh_until: selected.provenance.fresh_until,
+                  }}
+                  unavailable={Boolean(error)}
+                />
+              ) : (
+                <p>
+                  NWS product provenance unavailable · Applicability unknown.
+                </p>
+              ))}
             <div className="event-trigger-timing">
               <Clock3 size={14} />
               <span>
