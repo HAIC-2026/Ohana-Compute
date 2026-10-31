@@ -59,7 +59,7 @@ test('real Go NWS provenance and immutable records survive source states on desk
     'true',
   )
   const saved = () =>
-    page.evaluate(() => localStorage.getItem('practice-lifecycle.v4'))
+    page.evaluate(() => localStorage.getItem('practice-lifecycle.v5'))
   await weather
     .getByRole('button', { name: 'Review exact product revision' })
     .click()
@@ -338,7 +338,7 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   const weather = page.getByRole('region', { name: 'NWS product provenance' })
   await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
   const before = await page.evaluate(() =>
-    localStorage.getItem('practice-lifecycle.v4'),
+    localStorage.getItem('practice-lifecycle.v5'),
   )
   mode = '304'
   const beforeCalls = calls
@@ -364,7 +364,7 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   await context.setOffline(true)
   await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
   expect(
-    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v5')),
   ).toBe(before)
 })
 
@@ -454,7 +454,7 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
     await expect(panel).toContainText('Official warning product')
     await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
     const saved = await page.evaluate(() =>
-      localStorage.getItem('practice-lifecycle.v4'),
+      localStorage.getItem('practice-lifecycle.v5'),
     )
     if (retrieval === 'offline') {
       await context.setOffline(true)
@@ -515,7 +515,7 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
     )
     expect(requests).toBe(beforeExpiry)
     expect(
-      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
+      await page.evaluate(() => localStorage.getItem('practice-lifecycle.v5')),
     ).toBe(saved)
     expect(writes).toEqual([])
   })

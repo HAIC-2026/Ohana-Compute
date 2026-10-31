@@ -6,6 +6,7 @@ import {
   cmistDomains,
   createInitialLifecycleState,
   exportLifecycleRecord,
+  followThroughArchiveDigest,
   generateCloseoutPacket,
   guidanceBlocks,
   h1Gates,
@@ -16,6 +17,7 @@ import {
   migrateLifecycleV1State,
   migrateLifecycleV2State,
   migrateLifecycleV3State,
+  migrateLifecycleV4State,
   parseLifecycleComparison,
   practiceStamp,
   restoreLifecycleState,
@@ -218,6 +220,13 @@ function completeLifecycle(startNextCycle = true) {
     supportItemId: state.recoveryRows[0].supportItemId,
     horizon: 'next day',
     state: 'follow-up-ready',
+  })
+  state = apply(state, {
+    type: 'create-follow-through',
+    supportItemId: state.recoveryRows[0].supportItemId,
+    owner: 'Recovery lead',
+    dueHorizon: 'next day',
+    doneCheck: 'practice-review-recorded',
   })
   for (const [index, domain] of cmistDomains.entries()) {
     state = apply(state, {
@@ -744,7 +753,7 @@ test('restore rejects malformed ledger and comparison metadata', () => {
   expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
 })
 
-test('migrates saved v1 state to strict v4 preserving original seals', () => {
+test('migrates saved v1 state to strict v5 preserving original seals', () => {
   const before = readyBefore()
   const originalDigest = fnvDigest(
     stableStringify({
@@ -773,11 +782,13 @@ test('migrates saved v1 state to strict v4 preserving original seals', () => {
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   delete legacy.legacySeals
   delete legacy.h1.evidenceReferences
 
   const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
-  expect(migrated.schema).toBe('practice-lifecycle.v4')
+  expect(migrated.schema).toBe('practice-lifecycle.v5')
   expect(migrated.pinnedEvidence).toEqual([])
   expect(migrated.h1?.evidenceReferences).toEqual([])
   expect(migrated.h1?.digest).toBe(originalDigest)
@@ -803,6 +814,8 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   delete legacy.legacySeals
   const text = JSON.stringify(legacy)
   const migrated = migrateLifecycleV2State(text)
@@ -846,6 +859,8 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
     'weatherRechecks',
     'weatherHistory',
     'previousWeatherCycle',
+    'followThroughItems',
+    'followThroughHistory',
     'legacySeals',
   ])
     delete legacy[key]
@@ -1738,6 +1753,8 @@ test('v3 migration preserves sealed digests and creates no weather facts', () =>
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   const migrated = migrateLifecycleV3State(JSON.stringify(legacy))
   expect(migrated.h1?.digest).toBe(h1)
   expect(migrated.weatherEvidence).toEqual([])
@@ -1747,11 +1764,35 @@ test('v3 migration preserves sealed digests and creates no weather facts', () =>
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
 })
 
-test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () => {
+test('v4 migration preserves sealed H1 H2 and prior H3 digests', () => {
+  const sealed = completeLifecycle(false)
+  const v4Sealed = structuredClone(sealed) as unknown as Record<string, any>
+  v4Sealed.schema = 'practice-lifecycle.v4'
+  delete v4Sealed.followThroughItems
+  delete v4Sealed.followThroughHistory
+  const migratedSealed = migrateLifecycleV4State(JSON.stringify(v4Sealed))
+  expect(migratedSealed.h1?.digest).toBe(sealed.h1?.digest)
+  expect(migratedSealed.h2?.digest).toBe(sealed.h2?.digest)
+
+  const rolled = completeLifecycle(true)
+  const v4Rolled = structuredClone(rolled) as unknown as Record<string, any>
+  v4Rolled.schema = 'practice-lifecycle.v4'
+  delete v4Rolled.followThroughItems
+  delete v4Rolled.followThroughHistory
+  const migratedRolled = migrateLifecycleV4State(JSON.stringify(v4Rolled))
+  expect(migratedRolled.previousCycle?.digest).toBe(
+    rolled.previousCycle?.digest,
+  )
+  expect(migratedRolled.followThroughItems).toEqual([])
+  expect(migratedRolled.followThroughHistory).toEqual([])
+})
+
+test('v1 v2 v3 and v4 near-limit records migrate without empty-field overhead', () => {
   const cases = [
     ['practice-lifecycle.v1', migrateLifecycleV1State],
     ['practice-lifecycle.v2', migrateLifecycleV2State],
     ['practice-lifecycle.v3', migrateLifecycleV3State],
+    ['practice-lifecycle.v4', migrateLifecycleV4State],
   ] as const
   for (const [schema, migrate] of cases) {
     const legacy = structuredClone(
@@ -1766,6 +1807,8 @@ test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () 
       'weatherRechecks',
       'weatherHistory',
       'previousWeatherCycle',
+      'followThroughItems',
+      'followThroughHistory',
       ...(schema === 'practice-lifecycle.v1' ? ['pinnedEvidence'] : []),
     ])
       delete legacy[key]
@@ -1792,6 +1835,145 @@ test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () 
     ).toBeLessThanOrEqual(maxLifecycleImportBytes)
     expect(migrated.weatherEvidence).toEqual([])
   }
+})
+
+test('structured follow-through enforces exact records and bounded transitions', () => {
+  const planned = completeLifecycle(false)
+  const id = planned.followThroughItems[0].id
+  expect(() => apply(planned, { type: 'finish-follow-through', id })).toThrow(
+    /latest observed/,
+  )
+
+  let state = apply(planned, { type: 'start-follow-through', id })
+  state = apply(state, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'unknown',
+  })
+  expect(() => apply(state, { type: 'finish-follow-through', id })).toThrow(
+    /latest observed/,
+  )
+  state = apply(state, { type: 'mark-follow-through-unable', id })
+  state = apply(state, { type: 'start-follow-through', id })
+  expect(() =>
+    apply(state, { type: 'mark-follow-through-unable', id }),
+  ).toThrow(/current PRACTICE result|not-observed or unknown/)
+  for (let index = 1; index < 8; index++)
+    state = apply(state, {
+      type: 'record-follow-through-observation',
+      id,
+      result: index === 7 ? 'observed' : 'not-observed',
+    })
+  expect(() =>
+    apply(state, {
+      type: 'record-follow-through-observation',
+      id,
+      result: 'observed',
+    }),
+  ).toThrow(/observation limit/)
+  expect(() =>
+    apply(state, { type: 'mark-follow-through-unable', id }),
+  ).toThrow(/not-observed or unknown/)
+  state = apply(state, { type: 'finish-follow-through', id })
+  expect(state.followThroughItems[0].status).toBe('done')
+
+  let exhausted = apply(planned, { type: 'start-follow-through', id })
+  for (let index = 0; index < 8; index++) {
+    exhausted = apply(exhausted, {
+      type: 'record-follow-through-observation',
+      id,
+      result: 'unknown',
+    })
+    exhausted = apply(exhausted, {
+      type: 'mark-follow-through-unable',
+      id,
+    })
+    if (index < 7)
+      exhausted = apply(exhausted, { type: 'start-follow-through', id })
+  }
+  expect(exhausted.followThroughItems[0].status).toBe('unable')
+  expect(() => apply(exhausted, { type: 'start-follow-through', id })).toThrow(
+    /observation limit is full/,
+  )
+
+  const malformed = structuredClone(state) as any
+  malformed.followThroughItems[0].extra = true
+  expect(() => restoreLifecycleState(JSON.stringify(malformed))).toThrow(
+    /failed validation/,
+  )
+  const duplicate = structuredClone(state) as any
+  duplicate.followThroughItems.push(
+    structuredClone(duplicate.followThroughItems[0]),
+  )
+  expect(() => restoreLifecycleState(JSON.stringify(duplicate))).toThrow(
+    /failed validation/,
+  )
+  const orphan = structuredClone(state) as any
+  orphan.followThroughItems[0].supportItemId = 'orphan'
+  orphan.followThroughItems[0].id = `${orphan.cycle}:orphan`
+  expect(() => restoreLifecycleState(JSON.stringify(orphan))).toThrow(
+    /failed validation/,
+  )
+})
+
+test('follow-through linkage gates and rollover preserve stable unresolved work', () => {
+  const linked = completeLifecycle(false)
+  const unlinked = {
+    ...linked,
+    followThroughItems: [],
+  }
+  expect(lifecycleGates(unlinked).recoveryRows).toBe(false)
+  expect(lifecycleGates(linked).recoveryRows).toBe(true)
+
+  const id = linked.followThroughItems[0].id
+  const rolled = apply(linked, { type: 'start-next-cycle' })
+  expect(rolled.followThroughItems).toEqual(linked.followThroughItems)
+  expect(rolled.followThroughItems[0].id).toBe(id)
+  expect(rolled.followThroughHistory).toHaveLength(1)
+  expect(rolled.followThroughHistory[0].items).toEqual(
+    linked.followThroughItems,
+  )
+  expect(rolled.carriedGaps.map((gap) => gap.gapId)).toContain(
+    linked.followThroughItems[0].gapId,
+  )
+  expect(restoreLifecycleState(serializeLifecycleState(rolled))).toEqual(rolled)
+  const missingArchive = structuredClone(rolled)
+  missingArchive.followThroughHistory = []
+  expect(() => restoreLifecycleState(JSON.stringify(missingArchive))).toThrow(
+    /failed validation/,
+  )
+  const alteredArchive = structuredClone(rolled)
+  alteredArchive.followThroughHistory[0].digest =
+    'fnv1a-dual-v1:0000000000000000'
+  expect(() => restoreLifecycleState(JSON.stringify(alteredArchive))).toThrow(
+    /failed validation/,
+  )
+
+  let completed = apply(linked, { type: 'start-follow-through', id })
+  completed = apply(completed, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+  completed = apply(completed, { type: 'finish-follow-through', id })
+  const completedRoll = apply(completed, { type: 'start-next-cycle' })
+  expect(completedRoll.followThroughItems).toEqual([])
+  expect(completedRoll.followThroughHistory[0].items[0].status).toBe('done')
+  expect(completedRoll.carriedGaps.map((gap) => gap.gapId)).not.toContain(
+    completed.followThroughItems[0].gapId,
+  )
+
+  const disappeared = structuredClone(rolled)
+  disappeared.cycle = 3
+  disappeared.followThroughHistory.push({
+    cycle: 2,
+    items: [],
+    digest: followThroughArchiveDigest({ cycle: 2, items: [] }),
+  })
+  disappeared.followThroughItems = []
+  expect(() => restoreLifecycleState(JSON.stringify(disappeared))).toThrow(
+    /failed validation/,
+  )
 })
 
 test('compact restore rejects a reconstructed canonical export over 128 KiB', () => {

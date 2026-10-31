@@ -115,7 +115,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
     panel.getByRole('button', { name: 'Pinned in before' }),
   ).toBeDisabled()
   const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}'),
+    JSON.parse(localStorage.getItem('practice-lifecycle.v5') ?? '{}'),
   )
   expect(saved.pinnedEvidence).toEqual([
     expect.objectContaining({
@@ -200,7 +200,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
   expect(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}')
+        JSON.parse(localStorage.getItem('practice-lifecycle.v5') ?? '{}')
           .pinnedEvidence[0].snapshotId,
     ),
   ).toBe('snapshot-browser-a')
@@ -320,7 +320,34 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: 'Seal immutable H2' })
     .click()
 
-  await capability(page, 'A01').getByRole('button').click()
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Set follow-up ready' })
+    .click()
+  await capability(page, 'A01')
+    .getByLabel(/Follow-through owner/)
+    .selectOption('Recovery lead')
+  await capability(page, 'A01')
+    .getByLabel(/Follow-through due horizon/)
+    .selectOption('next day')
+  await capability(page, 'A01')
+    .getByLabel(/Follow-through done check/)
+    .selectOption('practice-recheck-recorded')
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Create structured follow-through' })
+    .click()
+  await expect(capability(page, 'A01')).toContainText('origin cycle 1')
+  await expect(capability(page, 'A01')).toContainText('Recovery lead')
+  await expect(capability(page, 'A01')).toContainText(
+    'practice-recheck-recorded',
+  )
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Start follow-through' })
+    .click()
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Record observed' })
+    .click()
+  await capability(page, 'A01').getByRole('button', { name: 'Finish' }).click()
+  await expect(capability(page, 'A01')).toContainText('done')
   await expect(capability(page, 'A01')).toContainText(
     'Recovery review revision: r2',
   )
@@ -379,7 +406,8 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     /^practice-lifecycle-[a-f0-9]{16}\.json$/,
   )
   const recordText = await readFile(await record.path(), 'utf8')
-  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v4')
+  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v5')
+  expect(recordText).toContain('"followThroughItems"')
   expect(recordText).toContain(practiceStamp)
   await capability(page, 'A08')
     .getByRole('button', {
@@ -434,7 +462,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   expect(apiWrites).toEqual([])
   await expect
     .poll(() =>
-      page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
+      page.evaluate(() => localStorage.getItem('practice-lifecycle.v5')),
     )
     .not.toBeNull()
   const width = await page.evaluate(() => ({
