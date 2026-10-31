@@ -1509,7 +1509,10 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                     </div>
                     <span>Next: {nextAction}</span>
                     <details>
-                      <summary>Exact practice record and actions</summary>
+                      <summary>
+                        {item.gapId} · {item.status} · exact practice record and
+                        actions
+                      </summary>
                       <p>
                         {item.id} · origin cycle {item.originCycle} ·{' '}
                         {item.doneCheck} · PRACTICE only

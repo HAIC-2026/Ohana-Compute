@@ -1105,7 +1105,7 @@ function followThroughUnresolved(item: FollowThroughItem) {
 }
 
 function followThroughContinues(
-  prior: FollowThroughItem | FollowThroughArchiveItem,
+  prior: FollowThroughArchiveItem,
   next: FollowThroughItem | FollowThroughArchiveItem,
 ) {
   const statusRank: Record<FollowThroughStatus, number> = {
@@ -1115,8 +1115,9 @@ function followThroughContinues(
     unable: 2,
   }
   return (
+    followThroughUnresolved(prior) &&
     sameFollowThroughOrigin(prior, next) &&
-    next.attemptObservationStart >= prior.attemptObservationStart &&
+    next.attemptObservationStart === prior.observationCount &&
     statusRank[next.status] >= statusRank[prior.status]
   )
 }
@@ -1167,6 +1168,12 @@ function validFollowThroughArchiveItem(value: unknown, cycle: number) {
         observation.cycle !== cycle ||
         !Number.isSafeInteger(observation.practiceMinute) ||
         !stringIn(observation.result, followThroughResults),
+    ) ||
+    value.observations.some(
+      (observation, index, observations) =>
+        index > 0 &&
+        Number(observation.practiceMinute) <
+          Number(observations[index - 1].practiceMinute),
     )
   )
     return false
@@ -1923,10 +1930,14 @@ function validCanonicalRecord(
     )
       return false
     const archived = archivedObservations.get(item.id) ?? []
+    const currentObservations = item.observations.slice(archived.length)
     if (
       item.observations.length < archived.length ||
       stableStringify(item.observations.slice(0, archived.length)) !==
-        stableStringify(archived)
+        stableStringify(archived) ||
+      currentObservations.some(
+        (observation) => observation.cycle !== Number(record.cycle),
+      )
     )
       return false
   }
@@ -2248,22 +2259,51 @@ function assertLifecycleIntegrity(state: LifecycleState) {
     string,
     FollowThroughObservation[]
   >()
-  for (const archive of state.followThroughHistory) {
+  for (const [index, archive] of state.followThroughHistory.entries()) {
+    if (!validFollowThroughArchive(archive))
+      throw new Error('Saved follow-through archive integrity check failed.')
+    const priorArchive =
+      index > 0 ? state.followThroughHistory[index - 1] : undefined
     for (const item of archive.items) {
+      if (item.originCycle !== archive.cycle) {
+        const prior = priorArchive
+          ? priorArchive.items.find((candidate) =>
+              sameFollowThroughOrigin(item, candidate),
+            )
+          : undefined
+        if (
+          !prior ||
+          !priorArchive ||
+          archive.cycle !== priorArchive.cycle + 1 ||
+          !followThroughContinues(prior, item)
+        )
+          throw new Error('Saved follow-through carry integrity check failed.')
+      }
       archivedFollowThroughObservations.set(item.id, [
         ...(archivedFollowThroughObservations.get(item.id) ?? []),
         ...item.observations,
       ])
     }
   }
+  const latestFollowThroughArchive = state.followThroughHistory.at(-1)
   for (const item of state.followThroughItems) {
     if (item.originCycle >= state.cycle) continue
+    const prior = latestFollowThroughArchive?.items.find((candidate) =>
+      sameFollowThroughOrigin(item, candidate),
+    )
     const archived = archivedFollowThroughObservations.get(item.id)
+    const currentObservations = item.observations.slice(archived?.length ?? 0)
     if (
+      !prior ||
+      latestFollowThroughArchive?.cycle !== state.cycle - 1 ||
+      !followThroughContinues(prior, item) ||
       !archived ||
       item.observations.length < archived.length ||
       stableStringify(item.observations.slice(0, archived.length)) !==
-        stableStringify(archived)
+        stableStringify(archived) ||
+      currentObservations.some(
+        (observation) => observation.cycle !== state.cycle,
+      )
     )
       throw new Error('Saved follow-through carry integrity check failed.')
   }
@@ -3806,6 +3846,11 @@ function reduceLifecycleAction(
       )
     }
     case 'start-next-cycle': {
+      if (!validCanonicalRecord(canonicalLifecycleRecord(state)))
+        throw new Error(
+          'Cannot start the next cycle because follow-through integrity validation failed.',
+        )
+      assertLifecycleIntegrity(state)
       if (!state.gateDecision)
         throw new Error('Record an end-of-cycle gate decision first.')
       if (state.gateDecision === 'gates-met' && !lifecycleGatesMet(state))

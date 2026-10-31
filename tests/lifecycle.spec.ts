@@ -351,7 +351,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   )
   await expect(capability(page, 'A01').getByText(/origin cycle 1/)).toBeHidden()
   const exactRecord = capability(page, 'A01').getByText(
-    'Exact practice record and actions',
+    / · planned · exact practice record and actions/,
   )
   await exactRecord.focus()
   await exactRecord.press('Enter')

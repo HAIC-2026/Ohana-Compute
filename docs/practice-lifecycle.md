@@ -100,15 +100,18 @@ observation cannot finish or mark unable a later-cycle attempt.
 An unresolved item at the eight-observation limit must be resolved from its
 latest current-cycle result before rollover; the reducer refuses rollover
 rather than carrying an unwritable commitment.
-The record allows at most 30 current items, 8 observations per item, and 16
-cycle archives under the existing 128 KiB limit. Rollover stores an exact
+The record allows at most 30 current items, 8 observations per item, and up to
+16 cycle archives under the existing 128 KiB limit. Sixteen is an archive-count
+ceiling, not a guaranteed horizon: dense observations, source history, or
+ledger activity can reach the byte limit earlier. Rollover stores an exact
 per-cycle delta for each item: stable identity and configuration, ending status,
 attempt boundary, cumulative observation count, and only the observations added
 in that cycle. Restore reconstructs and verifies the append-only observation
-prefix. H1 and H2 bind the ordered archive digest list whenever history is
-non-empty; empty-history v1-v4 seals remain byte-for-byte unchanged. Rollover
-carries only planned or in-progress items and never claims external execution,
-acceptance, or adoption.
+prefix, exact rollover attempt boundary, current-cycle suffix, and per-cycle
+practice-time chronology. H1 and H2 bind the ordered archive digest list
+whenever history is non-empty; empty-history v1-v4 seals remain byte-for-byte
+unchanged. Rollover carries only planned or in-progress items and never claims
+external execution, acceptance, or adoption.
 
 Before immutable H1, the reducer projects the smallest mandatory During state
 and refuses sealing if that transition would exceed 128 KiB. Before rollover,
@@ -116,12 +119,14 @@ it likewise projects the minimum next Before-to-During path. These checks fail
 while the prior state is still editable instead of accepting an action that
 would freeze the next mandatory phase transition.
 
-The lifecycle defaults to a scan-first presentation. Follow-through cards lead
-with gap, status, owner, due horizon, and next action. Exact identifiers, done
-checks, observation timelines, and action controls are one keyboard-accessible
-disclosure away; archive digests are collapsed by default. Critical
-planned/in-progress/unable states and the PRACTICE boundary remain visible.
-Strict records and closeout exports retain the complete underlying data.
+The A01 follow-through surface uses a reusable scan-first presentation.
+Follow-through cards lead with gap, status, owner, due horizon, and next action.
+Exact identifiers, done checks, observation timelines, and action controls are
+one keyboard-accessible disclosure away; archive digests are collapsed by
+default. Critical planned/in-progress/unable states and the PRACTICE boundary
+remain visible. Strict records and closeout exports retain the complete
+underlying data. Applying this pattern across the rest of the lifecycle remains
+a ready page-wide UX work item.
 An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a
