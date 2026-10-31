@@ -464,10 +464,27 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: 'Start follow-through' })
     .click()
   await capability(page, 'A01')
-    .getByRole('button', { name: 'Record observed' })
+    .getByRole('button', { name: 'Record unknown' })
     .click()
-  await capability(page, 'A01').getByRole('button', { name: 'Finish' }).click()
-  await expect(capability(page, 'A01')).toContainText('done')
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Mark unable' })
+    .click()
+  await capability(page, 'A01')
+    .locator('.lifecycle-capability-detail-body details[open] > summary')
+    .press('Space')
+  await capability(page, 'A01')
+    .locator('.lifecycle-capability-details > summary')
+    .click()
+  await expect(capability(page, 'A01')).toContainText(
+    '0 open · 1 unable follow-through',
+  )
+  await expect(capability(page, 'A01')).toContainText('Recovery lead')
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-status-chip.is-attention'),
+  ).toContainText(/: unable/)
+  await expect(
+    page.getByText('1 unable follow-through', { exact: true }),
+  ).toBeVisible()
   await expect(
     capability(page, 'A01').getByText(/^Create follow-through for /),
   ).toHaveCount(0)
@@ -544,8 +561,8 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     owner: 'Recovery lead',
     dueHorizon: 'next day',
     doneCheck: 'practice-recheck-recorded',
-    status: 'done',
-    observations: [{ result: 'observed' }],
+    status: 'unable',
+    observations: [{ result: 'unknown' }],
   })
   expect(recordText).toContain('"followThroughItems"')
   expect(recordText).toContain(practiceStamp)

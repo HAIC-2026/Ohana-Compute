@@ -115,6 +115,9 @@ function capabilitySnapshot(
   const openFollowThrough = state.followThroughItems.filter(
     (item) => item.status === 'planned' || item.status === 'in-progress',
   )
+  const unableFollowThrough = state.followThroughItems.filter(
+    (item) => item.status === 'unable',
+  )
   const unknownNeeds = state.unmetNeeds.filter((item) =>
     item.band.startsWith('Unknown'),
   )
@@ -279,9 +282,11 @@ function capabilitySnapshot(
     }
     case 'A01':
       return {
-        fact: `${openFollowThrough.length} open follow-through`,
-        owner: openFollowThrough[0]?.owner,
-        exceptions: openFollowThrough.map(
+        fact: unableFollowThrough.length
+          ? `${openFollowThrough.length} open · ${unableFollowThrough.length} unable follow-through`
+          : `${openFollowThrough.length} open follow-through`,
+        owner: openFollowThrough[0]?.owner ?? unableFollowThrough[0]?.owner,
+        exceptions: [...openFollowThrough, ...unableFollowThrough].map(
           (item) => `${item.gapId}: ${item.status}`,
         ),
       }
@@ -300,11 +305,24 @@ function capabilitySnapshot(
           (item) => `${item}: blocked`,
         ),
       }
-    case 'A04':
+    case 'A04': {
+      const sourceRecheckExceptions = state.sourceRechecks
+        .filter((item) => item.result !== 'unchanged')
+        .map((item) => `${item.id}: ${item.result}`)
+      const weatherRecheckExceptions = state.weatherRechecks
+        .filter((item) => item.result !== 'unchanged')
+        .map((item) => `${item.id}: ${item.result}`)
       return {
-        fact: `${state.recheckPlans.length} service rechecks · ${state.sourceRechecks.length} source checks`,
-        owner: state.recheckPlans[0]?.owner,
+        fact: `${state.recheckPlans.length}/${state.sourceRechecks.length}/${state.weatherRechecks.length} service/source/weather rechecks`,
+        owner:
+          state.sourceRechecks.find((item) => item.result !== 'unchanged')
+            ?.owner ??
+          state.weatherRechecks.find((item) => item.result !== 'unchanged')
+            ?.owner ??
+          state.recheckPlans[0]?.owner,
+        exceptions: [...sourceRecheckExceptions, ...weatherRecheckExceptions],
       }
+    }
     case 'A05':
       return {
         fact: state.recoveryDraft
@@ -707,6 +725,12 @@ function PracticeLifecycle() {
   const openFollowThroughCount = state.followThroughItems.filter(
     (item) => item.status === 'planned' || item.status === 'in-progress',
   ).length
+  const unableFollowThroughCount = state.followThroughItems.filter(
+    (item) => item.status === 'unable',
+  ).length
+  const recheckAttentionCount =
+    state.sourceRechecks.filter((item) => item.result !== 'unchanged').length +
+    state.weatherRechecks.filter((item) => item.result !== 'unchanged').length
   const evidenceAttention = liveEvidence.snapshot
     ? evidenceCounts?.unavailableDomains ||
       evidenceCounts?.unavailableEventSources ||
@@ -717,6 +741,12 @@ function PracticeLifecycle() {
     ...(evidenceAttention ? ['public evidence needs attention'] : []),
     ...(openFollowThroughCount
       ? [`${openFollowThroughCount} open follow-through`]
+      : []),
+    ...(unableFollowThroughCount
+      ? [`${unableFollowThroughCount} unable follow-through`]
+      : []),
+    ...(recheckAttentionCount
+      ? [`${recheckAttentionCount} rechecks need attention`]
       : []),
     ...(restoreFailed ? ['saved record invalid'] : []),
   ]
@@ -823,7 +853,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   : (state.followThroughItems.find(
                       (item) =>
                         item.status === 'planned' ||
-                        item.status === 'in-progress',
+                        item.status === 'in-progress' ||
+                        item.status === 'unable',
                     )?.owner ?? 'Recovery lead')}
             </strong>
           </div>
@@ -872,9 +903,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
       >
         <div className="lifecycle-evidence-heading">
           <div>
-            <p className="operations-stamp">
-              PUBLIC EVIDENCE · READ ONLY
-            </p>
+            <p className="operations-stamp">PUBLIC EVIDENCE · READ ONLY</p>
             <h2 id="lifecycle-evidence-heading">Live lifecycle evidence</h2>
           </div>
           <button type="button" onClick={liveEvidence.refresh}>

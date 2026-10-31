@@ -281,6 +281,15 @@ test('real Go NWS provenance and immutable records survive source states on desk
     expect(current.weatherEvidence).toEqual(accepted)
     expect(current.capabilityMarkers).not.toContain('A04')
   }
+  await weather.locator('details.lifecycle-source-detail > summary').click()
+  await cap('A04').locator('.lifecycle-capability-details > summary').click()
+  await expect(cap('A04')).toContainText(
+    '0/0/5 service/source/weather rechecks',
+  )
+  await expect(cap('A04')).toContainText('source-unavailable')
+  await expect(
+    page.getByText('4 rechecks need attention', { exact: true }),
+  ).toBeVisible()
   await weather.scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('nws-provenance.png') })
   expect(
@@ -300,6 +309,61 @@ test('real Go NWS provenance and immutable records survive source states on desk
   ).toHaveCount(5)
   expect(JSON.parse((await saved())!).weatherEvidence).toEqual(accepted)
   expect(writes).toEqual([])
+})
+
+test('collapsed NWS summary exposes mixed product states', async ({ page }) => {
+  const current = nwsProduct()
+  const cancelled = {
+    ...nwsProduct(),
+    id: 'urn:oid:fixture-nws-cancel',
+    url: 'https://api.weather.gov/alerts/urn:oid:fixture-nws-cancel',
+    headline: 'Fixture cancellation',
+    message_type: 'Cancel' as const,
+    relationship: 'cancel' as const,
+    eligibility: 'cancellation' as const,
+    expires: '2026-10-30T17:59:00Z',
+    validity: 'expired' as const,
+    geometry: {
+      status: 'valid' as const,
+      type: 'Polygon' as const,
+      shape: {
+        type: 'Polygon' as const,
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+    applicability: 'outside' as const,
+    applicability_reason: 'strict_exterior' as const,
+    applicability_basis: 'inline_geometry' as const,
+  }
+  const snapshot = weatherSnapshot(current)
+  snapshot.event_triggers.data!.triggers.push({
+    source: 'nws',
+    lifecycle: 'cancelled',
+    planning_state: 'monitor',
+    title: cancelled.headline,
+    nws_product: cancelled,
+  })
+  await page.clock.install({ time: new Date(weatherTime) })
+  await page.route('**/api/v1/lifecycle/evidence?**', (route) =>
+    route.fulfill({ json: snapshot }),
+  )
+  await page.goto('/lifecycle')
+
+  const weather = page.getByRole('region', { name: 'NWS product provenance' })
+  await expect(weather).toContainText('validity: current · expired')
+  await expect(weather).toContainText('eligibility: eligible · cancellation')
+  await expect(weather).toContainText('applicability: unknown · outside')
+  await expect(
+    weather.locator('details.lifecycle-source-detail'),
+  ).not.toHaveAttribute('open', '')
 })
 
 test('zone applicability ages to unknown without browser geometry recomputation', async ({

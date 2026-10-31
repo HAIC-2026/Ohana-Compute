@@ -31,6 +31,16 @@ function freshZoneRow(row: NWSZoneEvidence['zones'][number], now: number) {
   )
 }
 
+function summarizeStates(states: string[]) {
+  const counts = new Map<string, number>()
+  for (const state of states) counts.set(state, (counts.get(state) ?? 0) + 1)
+  return Array.from(counts, ([state, count]) =>
+    count === 1
+      ? state.replaceAll('_', ' ')
+      : `${count} ${state.replaceAll('_', ' ')}`,
+  ).join(' · ')
+}
+
 export function NWSProductDetails({
   product,
   now,
@@ -307,14 +317,17 @@ export function LifecycleWeatherContext({
   const missingProvenance = events?.triggers.some(
     (row) => row.source === 'nws' && !row.nws_product,
   )
-  const firstProduct = products.at(0)
-  const firstValidity = firstProduct
-    ? nwsProductValidity(firstProduct, live.now)
-    : null
-  const firstEligibility = firstProduct ? nwsEligibility(firstProduct) : null
-  const firstApplicability = firstProduct
-    ? currentNWSApplicability(firstProduct, live.now).result
-    : null
+  const validitySummary = summarizeStates(
+    products.map((product) => nwsProductValidity(product, live.now)),
+  )
+  const eligibilitySummary = summarizeStates(
+    products.map((product) => nwsEligibility(product)),
+  )
+  const applicabilitySummary = summarizeStates(
+    products.map(
+      (product) => currentNWSApplicability(product, live.now).result,
+    ),
+  )
   return (
     <section
       className="lifecycle-source-section"
@@ -334,19 +347,19 @@ export function LifecycleWeatherContext({
           >
             retrieval: {retrieval}
           </span>
-          {firstValidity && (
+          {validitySummary && (
             <span className="lifecycle-status-chip">
-              validity: {firstValidity.replaceAll('_', ' ')}
+              validity: {validitySummary}
             </span>
           )}
-          {firstEligibility && (
+          {eligibilitySummary && (
             <span className="lifecycle-status-chip">
-              eligibility: {firstEligibility.replaceAll('_', ' ')}
+              eligibility: {eligibilitySummary}
             </span>
           )}
-          {firstApplicability && (
+          {applicabilitySummary && (
             <span className="lifecycle-status-chip">
-              applicability: {firstApplicability}
+              applicability: {applicabilitySummary}
             </span>
           )}
           {sourceFailed && (
