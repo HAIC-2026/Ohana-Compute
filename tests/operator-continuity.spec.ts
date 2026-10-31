@@ -98,7 +98,9 @@ test('practice lifecycle keeps decisions local and uses deterministic time', asy
     .locator('[data-capability="B01"]')
     .getByRole('button', { name: 'Lock practice event' })
     .click()
-  await expect(page.getByText('Cycle 1 · Practice Event Amber')).toBeVisible()
+  await expect(
+    page.getByText('Practice Event Amber locked for cycle 1'),
+  ).toBeVisible()
   await expect(
     page.getByLabel('Lifecycle status').getByText('T-60'),
   ).toBeVisible()

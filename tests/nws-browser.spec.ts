@@ -48,7 +48,7 @@ test('real Go NWS provenance and immutable records survive source states on desk
   ])
   const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
   const weather = page.getByRole('region', { name: 'NWS product provenance' })
-  await expect(weather.locator('[data-nws-retrieval]')).toHaveAttribute(
+  await expect(weather.locator('[data-nws-retrieval]').first()).toHaveAttribute(
     'data-nws-retrieval',
     'fresh',
   )
@@ -58,6 +58,9 @@ test('real Go NWS provenance and immutable records survive source states on desk
     'data-lifecycle-restored',
     'true',
   )
+  await weather
+    .locator('details.lifecycle-source-detail > summary')
+    .press('Enter')
   const saved = () =>
     page.evaluate(() => localStorage.getItem('practice-lifecycle.v5'))
   await weather
@@ -74,7 +77,10 @@ test('real Go NWS provenance and immutable records survive source states on desk
   expect(accepted[0].product.id).toBe(product.id)
   expect(accepted[0].evaluation.applicability).toBe('inside')
   const before = await saved()
-  await weather.locator('summary').first().click()
+  await weather
+    .getByText('Exact product facts and provenance', { exact: true })
+    .first()
+    .click()
   for (const field of [
     'sent',
     'effective',
@@ -192,11 +198,13 @@ test('real Go NWS provenance and immutable records survive source states on desk
       ).toHaveText('Not reported')
     }
     if (scenario === 'stale')
-      await expect(weather.locator('[data-nws-retrieval]')).toContainText(
-        'stale',
-      )
+      await expect(
+        weather.locator('[data-nws-retrieval]').first(),
+      ).toContainText('stale')
     if (scenario === 'partial')
-      await expect(weather).toContainText('NWS source reported an error')
+      await expect(weather).toContainText(
+        'source error · facts may be incomplete',
+      )
     if (scenario === 'empty')
       await expect(weather).toContainText(
         'No products returned by this query. This does not mean no hazard or order.',
@@ -209,6 +217,11 @@ test('real Go NWS provenance and immutable records survive source states on desk
   await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
   await expect(weather.locator('[data-nws-validity]')).toHaveText('current')
   const cap = (id: string) => page.locator(`[data-capability="${id}"]`)
+  const capabilityDetails = page.locator(
+    '.lifecycle-capability-details:not([open]) > summary',
+  )
+  while (await capabilityDetails.count())
+    await capabilityDetails.first().click()
   await cap('B01').getByRole('button', { name: 'Lock practice event' }).click()
   await cap('B02').getByRole('button').first().click()
   await cap('B03')
@@ -276,6 +289,9 @@ test('real Go NWS provenance and immutable records survive source states on desk
     ),
   ).toBe(true)
   await page.reload()
+  await weather
+    .locator('details.lifecycle-source-detail > summary')
+    .press('Enter')
   await expect(weather.locator('[data-accepted-weather]')).toHaveCount(1)
   await expect(
     weather
@@ -346,7 +362,9 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   await page.clock.setSystemTime(new Date(Date.parse(weatherTime) + 120_000))
   await page.clock.runFor(1000)
   await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
-  await expect(weather.locator('[data-nws-retrieval]')).toContainText('fresh')
+  await expect(weather.locator('[data-nws-retrieval]').first()).toContainText(
+    'fresh',
+  )
   expect(calls).toBe(beforeCalls)
   await panel.getByRole('button', { name: 'Refresh', exact: true }).click()
   await expect(weather.locator('[data-nws-validity]')).toHaveText('expired')
@@ -355,7 +373,7 @@ test('wall clock and 304 expiry cannot be hidden by fresh retrieval or malformed
   await expect(panel).toContainText('Malformed lifecycle evidence')
   await expect(weather).not.toContainText('Unvalidated replacement')
   await expect(weather).toContainText('Fixture Flood Warning')
-  await expect(weather.locator('[data-nws-retrieval]')).toContainText(
+  await expect(weather.locator('[data-nws-retrieval]').first()).toContainText(
     'unavailable',
   )
   mode = 'abort'
@@ -479,8 +497,8 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
       'Planning-location applicability: unknown.',
     )
     await expect(panel.locator('[data-nws-validity]')).toHaveText('current')
-    await expect(panel.locator('.nws-product-state')).toContainText(
-      `Retrieval: ${expectedRetrieval}`,
+    await expect(panel.locator('[data-nws-retrieval]')).toContainText(
+      new RegExp(`retrieval: ${expectedRetrieval}`, 'i'),
     )
     await expect(panel.locator('.event-trigger-selector')).toContainText(
       'Retained product',
@@ -493,7 +511,9 @@ for (const retrieval of ['offline', 'unavailable', 'stale'] as const) {
       'Not a current warning for this location',
     )
     await expect(panel).not.toContainText('Official warning product')
-    await panel.locator('.nws-product summary').click()
+    await panel
+      .getByText('Exact product facts and provenance', { exact: true })
+      .click()
     await expect(panel.locator('.nws-product-facts')).toContainText(weatherTime)
     await expect(panel.locator('.nws-product-facts')).toContainText(
       '2026-10-30T18:05:00Z',

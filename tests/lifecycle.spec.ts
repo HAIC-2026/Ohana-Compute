@@ -8,6 +8,18 @@ import { shelterContext } from './fixtures/lifecycle-source'
 const capability = (page: Page, id: string) =>
   page.locator(`[data-capability="${id}"]`)
 
+const openAllCapabilityDetails = async (page: Page) => {
+  await expect(page.locator('[data-lifecycle-restored]')).toHaveAttribute(
+    'data-lifecycle-restored',
+    'true',
+  )
+  await page
+    .locator('.lifecycle-capability-details')
+    .evaluateAll((details) =>
+      details.forEach((detail) => ((detail as HTMLDetailsElement).open = true)),
+    )
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
     if (
@@ -206,9 +218,99 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
   ).toBe('snapshot-browser-a')
 })
 
+test('scan-first default keeps critical state visible and exact records keyboard accessible', async ({
+  page,
+}, testInfo) => {
+  const details = page.locator('.lifecycle-capability-details')
+  await expect(details).toHaveCount(30)
+  await expect(page.locator('.lifecycle-capability-details[open]')).toHaveCount(
+    0,
+  )
+  await expect(page.getByText('PRACTICE', { exact: true })).toBeVisible()
+  await expect(page.getByText('LOCAL', { exact: true })).toBeVisible()
+  await expect(page.getByText('UNSENT', { exact: true })).toBeVisible()
+  await expect(page.getByText('NO AUTHORITY', { exact: true })).toBeVisible()
+  await expect(page.getByText('public evidence needs attention')).toBeVisible()
+  await expect(
+    capability(page, 'B01').getByRole('button', {
+      name: 'Lock practice event',
+    }),
+  ).toBeVisible()
+  await expect(
+    capability(page, 'B01').getByLabel('Fictional hazard event'),
+  ).toBeHidden()
+
+  const savedBefore = await page.evaluate(() =>
+    localStorage.getItem('practice-lifecycle.v5'),
+  )
+  const summary = capability(page, 'B01').locator(
+    '.lifecycle-capability-details > summary',
+  )
+  await summary.focus()
+  await summary.press('Enter')
+  await expect(
+    capability(page, 'B01').getByLabel('Fictional hazard event'),
+  ).toBeVisible()
+  await summary.press('Space')
+  await expect(
+    capability(page, 'B01').getByLabel('Fictional hazard event'),
+  ).toBeHidden()
+  expect(
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v5')),
+  ).toBe(savedBefore)
+
+  const scan = await page.evaluate(() => {
+    const root = document.querySelector('.operations-page')!
+    const text = Array.from(document.querySelectorAll('.operations-content *'))
+      .filter((element) => {
+        const closed = element.closest('details:not([open])')
+        return (
+          (!closed ||
+            closed.querySelector(':scope > summary')?.contains(element)) &&
+          element.children.length === 0 &&
+          getComputedStyle(element).display !== 'none'
+        )
+      })
+      .map((element) => element.textContent.trim())
+      .filter(Boolean)
+      .join(' ')
+    return {
+      words: text.split(/\s+/).filter(Boolean).length,
+      controls: Array.from(
+        document.querySelectorAll(
+          '.operations-content button, .operations-content a[href], .operations-content input, .operations-content select, .operations-content textarea, .operations-content summary',
+        ),
+      ).filter((element) => {
+        const closed = element.closest('details:not([open])')
+        return (
+          !closed || closed.querySelector(':scope > summary')?.contains(element)
+        )
+      }).length,
+      firstCapabilityTop:
+        capabilityTop() - root.getBoundingClientRect().top + root.scrollTop,
+      viewportHeight: root.clientHeight,
+      scrollWidth: root.scrollWidth,
+      clientWidth: root.clientWidth,
+    }
+
+    function capabilityTop() {
+      return document
+        .querySelector('[data-capability="B01"]')!
+        .getBoundingClientRect().top
+    }
+  })
+  expect(scan.words).toBeLessThanOrEqual(700)
+  expect(scan.controls).toBeLessThanOrEqual(65)
+  expect(scan.firstCapabilityTop / scan.viewportHeight).toBeLessThanOrEqual(
+    testInfo.project.name.includes('mobile') ? 3 : 2,
+  )
+  expect(scan.scrollWidth).toBeLessThanOrEqual(scan.clientWidth)
+})
+
 test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   page,
 }) => {
+  await openAllCapabilityDetails(page)
   const apiWrites: string[] = []
   page.on('request', (request) => {
     if (
@@ -290,10 +392,12 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .nth(1)
     .click()
   await expect(
-    capability(page, 'D05').getByRole('button').nth(0),
+    capability(page, 'D05').locator(
+      '.lifecycle-capability-detail-body button:disabled',
+    ),
   ).toBeDisabled()
   await expect(capability(page, 'D05')).toContainText('not blocked or overdue')
-  await capability(page, 'D05').getByRole('button').nth(1).click()
+  await capability(page, 'D05').locator('.lifecycle-primary-action').click()
   await capability(page, 'D06')
     .getByRole('button', { name: 'Add r2 after revealed inject' })
     .click()
@@ -308,10 +412,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   const dispositionGroups = capability(page, 'D10').locator(
     '.lifecycle-choice-group',
   )
-  await dispositionGroups
-    .nth(0)
-    .getByRole('button', { name: /carried/ })
-    .click()
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
   await dispositionGroups
     .nth(1)
     .getByRole('button', { name: /set aside/ })
@@ -375,12 +476,14 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   )
   const unmetGroups = capability(page, 'A02').locator('.lifecycle-choice-group')
   for (let index = 0; index < 5; index++) {
-    await unmetGroups
-      .nth(index)
-      .getByRole('button', {
-        name: index === 0 ? /Unknown — not zero/ : /1–9 aggregate/,
-      })
-      .click()
+    if (index === 0) {
+      await capability(page, 'A02').locator('.lifecycle-primary-action').click()
+    } else {
+      await unmetGroups
+        .nth(index)
+        .getByRole('button', { name: /1–9 aggregate/ })
+        .click()
+    }
   }
   await capability(page, 'A03')
     .getByRole('button', { name: 'Attempt hold review' })
@@ -392,23 +495,30 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     '.lifecycle-choice-group',
   )
   for (let index = 0; index < 4; index++) {
-    await guidanceGroups
-      .nth(index)
-      .getByRole('button', {
-        name: index % 2 === 0 ? /carried into recovery draft r1/ : /as unknown/,
-      })
-      .click()
+    if (index === 0) {
+      await capability(page, 'A05').locator('.lifecycle-primary-action').click()
+    } else {
+      await guidanceGroups
+        .nth(index)
+        .getByRole('button', {
+          name:
+            index % 2 === 0 ? /carried into recovery draft r1/ : /as unknown/,
+        })
+        .click()
+    }
   }
   const objectiveGroups = capability(page, 'A06').locator(
     '.lifecycle-choice-group',
   )
   for (let index = 0; index < 3; index++) {
-    await objectiveGroups
-      .nth(index)
-      .getByRole('button', {
-        name: index === 0 ? /carry-forward/ : /note-only/,
-      })
-      .click()
+    if (index === 0) {
+      await capability(page, 'A06').locator('.lifecycle-primary-action').click()
+    } else {
+      await objectiveGroups
+        .nth(index)
+        .getByRole('button', { name: /note-only/ })
+        .click()
+    }
   }
   await expect(
     capability(page, 'A07').getByRole('button', {
@@ -458,11 +568,11 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: 'Save packet section selection' })
     .click()
   await expect(packetButton).toBeEnabled()
-  const digest = await page
-    .locator('.lifecycle-toolbar div')
-    .filter({ hasText: 'Cycle digest' })
-    .locator('strong')
+  await page.locator('.lifecycle-overview-record > summary').click()
+  const identity = await page
+    .locator('.lifecycle-overview-record p')
     .innerText()
+  const digest = identity.match(/[a-f0-9]{16}$/)?.[0]
   expect(digest).toMatch(/^[a-f0-9]{16}$/)
   const packetDownload = page.waitForEvent('download')
   await packetButton.click()
@@ -481,7 +591,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     })
     .click()
 
-  await expect(page.getByText('30/30')).toBeVisible()
+  await expect(page.getByText('30/30', { exact: true })).toBeVisible()
   await expect(page.getByText('Cycle 1 is read-only.')).toBeVisible()
   for (const id of capabilityIds) {
     await expect(capability(page, id)).toHaveClass(/is-complete/)
@@ -505,7 +615,8 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     fullPage: true,
   })
   await page.reload()
-  await expect(page.getByText('30/30')).toBeVisible()
+  await openAllCapabilityDetails(page)
+  await expect(page.getByText('30/30', { exact: true })).toBeVisible()
   await expect(page.getByText('Cycle 1 is read-only.')).toBeVisible()
 })
 
@@ -524,6 +635,9 @@ test('legacy exercise path resolves to the single lifecycle workspace', async ({
 test('lifecycle has no forbidden controls, free-text operational fields, or real practice actors', async ({
   page,
 }) => {
+  await capability(page, 'D03')
+    .locator('.lifecycle-capability-details > summary')
+    .click()
   await expect(
     page.getByRole('button', {
       name: /send|notify|submit|dispatch|activate/i,
@@ -553,6 +667,10 @@ test('lifecycle has no forbidden controls, free-text operational fields, or real
 
 test('reset removes failed v3 migration state durably', async ({ page }) => {
   await page.goto('/lifecycle')
+  await expect(page.locator('[data-lifecycle-restored]')).toHaveAttribute(
+    'data-lifecycle-restored',
+    'true',
+  )
   await page.evaluate(() => {
     localStorage.clear()
     localStorage.setItem('practice-lifecycle.v3', '{"schema":"broken"}')

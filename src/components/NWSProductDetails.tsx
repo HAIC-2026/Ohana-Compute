@@ -71,30 +71,50 @@ export function NWSProductDetails({
   }[currentApplicability.result]
   return (
     <div className="nws-product" data-nws-product={product.id ?? 'unknown'}>
+      <div className="lifecycle-source-card-heading">
+        <strong>
+          {product.headline ?? product.event ?? product.id ?? 'NWS product'}
+        </strong>
+        <div className="lifecycle-status-chips">
+          <span className="lifecycle-status-chip">
+            validity:{' '}
+            <span data-nws-validity={validity}>
+              {validity.replaceAll('_', ' ')}
+            </span>
+          </span>
+          <span className="lifecycle-status-chip">
+            eligibility:{' '}
+            <span data-nws-eligibility={eligibility}>
+              {eligibility.replaceAll('_', ' ')}
+            </span>
+          </span>
+          <span
+            className="lifecycle-status-chip"
+            data-nws-retrieval={retrievalState(retrieval, now, unavailable)}
+          >
+            retrieval: {retrievalState(retrieval, now, unavailable)}
+          </span>
+          <span className="lifecycle-status-chip">
+            applicability:{' '}
+            <span data-nws-applicability={currentApplicability.result}>
+              {currentApplicability.result}
+            </span>
+          </span>
+        </div>
+      </div>
       <p className="nws-product-state">
-        Product validity:{' '}
-        <strong data-nws-validity={validity}>
-          {validity.replaceAll('_', ' ')}
-        </strong>
-        {' · '}Message eligibility:{' '}
-        <strong data-nws-eligibility={eligibility}>
-          {eligibility.replaceAll('_', ' ')}
-        </strong>
-        {' · '}Retrieval:{' '}
-        <strong>{retrievalState(retrieval, now, unavailable)}</strong>
-      </p>
-      <p>
-        Planning-location applicability:{' '}
-        <strong data-nws-applicability={currentApplicability.result}>
-          {currentApplicability.result}
-        </strong>
-        . {applicability}
+        {currentApplicability.result === 'inside'
+          ? 'Inside an evaluated source area; this is not an order or impact determination.'
+          : currentApplicability.result === 'outside'
+            ? 'Outside evaluated source areas; this is not an all-clear.'
+            : 'Local applicability is unknown and no impact conclusion is available.'}
       </p>
       <details>
-        <summary>
-          Product facts:{' '}
-          {product.headline ?? product.event ?? product.id ?? 'Not reported'}
-        </summary>
+        <summary>Why applicability is {currentApplicability.result}</summary>
+        <p>{applicability}</p>
+      </details>
+      <details>
+        <summary>Exact product facts and provenance</summary>
         <dl className="nws-product-facts">
           <dt>Product / message ID</dt>
           <dd>{product.id ?? 'Not reported'}</dd>
@@ -287,201 +307,242 @@ export function LifecycleWeatherContext({
   const missingProvenance = events?.triggers.some(
     (row) => row.source === 'nws' && !row.nws_product,
   )
+  const firstProduct = products.at(0)
+  const firstValidity = firstProduct
+    ? nwsProductValidity(firstProduct, live.now)
+    : null
+  const firstEligibility = firstProduct ? nwsEligibility(firstProduct) : null
+  const firstApplicability = firstProduct
+    ? currentNWSApplicability(firstProduct, live.now).result
+    : null
   return (
     <section
       className="lifecycle-source-section"
       aria-label="NWS product provenance"
     >
-      <h3>NWS-reported products</h3>
-      <p data-nws-retrieval={retrieval}>
-        NWS retrieval: <strong>{retrieval}</strong>
-        {sourceFailed &&
-          ' · NWS source reported an error; facts may be incomplete.'}
-      </p>
-      <p>
-        Statewide Hawaiʻi query; retained source polygons take precedence.
-        Products with absent polygons may use cached official NWS affected-zone
-        boundaries; missing, stale, invalid, or incomplete zone coverage remains
-        unknown. Product expiry uses wall time, never practice T+ or the last
-        successful check. B04 remains manual.
-      </p>
+      <div className="lifecycle-source-card-heading">
+        <div>
+          <h3>NWS-reported products</h3>
+          <p>
+            {products.length} product{products.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div className="lifecycle-status-chips">
+          <span
+            className="lifecycle-status-chip"
+            data-nws-retrieval={retrieval}
+          >
+            retrieval: {retrieval}
+          </span>
+          {firstValidity && (
+            <span className="lifecycle-status-chip">
+              validity: {firstValidity.replaceAll('_', ' ')}
+            </span>
+          )}
+          {firstEligibility && (
+            <span className="lifecycle-status-chip">
+              eligibility: {firstEligibility.replaceAll('_', ' ')}
+            </span>
+          )}
+          {firstApplicability && (
+            <span className="lifecycle-status-chip">
+              applicability: {firstApplicability}
+            </span>
+          )}
+          {sourceFailed && (
+            <span className="lifecycle-status-chip is-attention">
+              source error · facts may be incomplete
+            </span>
+          )}
+        </div>
+      </div>
       {!products.length && (
-        <p>
+        <p className="lifecycle-source-alert">
           {retrieval === 'fresh' && !sourceFailed && !missingProvenance
             ? 'No products returned by this query. This does not mean no hazard or order.'
             : 'NWS product availability is unknown. This does not mean no hazard or order.'}
         </p>
       )}
-      {products.map((product, index) => (
-        <div key={`${product.id}:${index}`}>
-          <NWSProductDetails
-            product={product}
-            now={live.now}
-            retrieval={source}
-            unavailable={unavailable || (Boolean(sourceFailed) && !source)}
-          />
-          <button
-            type="button"
-            className="secondary"
-            disabled={Boolean(state.h1) || state.phase !== 'before'}
-            onClick={() =>
-              setReviewed({
-                reviewedAt: new Date().toISOString(),
-                reading: nwsQueryReading(live),
-                product: structuredClone(product),
-              })
-            }
-          >
-            Review exact product revision
-          </button>
-        </div>
-      ))}
-      {reviewed && (
-        <div data-reviewed-weather={reviewed.product.id}>
-          <h4>Displayed weather revision to accept</h4>
-          <p>
-            This frozen review is not replaced by refresh. Acceptance records
-            source context only, including cancellation, test, expired, outside,
-            or unknown states exactly as displayed.
-          </p>
-          <NWSProductDetails
-            product={reviewed.product}
-            now={Date.parse(reviewed.reviewedAt)}
-            retrieval={{
-              status: reviewed.reading.retrievalState,
-              retrieved_at: reviewed.reading.retrievedAt,
-              fresh_until: reviewed.reading.freshUntil,
-            }}
-            unavailable={reviewed.reading.transport === 'unavailable'}
-          />
-          <button
-            type="button"
-            disabled={
-              Boolean(state.h1) ||
-              state.phase !== 'before' ||
-              state.weatherEvidence.length >= maxWeatherAcceptances
-            }
-            onClick={() => {
-              act({
-                type: 'accept-weather',
-                reviewed,
-                acceptedAt: new Date().toISOString(),
-              })
-              setReviewed(null)
-            }}
-          >
-            Accept displayed weather revision
-          </button>
-        </div>
-      )}
-      <p>
-        {state.weatherEvidence.length}/{maxWeatherAcceptances} immutable weather
-        revisions accepted. These records do not mark B07 complete or change
-        B04.
-      </p>
-      {state.weatherEvidence.map((accepted) => (
-        <details key={accepted.id} data-accepted-weather={accepted.id}>
-          <summary>
-            {accepted.id} ·{' '}
-            {accepted.product.headline ??
-              accepted.product.event ??
-              accepted.product.id}{' '}
-            · {accepted.product.relationship} · {accepted.observation.validity}
-          </summary>
-          <p>
-            Accepted {accepted.acceptedAt} by {accepted.acceptedBy} ·{' '}
-            {accepted.product.eligibility} · {accepted.evaluation.applicability}
-            /{accepted.evaluation.reason} · retrieval{' '}
-            {accepted.observation.retrievalState}. Planning context only; no
-            authority effect.
-          </p>
-          <p className="lifecycle-output">
-            Product digest {accepted.productDigest} · evaluation digest{' '}
-            {accepted.evaluationDigest} · snapshot {accepted.snapshotId}
-          </p>
-          <p>{accepted.limitations.join(' ')}</p>
-        </details>
-      ))}
-      <section aria-label="Accepted weather rechecks">
-        <h4>Recheck accepted weather revisions</h4>
+      <details className="lifecycle-source-detail">
+        <summary>Inspect NWS products, immutable records, and rechecks</summary>
         <p>
-          Results describe source lineage only: unchanged, changed, expired,
-          superseded, cancelled, ambiguous, not returned, or unavailable. None
-          means safety, impact, recovery, or all-clear.
+          Statewide Hawaiʻi query; retained source polygons take precedence.
+          Missing, stale, invalid, or incomplete zone coverage remains unknown.
+          Product expiry uses wall time. B04 remains manual.
         </p>
-        <label>
-          Weather recheck owner
-          <select
-            value={owner}
-            onChange={(event) => setOwner(event.target.value as PracticeRole)}
-          >
-            {practiceRoles.map((role) => (
-              <option key={role}>{role}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Weather recheck horizon
-          <select
-            value={horizon}
-            onChange={(event) =>
-              setHorizon(event.target.value as RecoveryRow['horizon'])
-            }
-          >
-            {(['next shift', 'next day', 'next exercise'] as const).map(
-              (value) => (
-                <option key={value}>{value}</option>
-              ),
-            )}
-          </select>
-        </label>
-        {state.weatherEvidence.map((accepted) => (
-          <button
-            type="button"
-            className="secondary"
-            key={accepted.id}
-            disabled={
-              state.phase !== 'after' ||
-              checking ||
-              state.weatherRechecks.length >= maxWeatherRechecks
-            }
-            onClick={async () => {
-              setChecking(true)
-              try {
-                const check = await live.refresh()
-                const reading = nwsQueryReading(check)
-                act({
-                  type: 'recheck-weather',
-                  acceptedId: accepted.id,
-                  reading,
-                  checkedAt: reading.checkedAt!,
-                  owner,
-                  horizon,
+        {products.map((product, index) => (
+          <div key={`${product.id}:${index}`}>
+            <NWSProductDetails
+              product={product}
+              now={live.now}
+              retrieval={source}
+              unavailable={unavailable || (Boolean(sourceFailed) && !source)}
+            />
+            <button
+              type="button"
+              className="secondary"
+              disabled={Boolean(state.h1) || state.phase !== 'before'}
+              onClick={() =>
+                setReviewed({
+                  reviewedAt: new Date().toISOString(),
+                  reading: nwsQueryReading(live),
+                  product: structuredClone(product),
                 })
-              } finally {
-                setChecking(false)
               }
-            }}
-          >
-            {checking
-              ? 'Checking weather source…'
-              : `Recheck weather ${accepted.id}`}
-          </button>
+            >
+              Review exact product revision
+            </button>
+          </div>
         ))}
+        {reviewed && (
+          <div data-reviewed-weather={reviewed.product.id}>
+            <h4>Displayed weather revision to accept</h4>
+            <p>
+              This frozen review is not replaced by refresh. Acceptance records
+              source context only, including cancellation, test, expired,
+              outside, or unknown states exactly as displayed.
+            </p>
+            <NWSProductDetails
+              product={reviewed.product}
+              now={Date.parse(reviewed.reviewedAt)}
+              retrieval={{
+                status: reviewed.reading.retrievalState,
+                retrieved_at: reviewed.reading.retrievedAt,
+                fresh_until: reviewed.reading.freshUntil,
+              }}
+              unavailable={reviewed.reading.transport === 'unavailable'}
+            />
+            <button
+              type="button"
+              disabled={
+                Boolean(state.h1) ||
+                state.phase !== 'before' ||
+                state.weatherEvidence.length >= maxWeatherAcceptances
+              }
+              onClick={() => {
+                act({
+                  type: 'accept-weather',
+                  reviewed,
+                  acceptedAt: new Date().toISOString(),
+                })
+                setReviewed(null)
+              }}
+            >
+              Accept displayed weather revision
+            </button>
+          </div>
+        )}
         <p>
-          {state.weatherRechecks.length}/{maxWeatherRechecks} bounded weather
-          checks recorded.
+          {state.weatherEvidence.length}/{maxWeatherAcceptances} immutable
+          weather revisions accepted. These records do not mark B07 complete or
+          change B04.
         </p>
-        <ul className="lifecycle-output-list">
-          {state.weatherRechecks.map((check) => (
-            <li key={check.id} data-weather-recheck={check.result}>
-              {check.id} · {check.acceptedId}: {check.result} · {check.owner} ·{' '}
-              {check.horizon}. Retrieval {check.retrievalState}; product
-              validity {check.validityAtCheck}. Accepted facts remain unchanged.
-            </li>
+        {state.weatherEvidence.map((accepted) => (
+          <details key={accepted.id} data-accepted-weather={accepted.id}>
+            <summary>
+              {accepted.id} ·{' '}
+              {accepted.product.headline ??
+                accepted.product.event ??
+                accepted.product.id}{' '}
+              · {accepted.product.relationship} ·{' '}
+              {accepted.observation.validity}
+            </summary>
+            <p>
+              Accepted {accepted.acceptedAt} by {accepted.acceptedBy} ·{' '}
+              {accepted.product.eligibility} ·{' '}
+              {accepted.evaluation.applicability}/{accepted.evaluation.reason} ·
+              retrieval {accepted.observation.retrievalState}. Planning context
+              only; no authority effect.
+            </p>
+            <p className="lifecycle-output">
+              Product digest {accepted.productDigest} · evaluation digest{' '}
+              {accepted.evaluationDigest} · snapshot {accepted.snapshotId}
+            </p>
+            <p>{accepted.limitations.join(' ')}</p>
+          </details>
+        ))}
+        <section aria-label="Accepted weather rechecks">
+          <h4>Recheck accepted weather revisions</h4>
+          <p>
+            Results describe source lineage only: unchanged, changed, expired,
+            superseded, cancelled, ambiguous, not returned, or unavailable. None
+            means safety, impact, recovery, or all-clear.
+          </p>
+          <label>
+            Weather recheck owner
+            <select
+              value={owner}
+              onChange={(event) => setOwner(event.target.value as PracticeRole)}
+            >
+              {practiceRoles.map((role) => (
+                <option key={role}>{role}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Weather recheck horizon
+            <select
+              value={horizon}
+              onChange={(event) =>
+                setHorizon(event.target.value as RecoveryRow['horizon'])
+              }
+            >
+              {(['next shift', 'next day', 'next exercise'] as const).map(
+                (value) => (
+                  <option key={value}>{value}</option>
+                ),
+              )}
+            </select>
+          </label>
+          {state.weatherEvidence.map((accepted) => (
+            <button
+              type="button"
+              className="secondary"
+              key={accepted.id}
+              disabled={
+                state.phase !== 'after' ||
+                checking ||
+                state.weatherRechecks.length >= maxWeatherRechecks
+              }
+              onClick={async () => {
+                setChecking(true)
+                try {
+                  const check = await live.refresh()
+                  const reading = nwsQueryReading(check)
+                  act({
+                    type: 'recheck-weather',
+                    acceptedId: accepted.id,
+                    reading,
+                    checkedAt: reading.checkedAt!,
+                    owner,
+                    horizon,
+                  })
+                } finally {
+                  setChecking(false)
+                }
+              }}
+            >
+              {checking
+                ? 'Checking weather source…'
+                : `Recheck weather ${accepted.id}`}
+            </button>
           ))}
-        </ul>
-      </section>
+          <p>
+            {state.weatherRechecks.length}/{maxWeatherRechecks} bounded weather
+            checks recorded.
+          </p>
+          <ul className="lifecycle-output-list">
+            {state.weatherRechecks.map((check) => (
+              <li key={check.id} data-weather-recheck={check.result}>
+                {check.id} · {check.acceptedId}: {check.result} · {check.owner}{' '}
+                · {check.horizon}. Retrieval {check.retrievalState}; product
+                validity {check.validityAtCheck}. Accepted facts remain
+                unchanged.
+              </li>
+            ))}
+          </ul>
+        </section>
+      </details>
     </section>
   )
 }

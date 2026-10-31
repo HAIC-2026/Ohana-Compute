@@ -303,6 +303,8 @@ export type FollowThroughItem = {
   observations: FollowThroughObservation[]
 }
 
+type FollowThroughStatus = FollowThroughItem['status']
+
 export type FollowThroughCycleArchive = {
   cycle: number
   items: FollowThroughArchiveItem[]
@@ -2425,7 +2427,7 @@ export function migrateLifecycleV4State(text: string): LifecycleState {
     previousCycle,
     followThroughItems: [],
     followThroughHistory: [],
-  }
+  } as LifecycleState
   if (candidate.previousCycle && !candidate.previousCycle.sourceDigest)
     candidate.previousCycle.sourceDigest = previousSourceDigest(
       candidate.previousCycle,

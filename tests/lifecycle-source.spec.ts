@@ -21,6 +21,17 @@ const saved = (page: Page): Promise<LifecycleState> =>
   page.evaluate(() =>
     JSON.parse(localStorage.getItem('practice-lifecycle.v5') ?? '{}'),
   )
+const openAllCapabilityDetails = async (page: Page) => {
+  await expect(page.locator('[data-lifecycle-restored]')).toHaveAttribute(
+    'data-lifecycle-restored',
+    'true',
+  )
+  await page
+    .locator('.lifecycle-capability-details')
+    .evaluateAll((details) =>
+      details.forEach((detail) => ((detail as HTMLDetailsElement).open = true)),
+    )
+}
 const authority = (state: LifecycleState) => ({
   event: state.event,
   timing: state.timing,
@@ -62,6 +73,7 @@ test('real backend source chain captures A, reports A-prime, and rechecks withou
       response.status() === 200,
   )
   await page.goto('/lifecycle')
+  await openAllCapabilityDetails(page)
   const initial = parseLifecycleEvidence(await (await initialResponse).json())
   expect(initial.shelter_context.items[0].item_id).toBe('fixture-live-shelter')
   await expect(page.locator('[data-lifecycle-restored]')).toHaveAttribute(
@@ -209,6 +221,7 @@ test('real backend source chain captures A, reports A-prime, and rechecks withou
     ),
   ).toBe(true)
   await page.reload()
+  await openAllCapabilityDetails(page)
   await expect(checks.locator('[data-source-recheck]')).toHaveCount(6)
   expect((await saved(page)).sourceEvidence).toEqual(accepted)
   await capability(page, 'A07')
@@ -252,6 +265,7 @@ test('wall-clock expiry, 304, malformed, cancelled, and offline refresh preserve
     })
   })
   await page.goto('/lifecycle')
+  await openAllCapabilityDetails(page)
   const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
   const shelters = page.getByRole('region', {
     name: 'FEMA-reported shelter context',
@@ -297,6 +311,7 @@ test('offline remount reconciles cached transport without an extra fetch', async
     })
   })
   await page.goto('/lifecycle')
+  await openAllCapabilityDetails(page)
   const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
   const shelters = page.getByRole('region', {
     name: 'FEMA-reported shelter context',
@@ -318,6 +333,7 @@ test('offline remount reconciles cached transport without an extra fetch', async
     .first()
     .click()
   await expect(page).toHaveURL(/\/lifecycle$/)
+  await openAllCapabilityDetails(page)
   await expect(shelters).toContainText('Reported shelter A')
   await expect(panel).toContainText('LAST KNOWN')
   await expect(panel).toContainText('Offline; evidence was not checked')
@@ -400,6 +416,7 @@ test('non-string enum refreshes retain validated cache and persist only source-u
     })
   })
   await page.goto('/lifecycle')
+  await openAllCapabilityDetails(page)
   const panel = page.getByRole('region', { name: 'Live lifecycle evidence' })
   const shelters = page.getByRole('region', {
     name: 'FEMA-reported shelter context',

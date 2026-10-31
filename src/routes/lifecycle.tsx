@@ -1,5 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { OperationsLayout } from '../components/OperationsLayout'
 import {
@@ -83,30 +92,376 @@ const defaultObjectives: LifecycleState['objectives'] = [
   'shift',
 ]
 
+type CapabilitySnapshot = {
+  fact: string
+  owner?: string
+  exceptions?: string[]
+}
+
+function capabilityPhase(id: CapabilityId) {
+  return id.startsWith('B') ? 'before' : id.startsWith('D') ? 'during' : 'after'
+}
+
+function capabilitySnapshot(
+  id: CapabilityId,
+  state: LifecycleState,
+): CapabilitySnapshot {
+  const unavailableAreas = serviceAreas.filter(
+    (area) => state.simulationScope[area] === 'unavailable',
+  )
+  const staleServices = state.serviceRecords.filter((record) =>
+    serviceRecordStale(record, state.practiceMinute),
+  )
+  const openFollowThrough = state.followThroughItems.filter(
+    (item) => item.status === 'planned' || item.status === 'in-progress',
+  )
+  const unknownNeeds = state.unmetNeeds.filter((item) =>
+    item.band.startsWith('Unknown'),
+  )
+  const gateEntries = Object.entries(lifecycleGates(state))
+  const blockedItems = state.supportItems.filter(
+    (item) =>
+      item.response === 'decline' || item.dueMinute < state.practiceMinute,
+  )
+
+  switch (id) {
+    case 'B01':
+      return {
+        fact: state.event
+          ? `${state.event.label} locked for cycle ${state.cycle}`
+          : 'Event not locked',
+      }
+    case 'B02':
+      return {
+        fact: `${state.carriedGaps.length} gaps queued`,
+        owner: state.carriedGaps[0]?.owner,
+      }
+    case 'B03':
+      return {
+        fact: state.objectives.length
+          ? `${state.objectives.length} measurable objectives frozen`
+          : 'Objectives not frozen',
+      }
+    case 'B04':
+      return {
+        fact:
+          state.timing.marginMinutes === null
+            ? 'Margin not computed'
+            : `${state.timing.marginMinutes} practice minutes of margin`,
+        exceptions:
+          state.timing.marginMinutes !== null && state.timing.marginMinutes <= 0
+            ? ['window exhausted']
+            : undefined,
+      }
+    case 'B05':
+      return {
+        fact: state.assumptions.chosen
+          ? `${state.assumptions.chosen} assumption sealed`
+          : 'Assumption not chosen',
+      }
+    case 'B06': {
+      const exceptions = Object.entries(state.formats)
+        .filter(([, value]) => value !== 'planned')
+        .map(([format, value]) => `${format}: ${value}`)
+      return {
+        fact: `${state.channel} · ${3 - exceptions.length}/3 formats planned`,
+        exceptions,
+      }
+    }
+    case 'B07':
+      return {
+        fact: `${state.evidence.length} practice records · ${state.sourceEvidence.length} source claims`,
+        exceptions: state.evidence
+          .filter((item) => item.state !== 'practice-reported criteria present')
+          .map((item) => `${item.gapId}: ${item.state}`),
+      }
+    case 'B08':
+      return {
+        fact: `${serviceAreas.length - unavailableAreas.length}/${serviceAreas.length} service areas simulated`,
+        exceptions: unavailableAreas.map((area) => `${area}: unavailable`),
+      }
+    case 'B09':
+      return { fact: `${state.injects.length} injects scheduled` }
+    case 'B10': {
+      const missing = Object.entries(h1Gates(state))
+        .filter(([, passed]) => !passed)
+        .map(([name]) => `${name}: needed`)
+      return {
+        fact: state.h1 ? `H1 sealed · ${state.h1.digest}` : 'H1 not sealed',
+        exceptions: missing,
+      }
+    }
+    case 'D01':
+      return {
+        fact: state.h1
+          ? `${state.supportItems.length} H1 support items materialized`
+          : 'H1 required',
+      }
+    case 'D02': {
+      const overdue = state.supportItems.filter(
+        (item) => item.dueMinute < state.practiceMinute,
+      ).length
+      return {
+        fact: `T+${state.practiceMinute} · ${revealedInjects(state).length} injects revealed`,
+        exceptions: overdue ? [`${overdue} overdue`] : undefined,
+      }
+    }
+    case 'D03':
+      return {
+        fact: `${state.serviceRecords.length} conditions recorded`,
+        exceptions: [
+          ...state.serviceRecords
+            .filter((record) => record.state !== 'condition reported')
+            .map((record) => `${record.area}: ${record.state}`),
+          ...staleServices.map((record) => `${record.area}: stale`),
+        ],
+      }
+    case 'D04':
+      return {
+        fact: `${state.supportItems.filter((item) => item.response !== 'not asked').length}/${state.supportItems.length} responses`,
+        exceptions: state.supportItems
+          .filter((item) => item.response !== 'hold')
+          .map((item) => `${item.id}: ${item.response}`),
+      }
+    case 'D05':
+      return {
+        fact: `${blockedItems.length} blocked or overdue items`,
+        owner: blockedItems[0]?.owner,
+        exceptions: blockedItems.map((item) => `${item.id}: attention`),
+      }
+    case 'D06':
+      return {
+        fact: state.assumptions.r2
+          ? `r2 added · delta ${state.assumptions.r2.demandDeltaFromSealed} practice meals`
+          : 'r2 not added',
+      }
+    case 'D07':
+      return {
+        fact: `${state.guidanceVersions.length} UNSENT drafts`,
+      }
+    case 'D08':
+      return {
+        fact: state.shiftSnapshot
+          ? `Shift frozen at T+${state.shiftSnapshot.practiceMinute}`
+          : 'Shift not frozen',
+        owner: state.shiftSnapshot?.incoming,
+        exceptions: state.shiftSnapshot
+          ? [
+              ...(state.shiftSnapshot.blocked
+                ? [`${state.shiftSnapshot.blocked} blocked`]
+                : []),
+              ...(state.shiftSnapshot.overdue
+                ? [`${state.shiftSnapshot.overdue} overdue`]
+                : []),
+              ...(state.shiftSnapshot.staleEvidence
+                ? [`${state.shiftSnapshot.staleEvidence} stale evidence`]
+                : []),
+            ]
+          : undefined,
+      }
+    case 'D09': {
+      const stale = state.evidence.filter((item) => item.state === 'stale')
+      return {
+        fact: `${stale.length} stale claims`,
+        exceptions: stale.map((item) => `${item.id}: stale`),
+      }
+    }
+    case 'D10': {
+      const undecided = state.supportItems.filter(
+        (item) => item.disposition === 'undecided',
+      )
+      return {
+        fact: state.h2
+          ? `H2 sealed · ${state.h2.digest}`
+          : `${undecided.length} dispositions pending`,
+        exceptions: undecided.map((item) => `${item.id}: pending`),
+      }
+    }
+    case 'A01':
+      return {
+        fact: `${openFollowThrough.length} open follow-through`,
+        owner: openFollowThrough[0]?.owner,
+        exceptions: openFollowThrough.map(
+          (item) => `${item.gapId}: ${item.status}`,
+        ),
+      }
+    case 'A02':
+      return {
+        fact: `${state.unmetNeeds.length}/${cmistDomains.length} need bands`,
+        owner: unknownNeeds[0]?.owner ?? undefined,
+        exceptions: unknownNeeds.map((item) => `${item.domain}: unknown`),
+      }
+    case 'A03':
+      return {
+        fact: state.holdReview.attempted
+          ? `${state.holdReview.refusedItemIds.length} holds refused`
+          : 'Hold review pending',
+        exceptions: state.holdReview.refusedItemIds.map(
+          (item) => `${item}: blocked`,
+        ),
+      }
+    case 'A04':
+      return {
+        fact: `${state.recheckPlans.length} service rechecks · ${state.sourceRechecks.length} source checks`,
+        owner: state.recheckPlans[0]?.owner,
+      }
+    case 'A05':
+      return {
+        fact: state.recoveryDraft
+          ? `${Object.keys(state.recoveryDraft.classifications).length}/${guidanceBlocks.length} guidance blocks classified`
+          : 'Draft not started',
+      }
+    case 'A06':
+      return {
+        fact: `${state.objectiveReview.length}/${state.objectives.length} objectives reviewed`,
+        exceptions: state.objectiveReview
+          .filter((item) => item.score !== 'met')
+          .map((item) => `${item.objectiveId}: ${item.score}`),
+      }
+    case 'A07': {
+      const missing = gateEntries
+        .filter(([, passed]) => !passed)
+        .map(([name]) => `${name}: needed`)
+      return {
+        fact: `${gateEntries.length - missing.length}/${gateEntries.length} gates ready`,
+        exceptions: missing,
+      }
+    }
+    case 'A08':
+      return {
+        fact: state.comparison
+          ? `Comparison ${state.comparison.digest} pinned`
+          : 'Comparison not pinned',
+      }
+    case 'A09':
+      return {
+        fact: `${state.packetSections.length} packet sections`,
+      }
+    case 'A10':
+      return {
+        fact: state.previousCycle
+          ? `Cycle ${state.previousCycle.cycle} sealed read-only`
+          : state.gateDecision
+            ? 'Gate decision recorded; H3 can be sealed'
+            : 'H3 needs gate decision',
+        exceptions: state.gateDecision ? undefined : ['gate decision pending'],
+      }
+  }
+}
+
+function splitPrimaryAction(children: ReactNode) {
+  const result: { primary: ReactElement | null } = { primary: null }
+
+  const visit = (node: ReactNode): ReactNode => {
+    if (!isValidElement(node)) return node
+    const element = node as ReactElement<{
+      children?: ReactNode
+      disabled?: boolean
+      className?: string
+    }>
+    if (element.type === 'details') return element
+    if (
+      !result.primary &&
+      element.type === 'button' &&
+      element.props.disabled !== true
+    ) {
+      result.primary = cloneElement(element, {
+        className: [element.props.className, 'lifecycle-primary-action']
+          .filter(Boolean)
+          .join(' '),
+      })
+      return null
+    }
+    if (!element.props.children) return element
+    return cloneElement(element, {
+      children: Children.map(element.props.children, visit),
+    })
+  }
+
+  const detail = Children.map(children, visit)
+  return { primary: result.primary, detail }
+}
+
 function Capability({
+  state,
   id,
   title,
   marker,
   children,
 }: {
+  state: LifecycleState
   id: CapabilityId
   title: string
   marker: boolean
   children: React.ReactNode
 }) {
+  const snapshot = capabilitySnapshot(id, state)
+  const phase = capabilityPhase(id)
+  const currentPhase = state.phase === 'complete' ? 'after' : state.phase
+  const phaseOrder = ['before', 'during', 'after']
+  const isFuture = phaseOrder.indexOf(phase) > phaseOrder.indexOf(currentPhase)
+  const { primary, detail } = splitPrimaryAction(children)
+  const status = marker
+    ? 'Recorded'
+    : primary
+      ? 'Ready'
+      : isFuture
+        ? 'Waiting'
+        : 'Ready'
+
   return (
     <article
       className={`lifecycle-capability ${marker ? 'is-complete' : ''}`}
       data-capability={id}
+      id={`capability-${id.toLowerCase()}`}
     >
       <header>
         <span className="lifecycle-id">{id}</span>
         <h3>{title}</h3>
         <span className="lifecycle-marker" aria-label={`${id} marker`}>
-          {marker ? 'Recorded' : 'Ready'}
+          {status}
         </span>
       </header>
-      {children}
+      <div className="lifecycle-capability-snapshot">
+        <p>{snapshot.fact}</p>
+        {snapshot.owner && (
+          <p>
+            <strong>Owner:</strong> {snapshot.owner}
+          </p>
+        )}
+        {snapshot.exceptions?.length ? (
+          <div
+            className="lifecycle-status-chips"
+            aria-label={`${id} attention states`}
+          >
+            {snapshot.exceptions.slice(0, 4).map((exception) => (
+              <span
+                className="lifecycle-status-chip is-attention"
+                key={exception}
+              >
+                {exception}
+              </span>
+            ))}
+            {snapshot.exceptions.length > 4 && (
+              <span className="lifecycle-status-chip">
+                +{snapshot.exceptions.length - 4} more
+              </span>
+            )}
+          </div>
+        ) : null}
+        <div className="lifecycle-next-action">
+          <span>
+            {primary ? 'Next' : isFuture ? phase : marker ? 'Review' : 'Open'}
+          </span>
+          {primary}
+        </div>
+      </div>
+      <details className="lifecycle-capability-details">
+        <summary aria-label={`${id} ${title} options and exact record`}>
+          Details
+        </summary>
+        <div className="lifecycle-capability-detail-body">{detail}</div>
+      </details>
     </article>
   )
 }
@@ -349,6 +704,22 @@ function PracticeLifecycle() {
         item.snapshotId === liveEvidence.snapshot?.snapshot_id,
     ),
   )
+  const openFollowThroughCount = state.followThroughItems.filter(
+    (item) => item.status === 'planned' || item.status === 'in-progress',
+  ).length
+  const evidenceAttention = liveEvidence.snapshot
+    ? evidenceCounts?.unavailableDomains ||
+      evidenceCounts?.unavailableEventSources ||
+      liveEvidence.snapshot.status !== 'complete'
+    : true
+  const activeExceptions = [
+    ...(liveEvidence.lastKnown ? ['last-known evidence'] : []),
+    ...(evidenceAttention ? ['public evidence needs attention'] : []),
+    ...(openFollowThroughCount
+      ? [`${openFollowThroughCount} open follow-through`]
+      : []),
+    ...(restoreFailed ? ['saved record invalid'] : []),
+  ]
 
   return (
     <OperationsLayout title="Practice the complete event lifecycle">
@@ -369,45 +740,102 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         role="note"
         data-lifecycle-restored={restored}
       >
-        <strong>{practiceStamp} · LOCAL PRACTICE WORKSPACE</strong>
-        <p>
-          Fixed fictional roles and partners only. No resident records, staff
-          writes, messages, resource movement, protective actions, or live
-          condition claims are created here.
-        </p>
+        <strong>{practiceStamp}</strong>
+        <div className="lifecycle-boundary" aria-label="Workspace boundaries">
+          <span>PRACTICE</span>
+          <span>LOCAL</span>
+          <span>UNSENT</span>
+          <span>NO AUTHORITY</span>
+        </div>
+        <details>
+          <summary>What this boundary means</summary>
+          <p>
+            Fixed fictional roles and partners only. No resident records, staff
+            writes, messages, resource movement, protective actions, or live
+            condition claims are created here.
+          </p>
+        </details>
       </div>
-      <div className="lifecycle-toolbar" aria-label="Lifecycle status">
-        <div>
-          <span>Cycle</span>
-          <strong>{state.cycle}</strong>
+      <section
+        className="lifecycle-overview"
+        aria-labelledby="lifecycle-overview-heading"
+      >
+        <div className="lifecycle-overview-heading">
+          <div>
+            <h2 id="lifecycle-overview-heading">
+              {state.phase === 'complete'
+                ? 'Cycle complete'
+                : `${state.phase[0].toUpperCase()}${state.phase.slice(1)} phase`}
+            </h2>
+            <p>
+              {markerCount}/30 capabilities recorded · T
+              {state.practiceMinute >= 0 ? '+' : ''}
+              {state.practiceMinute}
+            </p>
+          </div>
+          <div
+            className="lifecycle-status-chips"
+            aria-label="Lifecycle attention summary"
+          >
+            {activeExceptions.length ? (
+              activeExceptions.map((exception) => (
+                <span
+                  className="lifecycle-status-chip is-attention"
+                  key={exception}
+                >
+                  {exception}
+                </span>
+              ))
+            ) : (
+              <span className="lifecycle-status-chip">no exception</span>
+            )}
+          </div>
         </div>
-        <div>
-          <span>Practice time</span>
-          <strong>
-            T{state.practiceMinute >= 0 ? '+' : ''}
-            {state.practiceMinute}
-          </strong>
+        <div className="lifecycle-toolbar" aria-label="Lifecycle status">
+          <div>
+            <span>Cycle</span>
+            <strong>{state.cycle}</strong>
+          </div>
+          <div>
+            <span>Practice time</span>
+            <strong>
+              T{state.practiceMinute >= 0 ? '+' : ''}
+              {state.practiceMinute}
+            </strong>
+          </div>
+          <div>
+            <span>Capabilities</span>
+            <strong>{markerCount}/30</strong>
+          </div>
+          <div>
+            <span>Needs attention</span>
+            <strong>{activeExceptions.length}</strong>
+          </div>
+          <div>
+            <span>Next owner</span>
+            <strong>
+              {state.phase === 'before'
+                ? 'Facilitator'
+                : state.phase === 'during'
+                  ? (state.supportItems.find(
+                      (item) => item.disposition === 'undecided',
+                    )?.owner ?? 'Facilitator')
+                  : (state.followThroughItems.find(
+                      (item) =>
+                        item.status === 'planned' ||
+                        item.status === 'in-progress',
+                    )?.owner ?? 'Recovery lead')}
+            </strong>
+          </div>
         </div>
-        <div>
-          <span>Capabilities</span>
-          <strong>{markerCount}/30</strong>
-        </div>
-        <div>
-          <span>Open follow-through</span>
-          <strong>
-            {
-              state.followThroughItems.filter(
-                (item) =>
-                  item.status === 'planned' || item.status === 'in-progress',
-              ).length
-            }
-          </strong>
-        </div>
-        <div>
-          <span>Cycle digest</span>
-          <strong>{lifecycleDigest(state)}</strong>
-        </div>
-      </div>
+        <details className="lifecycle-overview-record">
+          <summary>Cycle identity and digest</summary>
+          <p>
+            Cycle {state.cycle} · {state.schema} · digest{' '}
+            {lifecycleDigest(state)}
+          </p>
+        </details>
+      </section>
       <ol
         className="lifecycle-phases"
         aria-label="Before during after progress"
@@ -420,7 +848,18 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             aria-current={index === currentPhaseIndex ? 'step' : undefined}
           >
             <span>{index + 1}</span>
-            <strong>{phase}</strong>
+            <div>
+              <strong>{phase}</strong>
+              <small>
+                {
+                  capabilityIds.filter(
+                    (id) =>
+                      capabilityPhase(id) === phase.toLowerCase() && marked(id),
+                  ).length
+                }
+                /10 recorded
+              </small>
+            </div>
           </li>
         ))}
       </ol>
@@ -434,7 +873,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div className="lifecycle-evidence-heading">
           <div>
             <p className="operations-stamp">
-              PUBLIC SOURCE EVIDENCE · READ ONLY
+              PUBLIC EVIDENCE · READ ONLY
             </p>
             <h2 id="lifecycle-evidence-heading">Live lifecycle evidence</h2>
           </div>
@@ -443,11 +882,18 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </button>
         </div>
         <p>
-          Public evidence is planning context only—not dispatch, an order,
-          passability, restoration, containment, shelter completeness, partner
-          acceptance, resource movement, recovery completion, or all-clear
-          truth.
+          Read-only context. Not dispatch, an order, restoration, or an
+          all-clear.
         </p>
+        <details className="lifecycle-evidence-limits">
+          <summary>Evidence authority limits</summary>
+          <p>
+            Public evidence is planning context only—not dispatch, an order,
+            passability, restoration, containment, shelter completeness, partner
+            acceptance, resource movement, recovery completion, or all-clear
+            truth.
+          </p>
+        </details>
         {liveEvidence.snapshot ? (
           <>
             <div className="lifecycle-evidence-summary">
@@ -487,6 +933,16 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   Feed {liveEvidence.snapshot.event_triggers.status} ·{' '}
                   {evidenceCounts?.unavailableEventSources ?? 'unknown'} source
                   unavailable
+                </small>
+              </div>
+              <div>
+                <span>Shelter reports</span>
+                <strong>
+                  {liveEvidence.snapshot.shelter_context.items.length} ·{' '}
+                  {liveEvidence.snapshot.shelter_context.state}
+                </strong>
+                <small>
+                  Coverage {liveEvidence.snapshot.shelter_context.coverage}
                 </small>
               </div>
               <div>
@@ -580,18 +1036,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </p>
         )}
       </section>
-      <p className="operations-lead">
-        One immutable chain carries planning decisions into response practice,
-        recovery review, and the next cycle. Each capability changes local
-        state, records a stable marker, and appends a deterministic ledger
-        event.
-      </p>
       <nav className="lifecycle-jump" aria-label="Lifecycle sections">
         <a href="#before">Before</a>
         <a href="#during">During</a>
         <a href="#after">After</a>
         <a href="#ledger">Ledger</a>
-        <Link to="/operations">Restricted staff operations</Link>
+        <Link to="/operations">Staff operations</Link>
         <Link to="/source-health">Source health</Link>
       </nav>
       {message && (
@@ -607,12 +1057,13 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div className="lifecycle-section-heading">
           <div>
             <p className="operations-stamp">PHASE 1 · BEFORE</p>
-            <h2 id="before-heading">Prepare a bounded practice cycle</h2>
+            <h2 id="before-heading">Prepare the cycle</h2>
           </div>
           {state.h1 && <span>H1 sealed · {state.h1.digest}</span>}
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="B01"
             title="Lock the fictional event"
             marker={marked('B01')}
@@ -655,6 +1106,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B02"
             title="Rank and carry readiness gaps"
             marker={marked('B02')}
@@ -691,6 +1143,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B03"
             title="Choose measurable objectives"
             marker={marked('B03')}
@@ -730,6 +1183,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B04"
             title="Compute preparation margin"
             marker={marked('B04')}
@@ -785,6 +1239,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B05"
             title="Compare assumption sets"
             marker={marked('B05')}
@@ -856,6 +1311,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B06"
             title="Plan accessible outreach formats"
             marker={marked('B06')}
@@ -906,6 +1362,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B07"
             title="Record practice evidence"
             marker={marked('B07')}
@@ -970,6 +1427,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B08"
             title="Declare simulation scope"
             marker={marked('B08')}
@@ -1006,6 +1464,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B09"
             title="Schedule deterministic injects"
             marker={marked('B09')}
@@ -1044,6 +1503,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B10"
             title="Seal the Before handoff"
             marker={marked('B10')}
@@ -1079,6 +1539,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="D01"
             title="Materialize the H1 support queue"
             marker={marked('D01')}
@@ -1097,6 +1558,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D02"
             title="Advance deterministic practice time"
             marker={marked('D02')}
@@ -1131,6 +1593,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D03"
             title="Record service-area conditions"
             marker={marked('D03')}
@@ -1178,6 +1641,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D04"
             title="Ask practice partners for support"
             marker={marked('D04')}
@@ -1216,6 +1680,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D05"
             title="Escalate a blocked or overdue item"
             marker={marked('D05')}
@@ -1256,6 +1721,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D06"
             title="Add assumption revision r2"
             marker={marked('D06')}
@@ -1287,6 +1753,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D07"
             title="Create versioned guidance drafts"
             marker={marked('D07')}
@@ -1309,6 +1776,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D08"
             title="Freeze a role-to-role shift handoff"
             marker={marked('D08')}
@@ -1351,6 +1819,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D09"
             title="Replace stale practice evidence"
             marker={marked('D09')}
@@ -1381,6 +1850,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D10"
             title="Disposition every support item and seal H2"
             marker={marked('D10')}
@@ -1429,9 +1899,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div className="lifecycle-section-heading">
           <div>
             <p className="operations-stamp">PHASE 3 · AFTER</p>
-            <h2 id="after-heading">
-              Close the loop and carry learning forward
-            </h2>
+            <h2 id="after-heading">Close and carry forward</h2>
           </div>
           {state.previousCycle && (
             <span>H3 sealed · {state.previousCycle.digest}</span>
@@ -1439,6 +1907,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="A01"
             title="Build the recovery register"
             marker={marked('A01')}
@@ -1575,7 +2044,10 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                             latest?.result !== 'observed'
                           }
                           onClick={() =>
-                            act({ type: 'finish-follow-through', id: item.id })
+                            act({
+                              type: 'finish-follow-through',
+                              id: item.id,
+                            })
                           }
                         >
                           Finish
@@ -1629,6 +2101,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A02"
             title="Record aggregate unmet-need bands"
             marker={marked('A02')}
@@ -1681,6 +2154,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A03"
             title="Review linked practice holds"
             marker={marked('A03')}
@@ -1698,6 +2172,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A04"
             title="Plan service-area rechecks"
             marker={marked('A04')}
@@ -1733,6 +2208,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A05"
             title="Classify guidance into recovery draft r1"
             marker={marked('A05')}
@@ -1772,6 +2248,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A06"
             title="Score and disposition objectives"
             marker={marked('A06')}
@@ -1810,6 +2287,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A07"
             title="Evaluate six end-of-cycle gates"
             marker={marked('A07')}
@@ -1847,6 +2325,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A08"
             title="Export or pin a strict comparison"
             marker={marked('A08')}
@@ -1896,6 +2375,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A09"
             title="Generate a deterministic closeout packet"
             marker={marked('A09')}
@@ -1959,6 +2439,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A10"
             title="Seal H3 and start cycle 2"
             marker={marked('A10')}
@@ -2008,26 +2489,33 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             Reset lifecycle
           </button>
         </div>
-        <p>
-          Canonical export excludes this ledger and comparison metadata. The
-          displayed digest is derived from canonical cycle content only.
-        </p>
-        <ol className="lifecycle-ledger">
-          {state.ledger
-            .slice()
-            .reverse()
-            .map((event) => (
-              <li key={`${event.sequence}-${event.capability}`}>
-                <span>{event.sequence}</span>
-                <strong>{event.capability}</strong>
-                <span>
-                  T{event.practiceMinute >= 0 ? '+' : ''}
-                  {event.practiceMinute}
-                </span>
-                <p>{event.summary}</p>
-              </li>
-            ))}
-        </ol>
+        <div className="lifecycle-ledger-summary">
+          <strong>{state.ledger.length} deterministic local events</strong>
+          <span>Canonical export remains unchanged.</span>
+        </div>
+        <details>
+          <summary>Inspect capability ledger</summary>
+          <p>
+            Canonical export excludes this ledger and comparison metadata. The
+            displayed digest is derived from canonical cycle content only.
+          </p>
+          <ol className="lifecycle-ledger">
+            {state.ledger
+              .slice()
+              .reverse()
+              .map((event) => (
+                <li key={`${event.sequence}-${event.capability}`}>
+                  <span>{event.sequence}</span>
+                  <strong>{event.capability}</strong>
+                  <span>
+                    T{event.practiceMinute >= 0 ? '+' : ''}
+                    {event.practiceMinute}
+                  </span>
+                  <p>{event.summary}</p>
+                </li>
+              ))}
+          </ol>
+        </details>
         <details>
           <summary>Inspect canonical record shape</summary>
           <pre className="lifecycle-json">
