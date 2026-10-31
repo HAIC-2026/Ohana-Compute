@@ -799,37 +799,36 @@ test('the recovery draft gate needs every guidance block classified', () => {
   expect(lifecycleGates(state).recoveryDraft).toBe(true)
 })
 
-test('D07 creates at most one guidance version for the latest reveal', () => {
+test('D07 rejects no-op drafts while legacy v5 guidance histories remain readable', () => {
   let state = startDuring()
   state = apply(state, { type: 'create-guidance' })
   expect(() => apply(state, { type: 'create-guidance' })).toThrow(
-    /already covers the latest revealed inject/,
+    /already covers the latest reveal and service conditions/,
   )
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Community outreach',
+    state: 'condition reported',
+    recheckMinutes: 15,
+  })
+  state = apply(state, { type: 'create-guidance' })
+  expect(
+    state.guidanceVersions.map((version) => version.createdMinute),
+  ).toEqual([0, 0])
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+  expect(parseLifecycleComparison(exportLifecycleRecord(state)).digest).toBe(
+    lifecycleDigest(state),
+  )
+  expect(() => apply(state, { type: 'create-guidance' })).toThrow(
+    /already covers the latest reveal and service conditions/,
+  )
+
   state = apply(state, { type: 'advance-clock', minutes: 60 })
   state = apply(state, { type: 'create-guidance' })
-  expect(state.guidanceVersions).toHaveLength(2)
+  expect(state.guidanceVersions).toHaveLength(3)
   expect(() => apply(state, { type: 'create-guidance' })).toThrow(
-    /already covers the latest revealed inject/,
+    /already covers the latest reveal and service conditions/,
   )
-
-  const duplicated = structuredClone(state)
-  duplicated.guidanceVersions = [
-    { ...duplicated.guidanceVersions[0], superseded: true },
-    {
-      ...duplicated.guidanceVersions[0],
-      version: 2,
-      superseded: false,
-    },
-  ]
-  expect(() => restoreLifecycleState(JSON.stringify(duplicated))).toThrow(
-    /failed validation/,
-  )
-
-  const duplicatedComparison = JSON.parse(exportLifecycleRecord(state))
-  duplicatedComparison.guidanceVersions = duplicated.guidanceVersions
-  expect(() =>
-    parseLifecycleComparison(JSON.stringify(duplicatedComparison)),
-  ).toThrow(/exact schema/)
 })
 
 test('escalation needs a blocked or overdue item with a matching reason', () => {

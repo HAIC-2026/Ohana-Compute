@@ -35,6 +35,7 @@ import {
   followThroughDoneChecks,
   gapCatalog,
   generateCloseoutPacket,
+  guidanceDraftNeeded,
   guidanceBlocks,
   h1Gates,
   h1Ready,
@@ -530,12 +531,12 @@ function primaryActionSelector(
         ? primaryKey(id, 'r2', 'add')
         : null
     case 'D07': {
-      const guidanceBasisMinute = revealedInjects(state).at(-1)?.minute ?? 0
-      const hasCurrentVersion = state.guidanceVersions.some(
-        (version) => version.createdMinute >= guidanceBasisMinute,
-      )
-      return state.phase === 'during' && !hasCurrentVersion
-        ? primaryKey(id, String(guidanceBasisMinute), 'create-guidance')
+      return state.phase === 'during' && guidanceDraftNeeded(state)
+        ? primaryKey(
+            id,
+            String(state.guidanceVersions.length + 1),
+            'create-guidance',
+          )
         : null
     }
     case 'D08':
@@ -1005,10 +1006,7 @@ function PracticeLifecycle() {
   const h1 = h1Gates(state)
   const gates = lifecycleGates(state)
   const injects = revealedInjects(state)
-  const guidanceBasisMinute = injects.at(-1)?.minute ?? 0
-  const guidanceNeeded = !state.guidanceVersions.some(
-    (version) => version.createdMinute >= guidanceBasisMinute,
-  )
+  const guidanceNeeded = guidanceDraftNeeded(state)
   const staleEvidence = state.evidence.filter((item) => item.state === 'stale')
   const sealedChoice = state.assumptions.chosen ?? 'r1'
   const sealedRevision = state.assumptions[sealedChoice]
@@ -2217,7 +2215,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               type="button"
               data-primary-key={primaryKey(
                 'D07',
-                String(guidanceBasisMinute),
+                String(state.guidanceVersions.length + 1),
                 'create-guidance',
               )}
               disabled={state.phase !== 'during' || !guidanceNeeded}
@@ -2400,7 +2398,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                     <button
                       type="button"
                       className="secondary"
-                      aria-label={`Set ${row.supportItemId} follow-up ready`}
+                      aria-label={`Set follow-up ready for ${row.supportItemId}`}
                       data-primary-key={
                         row.state === 'follow-up-ready'
                           ? undefined
@@ -2573,7 +2571,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         <button
                           type="button"
                           className="secondary"
-                          aria-label={`Mark ${item.id} unable`}
+                          aria-label={`Mark unable: ${item.id}`}
                           data-primary-key={primaryKey(
                             'A01',
                             item.id,

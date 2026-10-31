@@ -1636,19 +1636,8 @@ function validCanonicalRecord(
       Number(previous.cycle),
     ) &&
     typeof previous.sourceDigest === 'string'
-  const validGuidanceVersions = (
-    versions: unknown,
-    injectRows: unknown,
-  ): boolean => {
-    if (!Array.isArray(versions) || !Array.isArray(injectRows)) return false
-    const injectMinutes = injectRows.flatMap((inject) =>
-      exactKeys(inject, ['id', 'stage', 'minute', 'area']) &&
-      Number.isSafeInteger(inject.minute)
-        ? [Number(inject.minute)]
-        : [],
-    )
-    if (injectMinutes.length !== injectRows.length) return false
-    const seenBasisMinutes = new Set<number>()
+  const validGuidanceVersions = (versions: unknown): boolean => {
+    if (!Array.isArray(versions)) return false
     let previousCreatedMinute = -1
     return versions.every((row, index) => {
       if (
@@ -1661,7 +1650,7 @@ function validCanonicalRecord(
         ]) ||
         row.version !== index + 1 ||
         !Number.isSafeInteger(row.createdMinute) ||
-        Number(row.createdMinute) <= previousCreatedMinute ||
+        Number(row.createdMinute) < previousCreatedMinute ||
         row.status !== practiceStamp ||
         row.superseded !== index < versions.length - 1 ||
         !exactKeys(row.blocks, [...guidanceBlocks]) ||
@@ -1669,13 +1658,6 @@ function validCanonicalRecord(
       )
         return false
       const createdMinute = Number(row.createdMinute)
-      const basisMinute = injectMinutes.reduce(
-        (latest, minute) =>
-          minute <= createdMinute && minute > latest ? minute : latest,
-        0,
-      )
-      if (seenBasisMinutes.has(basisMinute)) return false
-      seenBasisMinutes.add(basisMinute)
       previousCreatedMinute = createdMinute
       return true
     })
@@ -1755,7 +1737,7 @@ function validCanonicalRecord(
         [15, 30, 60].includes(Number(row.recheckMinutes)) &&
         Number.isSafeInteger(row.recordedMinute),
     ) ||
-    !validGuidanceVersions(record.guidanceVersions, record.injects) ||
+    !validGuidanceVersions(record.guidanceVersions) ||
     !validHandoff(
       record.shiftSnapshot,
       [
@@ -2588,6 +2570,34 @@ function migrateLegacyLifecycleState(
 
 export function revealedInjects(state: LifecycleState) {
   return state.injects.filter((inject) => inject.minute <= state.practiceMinute)
+}
+
+function guidanceVersionBlocks(state: LifecycleState) {
+  const conditions =
+    state.serviceRecords
+      .map((item) => `${item.area}: ${item.state}`)
+      .join('; ') || 'No service-area record'
+  const formats = Object.entries(state.formats)
+    .map(([format, status]) => `${format}: ${status}`)
+    .join('; ')
+  return {
+    Situation: conditions,
+    'Accessible formats': formats,
+    'Support options': 'Use fixed practice support references only.',
+    'Next review': `Review at T+${state.practiceMinute + 30}.`,
+  }
+}
+
+export function guidanceDraftNeeded(state: LifecycleState) {
+  const latest = state.guidanceVersions.at(-1)
+  if (!latest) return true
+  const latestRevealMinute = revealedInjects(state).at(-1)?.minute ?? 0
+  const current = guidanceVersionBlocks(state)
+  return (
+    latest.createdMinute < latestRevealMinute ||
+    latest.blocks.Situation !== current.Situation ||
+    latest.blocks['Accessible formats'] !== current['Accessible formats']
+  )
 }
 
 export function serviceRecordStale(
@@ -3446,23 +3456,12 @@ function reduceLifecycleAction(
       )
     }
     case 'create-guidance': {
-      const guidanceBasisMinute = revealedInjects(state).at(-1)?.minute ?? 0
-      if (
-        state.guidanceVersions.some(
-          (version) => version.createdMinute >= guidanceBasisMinute,
-        )
-      )
+      if (!guidanceDraftNeeded(state))
         throw new Error(
-          'A guidance version already covers the latest revealed inject.',
+          'The current guidance already covers the latest reveal and service conditions.',
         )
       const version = state.guidanceVersions.length + 1
-      const conditions =
-        state.serviceRecords
-          .map((item) => `${item.area}: ${item.state}`)
-          .join('; ') || 'No service-area record'
-      const formats = Object.entries(state.formats)
-        .map(([format, status]) => `${format}: ${status}`)
-        .join('; ')
+      const blocks = guidanceVersionBlocks(state)
       const guidanceVersions = state.guidanceVersions.map((item) => ({
         ...item,
         superseded: true,
@@ -3472,12 +3471,7 @@ function reduceLifecycleAction(
         createdMinute: state.practiceMinute,
         status: practiceStamp,
         superseded: false,
-        blocks: {
-          Situation: conditions,
-          'Accessible formats': formats,
-          'Support options': 'Use fixed practice support references only.',
-          'Next review': `Review at T+${state.practiceMinute + 30}.`,
-        },
+        blocks,
       })
       return recordCapability(
         { ...state, guidanceVersions },

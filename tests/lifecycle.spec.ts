@@ -734,7 +734,18 @@ test('collapsed repeated actions advance distinct support items', async ({
     capability(page, 'D07').locator('.lifecycle-primary-action'),
   ).toHaveCount(0)
   await capability(page, 'D03').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create next guidance version')
+  await capability(page, 'D07').locator('.lifecycle-primary-action').click()
   await capability(page, 'D03').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create next guidance version')
+  await capability(page, 'D07').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
 
   for (const index of [0, 1]) {
     await capability(page, 'D04')
@@ -799,7 +810,7 @@ test('collapsed A01 advances five rows and keeps unable follow-through visible',
   for (let index = 1; index <= 5; index++) {
     await expect(
       capability(page, 'A01').locator('.lifecycle-primary-action'),
-    ).toHaveAccessibleName(`Set S-1-${index} follow-up ready`)
+    ).toHaveAccessibleName(`Set follow-up ready for S-1-${index}`)
     await capability(page, 'A01').locator('.lifecycle-primary-action').click()
   }
   await expect(
@@ -836,7 +847,7 @@ test('collapsed A01 advances five rows and keeps unable follow-through visible',
   await closeAllCapabilityDetails(page)
   await expect(
     capability(page, 'A01').locator('.lifecycle-primary-action'),
-  ).toHaveAccessibleName('Mark 1:S-1-2 unable')
+  ).toHaveAccessibleName('Mark unable: 1:S-1-2')
   await capability(page, 'A01').locator('.lifecycle-primary-action').click()
 
   await expect(capability(page, 'A01')).toContainText(
