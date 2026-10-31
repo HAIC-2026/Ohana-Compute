@@ -222,26 +222,49 @@ export function ReportedShelterContext({
       className="lifecycle-source-section"
       aria-label="FEMA-reported shelter context"
     >
-      <h4>FEMA-reported shelter context</h4>
-      <p>
-        Separate from the manual practice service-area condition below. A report
-        is not admission, available beds, complete County coverage, current
-        accessibility verification, restoration, or a service condition.
-      </p>
-      <p role="status">
-        Retrieval: {sourceRetrievalState(context ?? null, live.now, transport)}{' '}
-        · Query processing:{' '}
-        {transport === 'unavailable'
-          ? 'unavailable'
-          : (context?.coverage ?? 'unavailable')}{' '}
-        · Source observation time: unknown
-        {transport === 'unavailable' && context?.items.length
-          ? ' · Last-known reported facts retained'
-          : ''}
-      </p>
+      <div className="lifecycle-source-card-heading">
+        <div>
+          <h4>FEMA-reported shelter context</h4>
+          <p>
+            {context?.items.length ?? 0} report
+            {context?.items.length === 1 ? '' : 's'} returned
+          </p>
+        </div>
+        <div className="lifecycle-status-chips" role="status">
+          <span className="lifecycle-status-chip">
+            Retrieval:{' '}
+            {sourceRetrievalState(context ?? null, live.now, transport)}
+          </span>
+          {' · '}
+          <span className="lifecycle-status-chip">
+            Coverage:{' '}
+            {transport === 'unavailable'
+              ? 'unavailable'
+              : (context?.coverage ?? 'unavailable')}
+          </span>
+          {' · '}
+          <span className="lifecycle-status-chip is-attention">
+            Source observation time: unknown
+          </span>
+          {transport === 'unavailable' && context?.items.length ? (
+            <span className="lifecycle-status-chip is-attention">
+              Last-known reported facts retained
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <details>
+        <summary>Source limits and interpretation</summary>
+        <p>
+          Separate from the manual practice service-area condition below. A
+          report is not admission, available beds, complete County coverage,
+          current accessibility verification, restoration, or a service
+          condition. Unknown is not zero.
+        </p>
+      </details>
       {context?.items.length ? (
         context.items.map((claim) => (
-          <details key={claim.item_id} open={context.items.length === 1}>
+          <details key={claim.item_id}>
             <summary>
               {claim.name} · reported {claim.facts.reported_status ?? 'unknown'}
             </summary>

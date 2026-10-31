@@ -1,5 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { OperationsLayout } from '../components/OperationsLayout'
 import {
@@ -13,6 +22,8 @@ import {
   useLifecycleEvidence,
 } from '../lib/lifecycle-evidence'
 import { LifecycleWeatherContext } from '../components/NWSProductDetails'
+import { nwsEligibility, nwsProductValidity } from '../lib/nws-product'
+import { currentNWSApplicability } from '../lib/weather-evidence'
 import {
   applyLifecycleAction,
   canonicalLifecycleRecord,
@@ -24,6 +35,7 @@ import {
   followThroughDoneChecks,
   gapCatalog,
   generateCloseoutPacket,
+  guidanceDraftNeeded,
   guidanceBlocks,
   h1Gates,
   h1Ready,
@@ -83,30 +95,702 @@ const defaultObjectives: LifecycleState['objectives'] = [
   'shift',
 ]
 
+type CapabilitySnapshot = {
+  fact: string
+  owner?: string
+  exceptions?: string[]
+}
+
+type PrimaryActionContext = {
+  comparisonText: string
+  packetSelectionSaved: boolean
+}
+
+function capabilityPhase(id: CapabilityId) {
+  return id.startsWith('B') ? 'before' : id.startsWith('D') ? 'during' : 'after'
+}
+
+function exceptionSeverity(exception: string) {
+  const value = exception.toLowerCase()
+  const priorities = [
+    [
+      'decline',
+      'unable',
+      'blocked',
+      'overdue',
+      'exhausted',
+      'rechecks need attention',
+    ],
+    [
+      'unavailable',
+      'cancelled',
+      'expired',
+      'ambiguous',
+      'ineligible',
+      'cancellation',
+      'non_actual',
+      'non_public',
+      'not_yet_effective',
+      'public evidence',
+    ],
+    ['stale', 'not-returned', 'unknown'],
+    ['pending', 'needed', 'not asked'],
+  ]
+  const index = priorities.findIndex((terms) =>
+    terms.some((term) => value.includes(term)),
+  )
+  return index === -1 ? priorities.length : index
+}
+
+function compareExceptions(left: string, right: string) {
+  return (
+    exceptionSeverity(left) - exceptionSeverity(right) ||
+    left.localeCompare(right)
+  )
+}
+
+function primaryKey(capability: CapabilityId, target: string, action: string) {
+  return `${capability}:${target}:${action}`
+}
+
+function capabilitySnapshot(
+  id: CapabilityId,
+  state: LifecycleState,
+): CapabilitySnapshot {
+  const unavailableAreas = serviceAreas.filter(
+    (area) => state.simulationScope[area] === 'unavailable',
+  )
+  const staleServices = state.serviceRecords.filter((record) =>
+    serviceRecordStale(record, state.practiceMinute),
+  )
+  const openFollowThrough = state.followThroughItems.filter(
+    (item) => item.status === 'planned' || item.status === 'in-progress',
+  )
+  const unableFollowThrough = state.followThroughItems.filter(
+    (item) => item.status === 'unable',
+  )
+  const unknownNeeds = state.unmetNeeds.filter((item) =>
+    item.band.startsWith('Unknown'),
+  )
+  const gateEntries = Object.entries(lifecycleGates(state))
+  const blockedItems = state.supportItems.filter(
+    (item) =>
+      item.response === 'decline' || item.dueMinute < state.practiceMinute,
+  )
+
+  switch (id) {
+    case 'B01':
+      return {
+        fact: state.event
+          ? `${state.event.label} locked for cycle ${state.cycle}`
+          : 'Event not locked',
+      }
+    case 'B02':
+      return {
+        fact: `${state.carriedGaps.length} gaps queued`,
+        owner: state.carriedGaps[0]?.owner,
+      }
+    case 'B03':
+      return {
+        fact: state.objectives.length
+          ? `${state.objectives.length} measurable objectives frozen`
+          : 'Objectives not frozen',
+      }
+    case 'B04':
+      return {
+        fact:
+          state.timing.marginMinutes === null
+            ? 'Margin not computed'
+            : `${state.timing.marginMinutes} practice minutes of margin`,
+        exceptions:
+          state.timing.marginMinutes !== null && state.timing.marginMinutes <= 0
+            ? ['window exhausted']
+            : undefined,
+      }
+    case 'B05':
+      return {
+        fact: state.assumptions.chosen
+          ? `${state.assumptions.chosen} assumption sealed`
+          : 'Assumption not chosen',
+      }
+    case 'B06': {
+      const exceptions = Object.entries(state.formats)
+        .filter(([, value]) => value !== 'planned')
+        .map(([format, value]) => `${format}: ${value}`)
+      return {
+        fact: `${state.channel} · ${3 - exceptions.length}/3 formats planned`,
+        exceptions,
+      }
+    }
+    case 'B07':
+      return {
+        fact: `${state.evidence.length} practice records · ${state.sourceEvidence.length} source claims`,
+        exceptions: state.evidence
+          .filter((item) => item.state !== 'practice-reported criteria present')
+          .map((item) => `${item.gapId}: ${item.state}`),
+      }
+    case 'B08':
+      return {
+        fact: `${serviceAreas.length - unavailableAreas.length}/${serviceAreas.length} service areas simulated`,
+        exceptions: unavailableAreas.map((area) => `${area}: unavailable`),
+      }
+    case 'B09':
+      return { fact: `${state.injects.length} injects scheduled` }
+    case 'B10': {
+      const missing = Object.entries(h1Gates(state))
+        .filter(([, passed]) => !passed)
+        .map(([name]) => `${name}: needed`)
+      return {
+        fact: state.h1 ? `H1 sealed · ${state.h1.digest}` : 'H1 not sealed',
+        exceptions: missing,
+      }
+    }
+    case 'D01':
+      return {
+        fact: state.h1
+          ? `${state.supportItems.length} H1 support items materialized`
+          : 'H1 required',
+      }
+    case 'D02': {
+      const overdue = state.supportItems.filter(
+        (item) => item.dueMinute < state.practiceMinute,
+      ).length
+      return {
+        fact: `T+${state.practiceMinute} · ${revealedInjects(state).length} injects revealed`,
+        exceptions: overdue ? [`${overdue} overdue`] : undefined,
+      }
+    }
+    case 'D03':
+      return {
+        fact: `${state.serviceRecords.length} conditions recorded`,
+        exceptions: [
+          ...state.serviceRecords
+            .filter((record) => record.state !== 'condition reported')
+            .map((record) => `${record.area}: ${record.state}`),
+          ...staleServices.map((record) => `${record.area}: stale`),
+        ],
+      }
+    case 'D04':
+      return {
+        fact: `${state.supportItems.filter((item) => item.response !== 'not asked').length}/${state.supportItems.length} responses`,
+        exceptions: state.supportItems
+          .filter((item) => item.response !== 'hold')
+          .map((item) => `${item.id}: ${item.response}`),
+      }
+    case 'D05':
+      return {
+        fact: `${blockedItems.length} blocked or overdue items`,
+        owner: blockedItems[0]?.owner,
+        exceptions: blockedItems.map((item) =>
+          item.response === 'decline'
+            ? `${item.id}: blocked (declined)`
+            : `${item.id}: overdue`,
+        ),
+      }
+    case 'D06':
+      return {
+        fact: state.assumptions.r2
+          ? `r2 added · delta ${state.assumptions.r2.demandDeltaFromSealed} practice meals`
+          : 'r2 not added',
+      }
+    case 'D07':
+      return {
+        fact: `${state.guidanceVersions.length} UNSENT drafts`,
+      }
+    case 'D08':
+      return {
+        fact: state.shiftSnapshot
+          ? `Shift frozen at T+${state.shiftSnapshot.practiceMinute}`
+          : 'Shift not frozen',
+        owner: state.shiftSnapshot?.incoming,
+        exceptions: state.shiftSnapshot
+          ? [
+              ...(state.shiftSnapshot.blocked
+                ? [`${state.shiftSnapshot.blocked} blocked`]
+                : []),
+              ...(state.shiftSnapshot.overdue
+                ? [`${state.shiftSnapshot.overdue} overdue`]
+                : []),
+              ...(state.shiftSnapshot.staleEvidence
+                ? [`${state.shiftSnapshot.staleEvidence} stale evidence`]
+                : []),
+            ]
+          : undefined,
+      }
+    case 'D09': {
+      const stale = state.evidence.filter((item) => item.state === 'stale')
+      return {
+        fact: `${stale.length} stale claims`,
+        exceptions: stale.map((item) => `${item.id}: stale`),
+      }
+    }
+    case 'D10': {
+      const undecided = state.supportItems.filter(
+        (item) => item.disposition === 'undecided',
+      )
+      return {
+        fact: state.h2
+          ? `H2 sealed · ${state.h2.digest}`
+          : `${undecided.length} dispositions pending`,
+        exceptions: undecided.map((item) => `${item.id}: pending`),
+      }
+    }
+    case 'A01':
+      return {
+        fact: unableFollowThrough.length
+          ? `${openFollowThrough.length} open · ${unableFollowThrough.length} unable follow-through`
+          : `${openFollowThrough.length} open follow-through`,
+        owner: openFollowThrough[0]?.owner ?? unableFollowThrough[0]?.owner,
+        exceptions: [...openFollowThrough, ...unableFollowThrough].map(
+          (item) => `${item.gapId}: ${item.status}`,
+        ),
+      }
+    case 'A02':
+      return {
+        fact: `${state.unmetNeeds.length}/${cmistDomains.length} need bands`,
+        owner: unknownNeeds[0]?.owner ?? undefined,
+        exceptions: unknownNeeds.map((item) => `${item.domain}: unknown`),
+      }
+    case 'A03':
+      return {
+        fact: state.holdReview.attempted
+          ? `${state.holdReview.refusedItemIds.length} holds refused`
+          : 'Hold review pending',
+        exceptions: state.holdReview.refusedItemIds.map(
+          (item) => `${item}: blocked`,
+        ),
+      }
+    case 'A04': {
+      const sourceRecheckExceptions = state.sourceRechecks
+        .filter((item) => item.result !== 'unchanged')
+        .map((item) => `${item.id}: ${item.result}`)
+      const weatherRecheckExceptions = state.weatherRechecks
+        .filter((item) => item.result !== 'unchanged')
+        .map((item) => `${item.id}: ${item.result}`)
+      return {
+        fact: `${state.recheckPlans.length}/${state.sourceRechecks.length}/${state.weatherRechecks.length} service/source/weather rechecks`,
+        owner:
+          state.sourceRechecks.find((item) => item.result !== 'unchanged')
+            ?.owner ??
+          state.weatherRechecks.find((item) => item.result !== 'unchanged')
+            ?.owner ??
+          state.recheckPlans[0]?.owner,
+        exceptions: [...sourceRecheckExceptions, ...weatherRecheckExceptions],
+      }
+    }
+    case 'A05':
+      return {
+        fact: state.recoveryDraft
+          ? `${Object.keys(state.recoveryDraft.classifications).length}/${guidanceBlocks.length} guidance blocks classified`
+          : 'Draft not started',
+      }
+    case 'A06':
+      return {
+        fact: `${state.objectiveReview.length}/${state.objectives.length} objectives reviewed`,
+        exceptions: state.objectiveReview
+          .filter((item) => item.score !== 'met')
+          .map((item) => `${item.objectiveId}: ${item.score}`),
+      }
+    case 'A07': {
+      const missing = gateEntries
+        .filter(([, passed]) => !passed)
+        .map(([name]) => `${name}: needed`)
+      return {
+        fact: `${gateEntries.length - missing.length}/${gateEntries.length} gates ready`,
+        exceptions: missing,
+      }
+    }
+    case 'A08':
+      return {
+        fact: state.comparison
+          ? `Comparison ${state.comparison.digest} pinned`
+          : 'Comparison not pinned',
+      }
+    case 'A09':
+      return {
+        fact: `${state.packetSections.length} packet sections`,
+      }
+    case 'A10': {
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      const decisionCurrent = state.gateDecision === impliedDecision
+      return {
+        fact: state.previousCycle
+          ? `Cycle ${state.previousCycle.cycle} sealed read-only`
+          : decisionCurrent
+            ? 'Gate decision recorded; H3 can be sealed'
+            : state.gateDecision
+              ? 'Gate decision stale; record the current result'
+              : 'H3 needs gate decision',
+        exceptions: state.previousCycle
+          ? undefined
+          : decisionCurrent
+            ? undefined
+            : [
+                state.gateDecision
+                  ? `gate decision stale: ${impliedDecision}`
+                  : 'gate decision pending',
+              ],
+      }
+    }
+  }
+}
+
+function primaryActionSelector(
+  id: CapabilityId,
+  state: LifecycleState,
+  context: PrimaryActionContext,
+): string | null {
+  if (id.startsWith('B') && id !== 'B10' && state.h1) return null
+  switch (id) {
+    case 'B01':
+      return state.event ? null : primaryKey(id, 'event', 'lock')
+    case 'B02': {
+      const gap = gapCatalog.find(
+        (candidate) =>
+          !state.carriedGaps.some((item) => item.gapId === candidate.id),
+      )
+      return gap ? primaryKey(id, gap.id, 'carry') : null
+    }
+    case 'B03':
+      return state.objectives.length
+        ? null
+        : primaryKey(id, 'objectives', 'freeze')
+    case 'B04':
+      return state.timing.marginMinutes === null
+        ? primaryKey(id, 'margin', 'compute')
+        : null
+    case 'B05':
+      return state.assumptions.chosen
+        ? null
+        : primaryKey(id, 'comparison', 'carry')
+    case 'B06': {
+      const format = Object.entries(state.formats).find(
+        ([, formatState]) => formatState !== 'planned',
+      )?.[0]
+      return format ? primaryKey(id, format, 'planned') : null
+    }
+    case 'B07': {
+      const gap = state.carriedGaps.find(
+        (candidate) =>
+          !state.evidence.some((item) => item.gapId === candidate.gapId),
+      )
+      return gap ? primaryKey(id, gap.gapId, 'criteria-present') : null
+    }
+    case 'B08': {
+      const area = serviceAreas.find(
+        (candidate) => state.simulationScope[candidate] !== 'simulated',
+      )
+      return area ? primaryKey(id, area, 'simulated') : null
+    }
+    case 'B09': {
+      const area = serviceAreas.find(
+        (candidate) =>
+          state.simulationScope[candidate] === 'simulated' &&
+          !state.injects.some((inject) => inject.area === candidate),
+      )
+      return area ? primaryKey(id, area, 'schedule-inject') : null
+    }
+    case 'B10':
+      return !state.h1 && h1Ready(state) ? primaryKey(id, 'h1', 'seal') : null
+    case 'D01':
+      return state.h1 && state.phase === 'before'
+        ? primaryKey(id, 'h1', 'start-response')
+        : null
+    case 'D02':
+      return state.phase === 'during'
+        ? primaryKey(id, 'clock', 'advance-60')
+        : null
+    case 'D03': {
+      const area = serviceAreas.find(
+        (candidate) =>
+          state.simulationScope[candidate] === 'simulated' &&
+          !state.serviceRecords.some((record) => record.area === candidate),
+      )
+      return area ? primaryKey(id, area, 'unknown') : null
+    }
+    case 'D04': {
+      const item = state.supportItems.find(
+        (candidate) => candidate.response === 'not asked',
+      )
+      if (!item) return null
+      return primaryKey(id, item.id, 'hold')
+    }
+    case 'D05': {
+      const item = state.supportItems.find(
+        (candidate) =>
+          !candidate.escalation &&
+          (candidate.response === 'decline' ||
+            candidate.dueMinute < state.practiceMinute),
+      )
+      return item ? primaryKey(id, item.id, 'escalate') : null
+    }
+    case 'D06':
+      return !state.assumptions.r2 && revealedInjects(state).length
+        ? primaryKey(id, 'r2', 'add')
+        : null
+    case 'D07': {
+      return state.phase === 'during' && guidanceDraftNeeded(state)
+        ? primaryKey(
+            id,
+            String(state.guidanceVersions.length + 1),
+            'create-guidance',
+          )
+        : null
+    }
+    case 'D08':
+      return state.shiftSnapshot ? null : primaryKey(id, 'shift', 'freeze')
+    case 'D09': {
+      const evidence = state.evidence.find((item) => item.state === 'stale')
+      return evidence ? primaryKey(id, evidence.id, 'replace') : null
+    }
+    case 'D10': {
+      const item = state.supportItems.find(
+        (candidate) => candidate.disposition === 'undecided',
+      )
+      if (item) return primaryKey(id, item.id, 'carried')
+      return state.supportItems.length && !state.h2
+        ? primaryKey(id, 'h2', 'seal')
+        : null
+    }
+    case 'A01': {
+      const active = state.followThroughItems.find(
+        (item) => item.status === 'planned' || item.status === 'in-progress',
+      )
+      if (active?.status === 'planned')
+        return primaryKey(id, active.id, 'start')
+      if (active?.status === 'in-progress') {
+        const latest = active.observations.at(-1)
+        const hasObservation =
+          active.observations.length > active.attemptObservationStart
+        if (!hasObservation) return primaryKey(id, active.id, 'observe')
+        return latest?.result === 'observed'
+          ? primaryKey(id, active.id, 'finish')
+          : primaryKey(id, active.id, 'unable')
+      }
+      const row = state.recoveryRows.find(
+        (candidate) => candidate.state !== 'follow-up-ready',
+      )
+      if (row) return primaryKey(id, row.supportItemId, 'ready')
+      const readyWithoutFollowThrough = state.recoveryRows.find(
+        (candidate) =>
+          candidate.state === 'follow-up-ready' &&
+          !state.followThroughItems.some(
+            (item) =>
+              item.supportItemId === candidate.supportItemId ||
+              ((item.status === 'planned' || item.status === 'in-progress') &&
+                item.gapId === candidate.gapId),
+          ),
+      )
+      return readyWithoutFollowThrough
+        ? primaryKey(
+            id,
+            readyWithoutFollowThrough.supportItemId,
+            'create-follow-through',
+          )
+        : null
+    }
+    case 'A02': {
+      const domain = cmistDomains.find(
+        (candidate) =>
+          !state.unmetNeeds.some((item) => item.domain === candidate),
+      )
+      return domain ? primaryKey(id, domain, 'unknown') : null
+    }
+    case 'A03':
+      return state.holdReview.attempted
+        ? null
+        : primaryKey(id, 'holds', 'review')
+    case 'A04': {
+      const record = state.serviceRecords.find(
+        (candidate) =>
+          serviceRecordNeedsRecheck(candidate, state.practiceMinute) &&
+          !state.recheckPlans.some((plan) => plan.area === candidate.area),
+      )
+      return record ? primaryKey(id, record.area, 'plan-recheck') : null
+    }
+    case 'A05': {
+      const block = guidanceBlocks.find(
+        (candidate) => !state.recoveryDraft?.classifications[candidate],
+      )
+      return block ? primaryKey(id, block, 'carry-recovery') : null
+    }
+    case 'A06': {
+      const objective = state.objectives.find(
+        (candidate) =>
+          !state.objectiveReview.some(
+            (review) => review.objectiveId === candidate,
+          ),
+      )
+      return objective ? primaryKey(id, objective, 'carry-forward') : null
+    }
+    case 'A07': {
+      const canonicalDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      if (state.gateDecision === canonicalDecision) return null
+      return canonicalDecision === 'gates-met'
+        ? primaryKey(id, 'gates', 'met')
+        : primaryKey(id, 'gates', 'carry-unmet')
+    }
+    case 'A08':
+      if (state.comparison) return null
+      return context.comparisonText.trim()
+        ? primaryKey(id, 'comparison', 'pin')
+        : primaryKey(id, 'comparison', 'copy')
+    case 'A09':
+      return context.packetSelectionSaved
+        ? primaryKey(id, 'packet', 'download')
+        : primaryKey(id, 'packet', 'save-selection')
+    case 'A10': {
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      return state.gateDecision === impliedDecision && !state.previousCycle
+        ? primaryKey(id, 'cycle', 'seal')
+        : null
+    }
+  }
+}
+
+function splitPrimaryAction(children: ReactNode, selector: string | null) {
+  const result: { primary: ReactElement | null } = { primary: null }
+
+  const visit = (node: ReactNode): ReactNode => {
+    if (!isValidElement(node)) return node
+    const element = node as ReactElement<{
+      children?: ReactNode
+      disabled?: boolean
+      className?: string
+      'data-primary-key'?: string
+    }>
+    if (
+      !result.primary &&
+      selector === element.props['data-primary-key'] &&
+      element.type === 'button' &&
+      element.props.disabled !== true
+    ) {
+      result.primary = cloneElement(element, {
+        className: [element.props.className, 'lifecycle-primary-action']
+          .filter(Boolean)
+          .join(' '),
+      })
+      return null
+    }
+    if (!element.props.children) return element
+    return cloneElement(element, {
+      children: Children.map(element.props.children, visit),
+    })
+  }
+
+  const detail = Children.map(children, visit)
+  return { primary: result.primary, detail }
+}
+
 function Capability({
+  state,
   id,
   title,
   marker,
+  primaryActionContext = {
+    comparisonText: '',
+    packetSelectionSaved: false,
+  },
   children,
 }: {
+  state: LifecycleState
   id: CapabilityId
   title: string
   marker: boolean
+  primaryActionContext?: PrimaryActionContext
   children: React.ReactNode
 }) {
+  const snapshot = capabilitySnapshot(id, state)
+  const exceptions = [...(snapshot.exceptions ?? [])].sort(compareExceptions)
+  const phase = capabilityPhase(id)
+  const phaseOrder = ['before', 'during', 'after']
+  const phaseIndex = phaseOrder.indexOf(phase)
+  const currentPhaseIndex = ['before', 'during', 'after', 'complete'].indexOf(
+    state.phase,
+  )
+  const isFuture = phaseIndex > currentPhaseIndex
+  const isPast = phaseIndex < currentPhaseIndex
+  const isSealedBeforeReview =
+    Boolean(state.h1) && phase === 'before' && id !== 'B10'
+  const isTransitionAction =
+    id === 'D01' && state.phase === 'before' && Boolean(state.h1)
+  const selector =
+    !isPast && !isSealedBeforeReview && (!isFuture || isTransitionAction)
+      ? primaryActionSelector(id, state, primaryActionContext)
+      : null
+  const { primary, detail } = splitPrimaryAction(children, selector)
+  const status =
+    isPast || isSealedBeforeReview
+      ? 'Review'
+      : isFuture && !isTransitionAction
+        ? 'Waiting'
+        : primary
+          ? 'Ready'
+          : marker
+            ? 'Recorded'
+            : 'Open'
+
   return (
     <article
       className={`lifecycle-capability ${marker ? 'is-complete' : ''}`}
       data-capability={id}
+      id={`capability-${id.toLowerCase()}`}
     >
       <header>
         <span className="lifecycle-id">{id}</span>
         <h3>{title}</h3>
         <span className="lifecycle-marker" aria-label={`${id} marker`}>
-          {marker ? 'Recorded' : 'Ready'}
+          {status}
         </span>
       </header>
-      {children}
+      <div className="lifecycle-capability-snapshot">
+        <p>{snapshot.fact}</p>
+        {snapshot.owner && (
+          <p>
+            <strong>Owner:</strong> {snapshot.owner}
+          </p>
+        )}
+        {exceptions.length ? (
+          <div
+            className="lifecycle-status-chips"
+            aria-label={`${id} attention states`}
+          >
+            {exceptions.slice(0, 4).map((exception) => (
+              <span
+                className="lifecycle-status-chip is-attention"
+                key={exception}
+              >
+                {exception}
+              </span>
+            ))}
+            {exceptions.length > 4 && (
+              <span className="lifecycle-status-chip">
+                +{exceptions.length - 4} more
+              </span>
+            )}
+          </div>
+        ) : null}
+        <div className="lifecycle-next-action">
+          <span>
+            {primary ? 'Next' : isFuture ? phase : marker ? 'Review' : 'Open'}
+          </span>
+          {primary}
+        </div>
+      </div>
+      <details className="lifecycle-capability-details">
+        <summary
+          aria-label={`${id} Details: ${title} options and exact record`}
+        >
+          Details
+        </summary>
+        <div className="lifecycle-capability-detail-body">{detail}</div>
+      </details>
     </article>
   )
 }
@@ -322,6 +1006,7 @@ function PracticeLifecycle() {
   const h1 = h1Gates(state)
   const gates = lifecycleGates(state)
   const injects = revealedInjects(state)
+  const guidanceNeeded = guidanceDraftNeeded(state)
   const staleEvidence = state.evidence.filter((item) => item.state === 'stale')
   const sealedChoice = state.assumptions.chosen ?? 'r1'
   const sealedRevision = state.assumptions[sealedChoice]
@@ -349,6 +1034,82 @@ function PracticeLifecycle() {
         item.snapshotId === liveEvidence.snapshot?.snapshot_id,
     ),
   )
+  const openFollowThroughCount = state.followThroughItems.filter(
+    (item) => item.status === 'planned' || item.status === 'in-progress',
+  ).length
+  const unableFollowThroughCount = state.followThroughItems.filter(
+    (item) => item.status === 'unable',
+  ).length
+  const recheckAttentionCount =
+    state.sourceRechecks.filter((item) => item.result !== 'unchanged').length +
+    state.weatherRechecks.filter((item) => item.result !== 'unchanged').length
+  const evidenceAttention = liveEvidence.snapshot
+    ? evidenceCounts?.unavailableDomains ||
+      evidenceCounts?.unavailableEventSources ||
+      liveEvidence.snapshot.status !== 'complete'
+    : true
+  const capabilityExceptions = capabilityIds.flatMap((id) => {
+    const phaseIndex = ['before', 'during', 'after'].indexOf(
+      capabilityPhase(id),
+    )
+    if (phaseIndex > currentPhaseIndex) return []
+    return (capabilitySnapshot(id, state).exceptions ?? []).map(
+      (exception) => `${id}: ${exception}`,
+    )
+  })
+  const nwsProducts =
+    liveEvidence.snapshot?.event_triggers.data?.triggers.flatMap((trigger) =>
+      trigger.source === 'nws' && trigger.nws_product
+        ? [trigger.nws_product]
+        : [],
+    ) ?? []
+  const sourceExceptions = nwsProducts.flatMap((product) => {
+    const label = product.headline ?? product.event ?? product.id ?? 'NWS'
+    const validity = nwsProductValidity(product, liveEvidence.now)
+    const eligibility = nwsEligibility(product)
+    const applicability = currentNWSApplicability(
+      product,
+      liveEvidence.now,
+    ).result
+    return [
+      ...(validity === 'current' ? [] : [`${label}: ${validity}`]),
+      ...(eligibility === 'eligible' ? [] : [`${label}: ${eligibility}`]),
+      ...(applicability === 'unknown'
+        ? [`${label}: applicability unknown`]
+        : []),
+    ]
+  })
+  const activeExceptions = Array.from(
+    new Set([
+      ...capabilityExceptions,
+      ...sourceExceptions,
+      ...(liveEvidence.lastKnown ? ['last-known evidence'] : []),
+      ...(evidenceAttention ? ['public evidence needs attention'] : []),
+      ...(openFollowThroughCount
+        ? [`${openFollowThroughCount} open follow-through`]
+        : []),
+      ...(unableFollowThroughCount
+        ? [`${unableFollowThroughCount} unable follow-through`]
+        : []),
+      ...(recheckAttentionCount
+        ? [`${recheckAttentionCount} rechecks need attention`]
+        : []),
+      ...(restoreFailed ? ['saved record invalid'] : []),
+    ]),
+  ).sort(compareExceptions)
+  const visibleActiveExceptions = activeExceptions.slice(0, 6)
+  const blockedOrOverdueOwner = [...state.supportItems]
+    .filter(
+      (item) =>
+        item.response === 'decline' || item.dueMinute < state.practiceMinute,
+    )
+    .sort(
+      (left, right) =>
+        Number(right.response === 'decline') -
+          Number(left.response === 'decline') ||
+        left.dueMinute - right.dueMinute,
+    )
+    .at(0)?.owner
 
   return (
     <OperationsLayout title="Practice the complete event lifecycle">
@@ -369,45 +1130,123 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         role="note"
         data-lifecycle-restored={restored}
       >
-        <strong>{practiceStamp} · LOCAL PRACTICE WORKSPACE</strong>
-        <p>
-          Fixed fictional roles and partners only. No resident records, staff
-          writes, messages, resource movement, protective actions, or live
-          condition claims are created here.
-        </p>
+        <strong>{practiceStamp}</strong>
+        <div className="lifecycle-boundary" aria-label="Workspace boundaries">
+          <span>PRACTICE</span>
+          <span>LOCAL</span>
+          <span>UNSENT</span>
+          <span>NO AUTHORITY</span>
+        </div>
+        <details>
+          <summary>What this boundary means</summary>
+          <p>
+            Fixed fictional roles and partners only. No resident records, staff
+            writes, messages, resource movement, protective actions, or live
+            condition claims are created here.
+          </p>
+        </details>
       </div>
-      <div className="lifecycle-toolbar" aria-label="Lifecycle status">
-        <div>
-          <span>Cycle</span>
-          <strong>{state.cycle}</strong>
+      <section
+        className="lifecycle-overview"
+        aria-labelledby="lifecycle-overview-heading"
+      >
+        <div className="lifecycle-overview-heading">
+          <div>
+            <h2 id="lifecycle-overview-heading">
+              {state.phase === 'complete'
+                ? 'Cycle complete'
+                : `${state.phase[0].toUpperCase()}${state.phase.slice(1)} phase`}
+            </h2>
+            <p>
+              {markerCount}/30 capabilities recorded · T
+              {state.practiceMinute >= 0 ? '+' : ''}
+              {state.practiceMinute}
+            </p>
+          </div>
+          <div
+            className="lifecycle-status-chips"
+            aria-label="Lifecycle attention summary"
+          >
+            {activeExceptions.length ? (
+              <>
+                {visibleActiveExceptions.map((exception) => (
+                  <span
+                    className="lifecycle-status-chip is-attention"
+                    key={exception}
+                  >
+                    {exception}
+                  </span>
+                ))}
+                {activeExceptions.length > visibleActiveExceptions.length && (
+                  <details className="lifecycle-attention-more">
+                    <summary className="lifecycle-status-chip is-attention">
+                      +
+                      {activeExceptions.length - visibleActiveExceptions.length}{' '}
+                      more attention states
+                    </summary>
+                    <ul>
+                      {activeExceptions
+                        .slice(visibleActiveExceptions.length)
+                        .map((exception) => (
+                          <li key={exception}>{exception}</li>
+                        ))}
+                    </ul>
+                  </details>
+                )}
+              </>
+            ) : (
+              <span className="lifecycle-status-chip">no exception</span>
+            )}
+          </div>
         </div>
-        <div>
-          <span>Practice time</span>
-          <strong>
-            T{state.practiceMinute >= 0 ? '+' : ''}
-            {state.practiceMinute}
-          </strong>
+        <div className="lifecycle-toolbar" aria-label="Lifecycle status">
+          <div>
+            <span>Cycle</span>
+            <strong>{state.cycle}</strong>
+          </div>
+          <div>
+            <span>Practice time</span>
+            <strong>
+              T{state.practiceMinute >= 0 ? '+' : ''}
+              {state.practiceMinute}
+            </strong>
+          </div>
+          <div>
+            <span>Capabilities</span>
+            <strong>{markerCount}/30</strong>
+          </div>
+          <div>
+            <span>Needs attention</span>
+            <strong>{activeExceptions.length}</strong>
+          </div>
+          <div>
+            <span>Next owner</span>
+            <strong>
+              {state.phase === 'before'
+                ? 'Facilitator'
+                : state.phase === 'during'
+                  ? (blockedOrOverdueOwner ??
+                    state.supportItems.find(
+                      (item) => item.disposition === 'undecided',
+                    )?.owner ??
+                    'Facilitator')
+                  : (state.followThroughItems.find(
+                      (item) =>
+                        item.status === 'planned' ||
+                        item.status === 'in-progress' ||
+                        item.status === 'unable',
+                    )?.owner ?? 'Recovery lead')}
+            </strong>
+          </div>
         </div>
-        <div>
-          <span>Capabilities</span>
-          <strong>{markerCount}/30</strong>
-        </div>
-        <div>
-          <span>Open follow-through</span>
-          <strong>
-            {
-              state.followThroughItems.filter(
-                (item) =>
-                  item.status === 'planned' || item.status === 'in-progress',
-              ).length
-            }
-          </strong>
-        </div>
-        <div>
-          <span>Cycle digest</span>
-          <strong>{lifecycleDigest(state)}</strong>
-        </div>
-      </div>
+        <details className="lifecycle-overview-record">
+          <summary>Cycle identity and digest</summary>
+          <p>
+            Cycle {state.cycle} · {state.schema} · digest{' '}
+            {lifecycleDigest(state)}
+          </p>
+        </details>
+      </section>
       <ol
         className="lifecycle-phases"
         aria-label="Before during after progress"
@@ -420,7 +1259,18 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             aria-current={index === currentPhaseIndex ? 'step' : undefined}
           >
             <span>{index + 1}</span>
-            <strong>{phase}</strong>
+            <div>
+              <strong>{phase}</strong>
+              <small>
+                {
+                  capabilityIds.filter(
+                    (id) =>
+                      capabilityPhase(id) === phase.toLowerCase() && marked(id),
+                  ).length
+                }
+                /10 recorded
+              </small>
+            </div>
           </li>
         ))}
       </ol>
@@ -433,9 +1283,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
       >
         <div className="lifecycle-evidence-heading">
           <div>
-            <p className="operations-stamp">
-              PUBLIC SOURCE EVIDENCE · READ ONLY
-            </p>
+            <p className="operations-stamp">PUBLIC EVIDENCE · READ ONLY</p>
             <h2 id="lifecycle-evidence-heading">Live lifecycle evidence</h2>
           </div>
           <button type="button" onClick={liveEvidence.refresh}>
@@ -443,11 +1291,18 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </button>
         </div>
         <p>
-          Public evidence is planning context only—not dispatch, an order,
-          passability, restoration, containment, shelter completeness, partner
-          acceptance, resource movement, recovery completion, or all-clear
-          truth.
+          Read-only context. Not dispatch, an order, restoration, or an
+          all-clear.
         </p>
+        <details className="lifecycle-evidence-limits">
+          <summary>Evidence authority limits</summary>
+          <p>
+            Public evidence is planning context only—not dispatch, an order,
+            passability, restoration, containment, shelter completeness, partner
+            acceptance, resource movement, recovery completion, or all-clear
+            truth.
+          </p>
+        </details>
         {liveEvidence.snapshot ? (
           <>
             <div className="lifecycle-evidence-summary">
@@ -487,6 +1342,16 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   Feed {liveEvidence.snapshot.event_triggers.status} ·{' '}
                   {evidenceCounts?.unavailableEventSources ?? 'unknown'} source
                   unavailable
+                </small>
+              </div>
+              <div>
+                <span>Shelter reports</span>
+                <strong>
+                  {liveEvidence.snapshot.shelter_context.items.length} ·{' '}
+                  {liveEvidence.snapshot.shelter_context.state}
+                </strong>
+                <small>
+                  Coverage {liveEvidence.snapshot.shelter_context.coverage}
                 </small>
               </div>
               <div>
@@ -580,18 +1445,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </p>
         )}
       </section>
-      <p className="operations-lead">
-        One immutable chain carries planning decisions into response practice,
-        recovery review, and the next cycle. Each capability changes local
-        state, records a stable marker, and appends a deterministic ledger
-        event.
-      </p>
       <nav className="lifecycle-jump" aria-label="Lifecycle sections">
         <a href="#before">Before</a>
         <a href="#during">During</a>
         <a href="#after">After</a>
         <a href="#ledger">Ledger</a>
-        <Link to="/operations">Restricted staff operations</Link>
+        <Link to="/operations">Staff operations</Link>
         <Link to="/source-health">Source health</Link>
       </nav>
       {message && (
@@ -607,12 +1466,13 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div className="lifecycle-section-heading">
           <div>
             <p className="operations-stamp">PHASE 1 · BEFORE</p>
-            <h2 id="before-heading">Prepare a bounded practice cycle</h2>
+            <h2 id="before-heading">Prepare the cycle</h2>
           </div>
           {state.h1 && <span>H1 sealed · {state.h1.digest}</span>}
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="B01"
             title="Lock the fictional event"
             marker={marked('B01')}
@@ -632,6 +1492,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('B01', 'event', 'lock')}
               disabled={Boolean(state.event)}
               onClick={() => {
                 const element =
@@ -655,6 +1516,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B02"
             title="Rank and carry readiness gaps"
             marker={marked('B02')}
@@ -667,6 +1529,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={primaryKey('B02', gap.id, 'carry')}
                   key={gap.id}
                   onClick={() =>
                     act({
@@ -691,6 +1554,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B03"
             title="Choose measurable objectives"
             marker={marked('B03')}
@@ -715,6 +1579,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </fieldset>
             <button
               type="button"
+              data-primary-key={primaryKey('B03', 'objectives', 'freeze')}
               onClick={() =>
                 act({
                   type: 'set-objectives',
@@ -730,6 +1595,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B04"
             title="Compute preparation margin"
             marker={marked('B04')}
@@ -758,6 +1624,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </div>
             <button
               type="button"
+              data-primary-key={primaryKey('B04', 'margin', 'compute')}
               onClick={() =>
                 act({
                   type: 'set-timing',
@@ -785,6 +1652,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B05"
             title="Compare assumption sets"
             marker={marked('B05')}
@@ -829,6 +1697,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               </button>
               <button
                 type="button"
+                data-primary-key={primaryKey('B05', 'comparison', 'carry')}
                 onClick={() =>
                   act({
                     type: 'choose-assumption',
@@ -856,6 +1725,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B06"
             title="Plan accessible outreach formats"
             marker={marked('B06')}
@@ -884,6 +1754,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                     <button
                       type="button"
                       className="secondary"
+                      data-primary-key={
+                        choice === 'planned'
+                          ? primaryKey('B06', format, 'planned')
+                          : undefined
+                      }
                       key={choice}
                       onClick={() =>
                         act({
@@ -906,6 +1781,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B07"
             title="Record practice evidence"
             marker={marked('B07')}
@@ -924,6 +1800,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'B07',
+                      gap.gapId,
+                      'criteria-present',
+                    )}
                     onClick={() =>
                       act({
                         type: 'record-evidence',
@@ -970,6 +1851,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B08"
             title="Declare simulation scope"
             marker={marked('B08')}
@@ -982,6 +1864,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={
+                    state.simulationScope[area] === 'simulated'
+                      ? undefined
+                      : primaryKey('B08', area, 'simulated')
+                  }
                   onClick={() =>
                     act({
                       type: 'set-scope',
@@ -1006,6 +1893,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B09"
             title="Schedule deterministic injects"
             marker={marked('B09')}
@@ -1017,6 +1905,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'B09',
+                      area,
+                      'schedule-inject',
+                    )}
                     key={area}
                     onClick={() =>
                       act({
@@ -1044,6 +1937,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="B10"
             title="Seal the Before handoff"
             marker={marked('B10')}
@@ -1057,6 +1951,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </ul>
             <button
               type="button"
+              data-primary-key={primaryKey('B10', 'h1', 'seal')}
               disabled={!h1Ready(state) || Boolean(state.h1)}
               onClick={() => act({ type: 'seal-h1' })}
             >
@@ -1079,12 +1974,14 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="D01"
             title="Materialize the H1 support queue"
             marker={marked('D01')}
           >
             <button
               type="button"
+              data-primary-key={primaryKey('D01', 'h1', 'start-response')}
               disabled={!state.h1 || state.phase !== 'before'}
               onClick={() => act({ type: 'start-during' })}
             >
@@ -1097,6 +1994,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D02"
             title="Advance deterministic practice time"
             marker={marked('D02')}
@@ -1106,6 +2004,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={
+                    minutes === 60
+                      ? primaryKey('D02', 'clock', 'advance-60')
+                      : undefined
+                  }
                   key={minutes}
                   disabled={state.phase !== 'during'}
                   onClick={() =>
@@ -1131,6 +2034,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D03"
             title="Record service-area conditions"
             marker={marked('D03')}
@@ -1149,6 +2053,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <button
                         type="button"
                         className="secondary"
+                        data-primary-key={
+                          serviceState === 'unknown'
+                            ? primaryKey('D03', area, 'unknown')
+                            : undefined
+                        }
                         key={serviceState}
                         onClick={() =>
                           act({
@@ -1178,6 +2087,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D04"
             title="Ask practice partners for support"
             marker={marked('D04')}
@@ -1192,6 +2102,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      response === 'hold'
+                        ? primaryKey('D04', item.id, 'hold')
+                        : undefined
+                    }
                     key={response}
                     onClick={() =>
                       act({
@@ -1216,6 +2131,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D05"
             title="Escalate a blocked or overdue item"
             marker={marked('D05')}
@@ -1236,7 +2152,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
-                    disabled={!reason}
+                    data-primary-key={primaryKey('D05', item.id, 'escalate')}
+                    disabled={!reason || Boolean(item.escalation)}
                     onClick={() => {
                       if (reason)
                         act({
@@ -1248,7 +2165,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         })
                     }}
                   >
-                    Escalate with bounded deadline
+                    Escalate {item.id} with bounded deadline
                   </button>
                 </div>
               )
@@ -1256,12 +2173,14 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D06"
             title="Add assumption revision r2"
             marker={marked('D06')}
           >
             <button
               type="button"
+              data-primary-key={primaryKey('D06', 'r2', 'add')}
               disabled={injects.length === 0}
               onClick={() =>
                 act({
@@ -1287,13 +2206,19 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D07"
             title="Create versioned guidance drafts"
             marker={marked('D07')}
           >
             <button
               type="button"
-              disabled={state.phase !== 'during'}
+              data-primary-key={primaryKey(
+                'D07',
+                String(state.guidanceVersions.length + 1),
+                'create-guidance',
+              )}
+              disabled={state.phase !== 'during' || !guidanceNeeded}
               onClick={() => act({ type: 'create-guidance' })}
             >
               Create next guidance version
@@ -1309,6 +2234,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D08"
             title="Freeze a role-to-role shift handoff"
             marker={marked('D08')}
@@ -1330,6 +2256,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('D08', 'shift', 'freeze')}
               onClick={() =>
                 act({
                   type: 'freeze-shift',
@@ -1351,6 +2278,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D09"
             title="Replace stale practice evidence"
             marker={marked('D09')}
@@ -1360,6 +2288,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={primaryKey('D09', item.id, 'replace')}
                   key={item.id}
                   onClick={() =>
                     act({
@@ -1381,6 +2310,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="D10"
             title="Disposition every support item and seal H2"
             marker={marked('D10')}
@@ -1394,6 +2324,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      disposition === 'carried'
+                        ? primaryKey('D10', item.id, 'carried')
+                        : undefined
+                    }
                     key={disposition}
                     onClick={() =>
                       act({
@@ -1410,6 +2345,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             ))}
             <button
               type="button"
+              data-primary-key={primaryKey('D10', 'h2', 'seal')}
               disabled={
                 state.supportItems.length === 0 ||
                 state.supportItems.some(
@@ -1429,9 +2365,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div className="lifecycle-section-heading">
           <div>
             <p className="operations-stamp">PHASE 3 · AFTER</p>
-            <h2 id="after-heading">
-              Close the loop and carry learning forward
-            </h2>
+            <h2 id="after-heading">Close and carry forward</h2>
           </div>
           {state.previousCycle && (
             <span>H3 sealed · {state.previousCycle.digest}</span>
@@ -1439,42 +2373,79 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         </div>
         <div className="lifecycle-grid">
           <Capability
+            state={state}
             id="A01"
             title="Build the recovery register"
             marker={marked('A01')}
           >
-            {state.recoveryRows.map((row) => (
-              <div key={row.supportItemId}>
-                <div className="lifecycle-row">
-                  <span>
-                    {row.supportItemId} · {row.gapId} · {row.horizon} ·{' '}
-                    {row.state}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      act({
-                        type: 'configure-recovery-row',
-                        supportItemId: row.supportItemId,
-                        horizon: 'next day',
-                        state: 'follow-up-ready',
-                      })
-                    }
-                  >
-                    Set follow-up ready
-                  </button>
+            {state.recoveryRows.map((row) => {
+              const canCreateFollowThrough =
+                row.state === 'follow-up-ready' &&
+                !state.followThroughItems.some(
+                  (item) =>
+                    item.supportItemId === row.supportItemId ||
+                    ((item.status === 'planned' ||
+                      item.status === 'in-progress') &&
+                      item.gapId === row.gapId),
+                )
+              return (
+                <div key={row.supportItemId}>
+                  <div className="lifecycle-row">
+                    <span>
+                      {row.supportItemId} · {row.gapId} · {row.horizon} ·{' '}
+                      {row.state}
+                    </span>
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={`Set follow-up ready for ${row.supportItemId}`}
+                      data-primary-key={
+                        row.state === 'follow-up-ready'
+                          ? undefined
+                          : primaryKey('A01', row.supportItemId, 'ready')
+                      }
+                      disabled={row.state === 'follow-up-ready'}
+                      onClick={() =>
+                        act({
+                          type: 'configure-recovery-row',
+                          supportItemId: row.supportItemId,
+                          horizon: 'next day',
+                          state: 'follow-up-ready',
+                        })
+                      }
+                    >
+                      Set follow-up ready
+                    </button>
+                  </div>
+                  {canCreateFollowThrough && (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary"
+                        aria-label={`Create structured follow-through for ${row.supportItemId}`}
+                        data-primary-key={primaryKey(
+                          'A01',
+                          row.supportItemId,
+                          'create-follow-through',
+                        )}
+                        onClick={() =>
+                          act({
+                            type: 'create-follow-through',
+                            supportItemId: row.supportItemId,
+                            owner: 'Recovery lead',
+                            dueHorizon: 'next day',
+                            doneCheck: 'practice-review-recorded',
+                          })
+                        }
+                      >
+                        Create structured follow-through
+                      </button>
+                      <FollowThroughCreator row={row} act={act} />
+                    </>
+                  )}
                 </div>
-                {row.state === 'follow-up-ready' &&
-                  !state.followThroughItems.some(
-                    (item) =>
-                      item.supportItemId === row.supportItemId ||
-                      ((item.status === 'planned' ||
-                        item.status === 'in-progress') &&
-                        item.gapId === row.gapId),
-                  ) && <FollowThroughCreator row={row} act={act} />}
-              </div>
-            ))}
+              )
+            })}
             <p className="lifecycle-output">
               These are local PRACTICE observations only. They do not record
               external execution, acceptance, or adoption.
@@ -1537,6 +2508,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <div className="lifecycle-row">
                         <button
                           type="button"
+                          aria-label={`Start follow-through for ${item.id}`}
+                          data-primary-key={primaryKey('A01', item.id, 'start')}
                           disabled={
                             item.status !== 'planned' ||
                             item.observations.length >=
@@ -1553,6 +2526,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                             <button
                               type="button"
                               className="secondary"
+                              aria-label={`Record ${result} for ${item.id}`}
+                              data-primary-key={
+                                result === 'observed'
+                                  ? primaryKey('A01', item.id, 'observe')
+                                  : undefined
+                              }
                               disabled={!inProgress}
                               key={result}
                               onClick={() =>
@@ -1569,13 +2548,22 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         )}
                         <button
                           type="button"
+                          aria-label={`Finish follow-through for ${item.id}`}
+                          data-primary-key={primaryKey(
+                            'A01',
+                            item.id,
+                            'finish',
+                          )}
                           disabled={
                             !inProgress ||
                             !hasCurrentAttemptObservation ||
                             latest?.result !== 'observed'
                           }
                           onClick={() =>
-                            act({ type: 'finish-follow-through', id: item.id })
+                            act({
+                              type: 'finish-follow-through',
+                              id: item.id,
+                            })
                           }
                         >
                           Finish
@@ -1583,6 +2571,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         <button
                           type="button"
                           className="secondary"
+                          aria-label={`Mark unable: ${item.id}`}
+                          data-primary-key={primaryKey(
+                            'A01',
+                            item.id,
+                            'unable',
+                          )}
                           disabled={
                             !inProgress ||
                             !hasCurrentAttemptObservation ||
@@ -1629,6 +2623,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A02"
             title="Record aggregate unmet-need bands"
             marker={marked('A02')}
@@ -1640,6 +2635,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey('A02', domain, 'unknown')}
                     onClick={() =>
                       act({
                         type: 'set-unmet-need',
@@ -1681,11 +2677,16 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A03"
             title="Review linked practice holds"
             marker={marked('A03')}
           >
-            <button type="button" onClick={() => act({ type: 'review-holds' })}>
+            <button
+              type="button"
+              data-primary-key={primaryKey('A03', 'holds', 'review')}
+              onClick={() => act({ type: 'review-holds' })}
+            >
               Attempt hold review
             </button>
             <p className="lifecycle-output">
@@ -1698,19 +2699,29 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A04"
             title="Plan service-area rechecks"
             marker={marked('A04')}
           >
             <div className="lifecycle-button-list">
               {state.serviceRecords
-                .filter((record) =>
-                  serviceRecordNeedsRecheck(record, state.practiceMinute),
+                .filter(
+                  (record) =>
+                    serviceRecordNeedsRecheck(record, state.practiceMinute) &&
+                    !state.recheckPlans.some(
+                      (plan) => plan.area === record.area,
+                    ),
                 )
                 .map((record) => (
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'A04',
+                      record.area,
+                      'plan-recheck',
+                    )}
                     key={record.area}
                     onClick={() =>
                       act({
@@ -1733,6 +2744,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A05"
             title="Classify guidance into recovery draft r1"
             marker={marked('A05')}
@@ -1754,6 +2766,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      classification === 'carried into recovery draft r1'
+                        ? primaryKey('A05', block, 'carry-recovery')
+                        : undefined
+                    }
                     key={classification}
                     onClick={() =>
                       act({
@@ -1772,6 +2789,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A06"
             title="Score and disposition objectives"
             marker={marked('A06')}
@@ -1791,6 +2809,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <button
                         type="button"
                         className="secondary"
+                        data-primary-key={
+                          disposition === 'carry-forward'
+                            ? primaryKey('A06', objectiveId, 'carry-forward')
+                            : undefined
+                        }
                         key={disposition}
                         onClick={() =>
                           act({
@@ -1810,6 +2833,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A07"
             title="Evaluate six end-of-cycle gates"
             marker={marked('A07')}
@@ -1825,6 +2849,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               <button
                 type="button"
                 className="secondary"
+                data-primary-key={primaryKey('A07', 'gates', 'carry-unmet')}
                 onClick={() =>
                   act({
                     type: 'decide-gates',
@@ -1836,6 +2861,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               </button>
               <button
                 type="button"
+                data-primary-key={primaryKey('A07', 'gates', 'met')}
                 disabled={!lifecycleGatesMet(state)}
                 onClick={() =>
                   act({ type: 'decide-gates', decision: 'gates-met' })
@@ -1847,9 +2873,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A08"
             title="Export or pin a strict comparison"
             marker={marked('A08')}
+            primaryActionContext={{ comparisonText, packetSelectionSaved }}
           >
             <div className="operations-actions">
               <button
@@ -1867,6 +2895,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               <button
                 type="button"
                 className="secondary"
+                data-primary-key={primaryKey('A08', 'comparison', 'copy')}
                 onClick={() => setComparisonText(canonicalExport)}
               >
                 Copy current record into comparison field
@@ -1882,6 +2911,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('A08', 'comparison', 'pin')}
               onClick={() =>
                 act({ type: 'pin-comparison', text: comparisonText })
               }
@@ -1896,9 +2926,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A09"
             title="Generate a deterministic closeout packet"
             marker={marked('A09')}
+            primaryActionContext={{ comparisonText, packetSelectionSaved }}
           >
             <fieldset>
               <legend>Packet sections</legend>
@@ -1920,6 +2952,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </fieldset>
             <button
               type="button"
+              data-primary-key={primaryKey('A09', 'packet', 'save-selection')}
               onClick={() =>
                 act({
                   type: 'select-packet-sections',
@@ -1932,6 +2965,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             <button
               type="button"
               className="secondary"
+              data-primary-key={primaryKey('A09', 'packet', 'download')}
               disabled={!packetSelectionSaved}
               onClick={() => {
                 try {
@@ -1959,13 +2993,20 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           </Capability>
 
           <Capability
+            state={state}
             id="A10"
             title="Seal H3 and start cycle 2"
             marker={marked('A10')}
           >
             <button
               type="button"
-              disabled={!state.gateDecision}
+              data-primary-key={primaryKey('A10', 'cycle', 'seal')}
+              disabled={
+                state.gateDecision !==
+                (lifecycleGatesMet(state)
+                  ? 'gates-met'
+                  : 'gates-unmet-carry-forward')
+              }
               onClick={() => act({ type: 'start-next-cycle' })}
             >
               Seal carry-forward and start next cycle
@@ -2008,26 +3049,33 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             Reset lifecycle
           </button>
         </div>
-        <p>
-          Canonical export excludes this ledger and comparison metadata. The
-          displayed digest is derived from canonical cycle content only.
-        </p>
-        <ol className="lifecycle-ledger">
-          {state.ledger
-            .slice()
-            .reverse()
-            .map((event) => (
-              <li key={`${event.sequence}-${event.capability}`}>
-                <span>{event.sequence}</span>
-                <strong>{event.capability}</strong>
-                <span>
-                  T{event.practiceMinute >= 0 ? '+' : ''}
-                  {event.practiceMinute}
-                </span>
-                <p>{event.summary}</p>
-              </li>
-            ))}
-        </ol>
+        <div className="lifecycle-ledger-summary">
+          <strong>{state.ledger.length} deterministic local events</strong>
+          <span>Canonical export remains unchanged.</span>
+        </div>
+        <details>
+          <summary>Inspect capability ledger</summary>
+          <p>
+            Canonical export excludes this ledger and comparison metadata. The
+            displayed digest is derived from canonical cycle content only.
+          </p>
+          <ol className="lifecycle-ledger">
+            {state.ledger
+              .slice()
+              .reverse()
+              .map((event) => (
+                <li key={`${event.sequence}-${event.capability}`}>
+                  <span>{event.sequence}</span>
+                  <strong>{event.capability}</strong>
+                  <span>
+                    T{event.practiceMinute >= 0 ? '+' : ''}
+                    {event.practiceMinute}
+                  </span>
+                  <p>{event.summary}</p>
+                </li>
+              ))}
+          </ol>
+        </details>
         <details>
           <summary>Inspect canonical record shape</summary>
           <pre className="lifecycle-json">

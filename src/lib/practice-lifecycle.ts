@@ -303,6 +303,8 @@ export type FollowThroughItem = {
   observations: FollowThroughObservation[]
 }
 
+type FollowThroughStatus = FollowThroughItem['status']
+
 export type FollowThroughCycleArchive = {
   cycle: number
   items: FollowThroughArchiveItem[]
@@ -1634,6 +1636,32 @@ function validCanonicalRecord(
       Number(previous.cycle),
     ) &&
     typeof previous.sourceDigest === 'string'
+  const validGuidanceVersions = (versions: unknown): boolean => {
+    if (!Array.isArray(versions)) return false
+    let previousCreatedMinute = -1
+    return versions.every((row, index) => {
+      if (
+        !exactKeys(row, [
+          'version',
+          'createdMinute',
+          'status',
+          'blocks',
+          'superseded',
+        ]) ||
+        row.version !== index + 1 ||
+        !Number.isSafeInteger(row.createdMinute) ||
+        Number(row.createdMinute) < previousCreatedMinute ||
+        row.status !== practiceStamp ||
+        row.superseded !== index < versions.length - 1 ||
+        !exactKeys(row.blocks, [...guidanceBlocks]) ||
+        !Object.values(row.blocks).every((item) => typeof item === 'string')
+      )
+        return false
+      const createdMinute = Number(row.createdMinute)
+      previousCreatedMinute = createdMinute
+      return true
+    })
+  }
   if (
     !Array.isArray(record.sourceHistory) ||
     record.sourceHistory.length > 16 ||
@@ -1709,17 +1737,7 @@ function validCanonicalRecord(
         [15, 30, 60].includes(Number(row.recheckMinutes)) &&
         Number.isSafeInteger(row.recordedMinute),
     ) ||
-    !arrayOfExact(
-      record.guidanceVersions,
-      ['version', 'createdMinute', 'status', 'blocks', 'superseded'],
-      (row) =>
-        Number.isSafeInteger(row.version) &&
-        Number.isSafeInteger(row.createdMinute) &&
-        row.status === practiceStamp &&
-        typeof row.superseded === 'boolean' &&
-        exactKeys(row.blocks, [...guidanceBlocks]) &&
-        Object.values(row.blocks).every((item) => typeof item === 'string'),
-    ) ||
+    !validGuidanceVersions(record.guidanceVersions) ||
     !validHandoff(
       record.shiftSnapshot,
       [
@@ -2425,7 +2443,7 @@ export function migrateLifecycleV4State(text: string): LifecycleState {
     previousCycle,
     followThroughItems: [],
     followThroughHistory: [],
-  }
+  } as LifecycleState
   if (candidate.previousCycle && !candidate.previousCycle.sourceDigest)
     candidate.previousCycle.sourceDigest = previousSourceDigest(
       candidate.previousCycle,
@@ -2552,6 +2570,45 @@ function migrateLegacyLifecycleState(
 
 export function revealedInjects(state: LifecycleState) {
   return state.injects.filter((inject) => inject.minute <= state.practiceMinute)
+}
+
+function guidanceVersionBlocks(state: LifecycleState) {
+  const conditions =
+    state.serviceRecords
+      .map((item) => `${item.area}: ${item.state}`)
+      .join('; ') || 'No service-area record'
+  const formats = Object.entries(state.formats)
+    .map(([format, status]) => `${format}: ${status}`)
+    .join('; ')
+  return {
+    Situation: conditions,
+    'Accessible formats': formats,
+    'Support options': 'Use fixed practice support references only.',
+    'Next review': `Review at T+${state.practiceMinute + 30}.`,
+  }
+}
+
+function canonicalGuidanceSituation(value: string) {
+  if (value === 'No service-area record') return value
+  return value
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort()
+    .join('; ')
+}
+
+export function guidanceDraftNeeded(state: LifecycleState) {
+  const latest = state.guidanceVersions.at(-1)
+  if (!latest) return true
+  const latestRevealMinute = revealedInjects(state).at(-1)?.minute ?? 0
+  const current = guidanceVersionBlocks(state)
+  return (
+    latest.createdMinute < latestRevealMinute ||
+    canonicalGuidanceSituation(latest.blocks.Situation) !==
+      canonicalGuidanceSituation(current.Situation) ||
+    latest.blocks['Accessible formats'] !== current['Accessible formats']
+  )
 }
 
 export function serviceRecordStale(
@@ -3345,6 +3402,8 @@ function reduceLifecycleAction(
         (item) => item.id === action.supportItemId,
       )
       if (!target) throw new Error('Support item not found.')
+      if (target.escalation)
+        throw new Error('This support item already has a bounded escalation.')
       const blocked = target.response === 'decline'
       const overdue = target.dueMinute < state.practiceMinute
       const evidenceNeedsReview = state.evidence.some(
@@ -3408,14 +3467,12 @@ function reduceLifecycleAction(
       )
     }
     case 'create-guidance': {
+      if (!guidanceDraftNeeded(state))
+        throw new Error(
+          'The current guidance already covers the latest reveal and service conditions.',
+        )
       const version = state.guidanceVersions.length + 1
-      const conditions =
-        state.serviceRecords
-          .map((item) => `${item.area}: ${item.state}`)
-          .join('; ') || 'No service-area record'
-      const formats = Object.entries(state.formats)
-        .map(([format, status]) => `${format}: ${status}`)
-        .join('; ')
+      const blocks = guidanceVersionBlocks(state)
       const guidanceVersions = state.guidanceVersions.map((item) => ({
         ...item,
         superseded: true,
@@ -3425,12 +3482,7 @@ function reduceLifecycleAction(
         createdMinute: state.practiceMinute,
         status: practiceStamp,
         superseded: false,
-        blocks: {
-          Situation: conditions,
-          'Accessible formats': formats,
-          'Support options': 'Use fixed practice support references only.',
-          'Next review': `Review at T+${state.practiceMinute + 30}.`,
-        },
+        blocks,
       })
       return recordCapability(
         { ...state, guidanceVersions },
@@ -3817,8 +3869,15 @@ function reduceLifecycleAction(
       )
     }
     case 'decide-gates': {
-      if (action.decision === 'gates-met' && !lifecycleGatesMet(state))
+      const gatesMet = lifecycleGatesMet(state)
+      if (action.decision === 'gates-met' && !gatesMet)
         throw new Error('Every end-of-cycle gate must pass first.')
+      if (action.decision === 'gates-unmet-carry-forward' && gatesMet)
+        throw new Error(
+          'All end-of-cycle gates pass; record the canonical gates-met decision.',
+        )
+      if (state.gateDecision === action.decision)
+        throw new Error('The canonical gate decision is already recorded.')
       return recordCapability(
         { ...state, gateDecision: action.decision },
         'A07',
@@ -3853,9 +3912,12 @@ function reduceLifecycleAction(
       assertLifecycleIntegrity(state)
       if (!state.gateDecision)
         throw new Error('Record an end-of-cycle gate decision first.')
-      if (state.gateDecision === 'gates-met' && !lifecycleGatesMet(state))
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      if (state.gateDecision !== impliedDecision)
         throw new Error(
-          'Gates changed after the gates-met decision; record the gate decision again.',
+          'Gates changed after the recorded decision; record the gate decision again.',
         )
       const carriedGapIds = state.objectiveReview
         .filter((item) => item.disposition === 'carry-forward')
