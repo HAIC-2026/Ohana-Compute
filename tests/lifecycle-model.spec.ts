@@ -9,6 +9,7 @@ import {
   followThroughArchiveDigest,
   gapCatalog,
   generateCloseoutPacket,
+  guidanceDraftNeeded,
   guidanceBlocks,
   h1Gates,
   lifecycleDigest,
@@ -805,10 +806,45 @@ test('D07 rejects no-op drafts while legacy v5 guidance histories remain readabl
   expect(() => apply(state, { type: 'create-guidance' })).toThrow(
     /already covers the latest reveal and service conditions/,
   )
+
+  const legacy = structuredClone(state)
+  legacy.guidanceVersions = [
+    { ...legacy.guidanceVersions[0], superseded: true },
+    {
+      ...legacy.guidanceVersions[0],
+      version: 2,
+      superseded: false,
+    },
+  ]
+  const savedLegacy = JSON.stringify(legacy)
+  expect(JSON.stringify(restoreLifecycleState(savedLegacy))).toBe(savedLegacy)
+  const legacyComparison = JSON.parse(exportLifecycleRecord(legacy))
+  const legacyComparisonText = JSON.stringify(legacyComparison)
+  expect(parseLifecycleComparison(legacyComparisonText).digest).toBe(
+    fnvDigest(stableStringify(legacyComparison)),
+  )
+
+  const malformedVersion = structuredClone(legacy)
+  malformedVersion.guidanceVersions[1].version = 3
+  expect(() => restoreLifecycleState(JSON.stringify(malformedVersion))).toThrow(
+    /failed validation/,
+  )
+  const malformedFlags = structuredClone(legacy)
+  malformedFlags.guidanceVersions[0].superseded = false
+  expect(() => restoreLifecycleState(JSON.stringify(malformedFlags))).toThrow(
+    /failed validation/,
+  )
+
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Transportation support',
+    state: 'unknown',
+    recheckMinutes: 15,
+  })
   state = apply(state, {
     type: 'record-service-area',
     area: 'Community outreach',
-    state: 'condition reported',
+    state: 'unknown',
     recheckMinutes: 15,
   })
   state = apply(state, { type: 'create-guidance' })
@@ -819,13 +855,31 @@ test('D07 rejects no-op drafts while legacy v5 guidance histories remain readabl
   expect(parseLifecycleComparison(exportLifecycleRecord(state)).digest).toBe(
     lifecycleDigest(state),
   )
+
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Transportation support',
+    state: 'unknown',
+    recheckMinutes: 15,
+  })
+  expect(guidanceDraftNeeded(state)).toBe(false)
   expect(() => apply(state, { type: 'create-guidance' })).toThrow(
     /already covers the latest reveal and service conditions/,
   )
 
-  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = apply(state, {
+    type: 'record-service-area',
+    area: 'Transportation support',
+    state: 'unavailable',
+    recheckMinutes: 15,
+  })
+  expect(guidanceDraftNeeded(state)).toBe(true)
   state = apply(state, { type: 'create-guidance' })
-  expect(state.guidanceVersions).toHaveLength(3)
+
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  expect(guidanceDraftNeeded(state)).toBe(true)
+  state = apply(state, { type: 'create-guidance' })
+  expect(state.guidanceVersions).toHaveLength(4)
   expect(() => apply(state, { type: 'create-guidance' })).toThrow(
     /already covers the latest reveal and service conditions/,
   )

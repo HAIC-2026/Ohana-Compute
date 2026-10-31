@@ -746,6 +746,29 @@ test('collapsed repeated actions advance distinct support items', async ({
   await expect(
     capability(page, 'D07').locator('.lifecycle-primary-action'),
   ).toHaveCount(0)
+  await capability(page, 'D03')
+    .locator('.lifecycle-capability-details')
+    .evaluate((details) => ((details as HTMLDetailsElement).open = true))
+  await capability(page, 'D03')
+    .getByRole('button', {
+      name: 'Record Community outreach as unknown',
+    })
+    .click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await capability(page, 'D03')
+    .locator('.lifecycle-capability-details')
+    .evaluate((details) => ((details as HTMLDetailsElement).open = true))
+  await capability(page, 'D03')
+    .getByRole('button', {
+      name: 'Record Community outreach as unavailable',
+    })
+    .click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create next guidance version')
+  await capability(page, 'D07').locator('.lifecycle-primary-action').click()
 
   for (const index of [0, 1]) {
     await capability(page, 'D04')
@@ -779,11 +802,11 @@ test('collapsed repeated actions advance distinct support items', async ({
   await capability(page, 'D10').locator('.lifecycle-primary-action').click()
   await expect(
     capability(page, 'A04').locator('.lifecycle-primary-action'),
-  ).toHaveAccessibleName('Plan Community outreach recheck')
+  ).toHaveAccessibleName('Plan Mass-care support recheck')
   await capability(page, 'A04').locator('.lifecycle-primary-action').click()
   await expect(
     capability(page, 'A04').locator('.lifecycle-primary-action'),
-  ).toHaveAccessibleName('Plan Mass-care support recheck')
+  ).toHaveAccessibleName('Plan Community outreach recheck')
   await capability(page, 'A04').locator('.lifecycle-primary-action').click()
   await expect(
     capability(page, 'A04').locator('.lifecycle-primary-action'),
@@ -793,8 +816,8 @@ test('collapsed repeated actions advance distinct support items', async ({
       JSON.parse(localStorage.getItem('practice-lifecycle.v5')!).recheckPlans,
   )
   expect(recheckPlans.map((plan: { area: string }) => plan.area)).toEqual([
-    'Community outreach',
     'Mass-care support',
+    'Community outreach',
   ])
 })
 

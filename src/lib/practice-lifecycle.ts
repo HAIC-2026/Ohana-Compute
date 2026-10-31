@@ -2588,6 +2588,16 @@ function guidanceVersionBlocks(state: LifecycleState) {
   }
 }
 
+function canonicalGuidanceSituation(value: string) {
+  if (value === 'No service-area record') return value
+  return value
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort()
+    .join('; ')
+}
+
 export function guidanceDraftNeeded(state: LifecycleState) {
   const latest = state.guidanceVersions.at(-1)
   if (!latest) return true
@@ -2595,7 +2605,8 @@ export function guidanceDraftNeeded(state: LifecycleState) {
   const current = guidanceVersionBlocks(state)
   return (
     latest.createdMinute < latestRevealMinute ||
-    latest.blocks.Situation !== current.Situation ||
+    canonicalGuidanceSituation(latest.blocks.Situation) !==
+      canonicalGuidanceSituation(current.Situation) ||
     latest.blocks['Accessible formats'] !== current['Accessible formats']
   )
 }
