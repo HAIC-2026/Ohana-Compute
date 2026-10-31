@@ -622,9 +622,11 @@ function rationalPoint(point: number[]): RationalPoint {
 }
 
 function between(value: Rational, start: Rational, end: Rational) {
+  const startComparison = compare(value, start)
+  const endComparison = compare(value, end)
   return (
-    compare(value, start) >= Math.min(0, compare(end, start)) &&
-    compare(value, start) <= Math.max(0, compare(end, start))
+    (startComparison >= 0 && endComparison <= 0) ||
+    (startComparison <= 0 && endComparison >= 0)
   )
 }
 

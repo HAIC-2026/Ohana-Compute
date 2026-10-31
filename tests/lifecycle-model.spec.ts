@@ -1130,6 +1130,30 @@ test('weather acceptance freezes the exact reviewed revision without authority e
     restoreLifecycleState(JSON.stringify(boundaryAccepted)).weatherEvidence[0]
       .evaluation.reason,
   ).toBe('boundary')
+  for (const [firstLongitude, secondLongitude] of [
+    [-158, -157],
+    [-160, -159],
+  ]) {
+    const extensionProduct = structuredClone(legacyInline)
+    extensionProduct.geometry.shape = {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [firstLongitude, 21.450442],
+          [secondLongitude, 21.450442],
+          [(firstLongitude + secondLongitude) / 2, 22],
+          [firstLongitude, 21.450442],
+        ],
+      ],
+    }
+    extensionProduct.applicability = 'outside'
+    extensionProduct.applicability_reason = 'strict_exterior'
+    const extensionAccepted = acceptWeather(before, extensionProduct)
+    expect(
+      restoreLifecycleState(JSON.stringify(extensionAccepted))
+        .weatherEvidence[0].evaluation.reason,
+    ).toBe('strict_exterior')
+  }
   const badPoint = reviewedWeather(legacyInline)
   badPoint.reading.point = ['NaN', 'NaN']
   expect(() =>
