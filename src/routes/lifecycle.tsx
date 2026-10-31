@@ -158,7 +158,8 @@ function FollowThroughCreator({
     (typeof followThroughDoneChecks)[number]
   >('practice-review-recorded')
   return (
-    <div className="lifecycle-choice-group">
+    <details className="lifecycle-choice-group">
+      <summary>Create follow-through for {row.gapId}</summary>
       <label>
         Owner
         <select
@@ -215,7 +216,7 @@ function FollowThroughCreator({
       >
         Create structured follow-through
       </button>
-    </div>
+    </details>
   )
 }
 
@@ -395,8 +396,10 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           <span>Open follow-through</span>
           <strong>
             {
-              state.followThroughItems.filter((item) => item.status !== 'done')
-                .length
+              state.followThroughItems.filter(
+                (item) =>
+                  item.status === 'planned' || item.status === 'in-progress',
+              ).length
             }
           </strong>
         </div>
@@ -1465,8 +1468,10 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 {row.state === 'follow-up-ready' &&
                   !state.followThroughItems.some(
                     (item) =>
-                      item.originCycle === state.cycle &&
-                      item.supportItemId === row.supportItemId,
+                      item.supportItemId === row.supportItemId ||
+                      ((item.status === 'planned' ||
+                        item.status === 'in-progress') &&
+                        item.gapId === row.gapId),
                   ) && <FollowThroughCreator row={row} act={act} />}
               </div>
             ))}
@@ -1480,94 +1485,136 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 const inProgress = item.status === 'in-progress'
                 const hasCurrentAttemptObservation =
                   item.observations.length > item.attemptObservationStart
+                const nextAction =
+                  item.status === 'planned'
+                    ? 'Start practice check'
+                    : item.status === 'in-progress'
+                      ? hasCurrentAttemptObservation
+                        ? latest?.result === 'observed'
+                          ? 'Finish or record another observation'
+                          : 'Mark unable or record another observation'
+                        : 'Record an observation'
+                      : item.status === 'done'
+                        ? 'No carry-forward required'
+                        : 'Terminal: no verified practice result'
                 return (
                   <div className="lifecycle-choice-group" key={item.id}>
-                    <strong>
-                      {item.id} · origin cycle {item.originCycle} ·{' '}
-                      {item.status}
-                    </strong>
-                    <span>
-                      {item.gapId} · {item.owner} · {item.dueHorizon} ·{' '}
-                      {item.doneCheck}
-                    </span>
-                    <span>
-                      Latest PRACTICE observation:{' '}
-                      {latest
-                        ? `${latest.result} · cycle ${latest.cycle} · T${latest.practiceMinute >= 0 ? '+' : ''}${latest.practiceMinute}`
-                        : 'none'}
-                    </span>
                     <div className="lifecycle-row">
-                      <button
-                        type="button"
-                        disabled={
-                          (item.status !== 'planned' &&
-                            item.status !== 'unable') ||
-                          item.observations.length >=
-                            maxFollowThroughObservations
-                        }
-                        onClick={() =>
-                          act({ type: 'start-follow-through', id: item.id })
-                        }
-                      >
-                        {item.status === 'unable'
-                          ? 'Start PRACTICE retest'
-                          : 'Start follow-through'}
-                      </button>
-                      {(['observed', 'not-observed', 'unknown'] as const).map(
-                        (result) => (
-                          <button
-                            type="button"
-                            className="secondary"
-                            disabled={!inProgress}
-                            key={result}
-                            onClick={() =>
-                              act({
-                                type: 'record-follow-through-observation',
-                                id: item.id,
-                                result,
-                              })
-                            }
-                          >
-                            Record {result}
-                          </button>
-                        ),
-                      )}
-                      <button
-                        type="button"
-                        disabled={
-                          !inProgress ||
-                          !hasCurrentAttemptObservation ||
-                          latest?.result !== 'observed'
-                        }
-                        onClick={() =>
-                          act({ type: 'finish-follow-through', id: item.id })
-                        }
-                      >
-                        Finish
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={
-                          !inProgress ||
-                          !hasCurrentAttemptObservation ||
-                          (latest?.result !== 'not-observed' &&
-                            latest?.result !== 'unknown')
-                        }
-                        onClick={() =>
-                          act({
-                            type: 'mark-follow-through-unable',
-                            id: item.id,
-                          })
-                        }
-                      >
-                        Mark unable
-                      </button>
+                      <strong>
+                        {item.gapId} · {item.status}
+                      </strong>
+                      <span>
+                        {item.owner} · {item.dueHorizon}
+                      </span>
                     </div>
+                    <span>Next: {nextAction}</span>
+                    <details>
+                      <summary>Exact practice record and actions</summary>
+                      <p>
+                        {item.id} · origin cycle {item.originCycle} ·{' '}
+                        {item.doneCheck} · PRACTICE only
+                      </p>
+                      <p>
+                        Latest observation:{' '}
+                        {latest
+                          ? `${latest.result} · cycle ${latest.cycle} · T${latest.practiceMinute >= 0 ? '+' : ''}${latest.practiceMinute}`
+                          : 'none'}
+                      </p>
+                      <ul className="lifecycle-output-list">
+                        {item.observations.map((observation, index) => (
+                          <li
+                            key={`${observation.cycle}-${observation.practiceMinute}-${index}`}
+                          >
+                            Cycle {observation.cycle} · T
+                            {observation.practiceMinute >= 0 ? '+' : ''}
+                            {observation.practiceMinute} · {observation.result}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="lifecycle-row">
+                        <button
+                          type="button"
+                          disabled={
+                            item.status !== 'planned' ||
+                            item.observations.length >=
+                              maxFollowThroughObservations
+                          }
+                          onClick={() =>
+                            act({ type: 'start-follow-through', id: item.id })
+                          }
+                        >
+                          Start follow-through
+                        </button>
+                        {(['observed', 'not-observed', 'unknown'] as const).map(
+                          (result) => (
+                            <button
+                              type="button"
+                              className="secondary"
+                              disabled={!inProgress}
+                              key={result}
+                              onClick={() =>
+                                act({
+                                  type: 'record-follow-through-observation',
+                                  id: item.id,
+                                  result,
+                                })
+                              }
+                            >
+                              Record {result}
+                            </button>
+                          ),
+                        )}
+                        <button
+                          type="button"
+                          disabled={
+                            !inProgress ||
+                            !hasCurrentAttemptObservation ||
+                            latest?.result !== 'observed'
+                          }
+                          onClick={() =>
+                            act({ type: 'finish-follow-through', id: item.id })
+                          }
+                        >
+                          Finish
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            !inProgress ||
+                            !hasCurrentAttemptObservation ||
+                            (latest?.result !== 'not-observed' &&
+                              latest?.result !== 'unknown')
+                          }
+                          onClick={() =>
+                            act({
+                              type: 'mark-follow-through-unable',
+                              id: item.id,
+                            })
+                          }
+                        >
+                          Mark unable
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 )
               })}
             </div>
+            <details>
+              <summary>
+                Archived follow-through · {state.followThroughHistory.length}{' '}
+                cycles
+              </summary>
+              {state.followThroughHistory.map((archive) => (
+                <div className="lifecycle-choice-group" key={archive.cycle}>
+                  <strong>
+                    Cycle {archive.cycle} · {archive.items.length} records
+                  </strong>
+                  <span>{archive.digest}</span>
+                </div>
+              ))}
+            </details>
             <p className="lifecycle-output">
               Recovery review revision:{' '}
               {state.assumptions.r2

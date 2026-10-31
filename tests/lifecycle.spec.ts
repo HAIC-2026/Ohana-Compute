@@ -323,6 +323,15 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'A01')
     .getByRole('button', { name: 'Set follow-up ready' })
     .click()
+  const creator = capability(page, 'A01').getByText(
+    /^Create follow-through for /,
+  )
+  await expect(creator).toBeVisible()
+  await expect(
+    capability(page, 'A01').getByLabel(/Follow-through owner/),
+  ).toBeHidden()
+  await creator.focus()
+  await creator.press('Enter')
   await capability(page, 'A01')
     .getByLabel(/Follow-through owner/)
     .selectOption('Recovery lead')
@@ -335,8 +344,18 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'A01')
     .getByRole('button', { name: 'Create structured follow-through' })
     .click()
-  await expect(capability(page, 'A01')).toContainText('origin cycle 1')
   await expect(capability(page, 'A01')).toContainText('Recovery lead')
+  await expect(capability(page, 'A01')).toContainText(/ · planned/)
+  await expect(capability(page, 'A01')).toContainText(
+    'Next: Start practice check',
+  )
+  await expect(capability(page, 'A01').getByText(/origin cycle 1/)).toBeHidden()
+  const exactRecord = capability(page, 'A01').getByText(
+    'Exact practice record and actions',
+  )
+  await exactRecord.focus()
+  await exactRecord.press('Enter')
+  await expect(capability(page, 'A01')).toContainText('origin cycle 1')
   await expect(capability(page, 'A01')).toContainText(
     'practice-recheck-recorded',
   )
@@ -348,6 +367,9 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .click()
   await capability(page, 'A01').getByRole('button', { name: 'Finish' }).click()
   await expect(capability(page, 'A01')).toContainText('done')
+  await expect(
+    capability(page, 'A01').getByText(/^Create follow-through for /),
+  ).toHaveCount(0)
   await expect(capability(page, 'A01')).toContainText(
     'Recovery review revision: r2',
   )
@@ -406,7 +428,15 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     /^practice-lifecycle-[a-f0-9]{16}\.json$/,
   )
   const recordText = await readFile(await record.path(), 'utf8')
-  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v5')
+  const recordJson = JSON.parse(recordText)
+  expect(recordJson.schema).toBe('practice-lifecycle.v5')
+  expect(recordJson.followThroughItems[0]).toMatchObject({
+    owner: 'Recovery lead',
+    dueHorizon: 'next day',
+    doneCheck: 'practice-recheck-recorded',
+    status: 'done',
+    observations: [{ result: 'observed' }],
+  })
   expect(recordText).toContain('"followThroughItems"')
   expect(recordText).toContain(practiceStamp)
   await capability(page, 'A08')

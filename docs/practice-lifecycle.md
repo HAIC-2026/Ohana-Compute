@@ -86,14 +86,42 @@ introduced empty fields; non-empty evidence is never omitted.
 
 Structured follow-through is internal and fixed-choice only. A current-cycle
 item is keyed as `<origin-cycle>:<support-item-id>` and must match its recovery
-row and gap. Carried items must match a prior immutable archive snapshot.
+row and gap. One unresolved commitment can own a gap at a time; the matching
+carried commitment satisfies a later recovery row without creating a duplicate.
+Carried items must match the immediately preceding immutable archive entry, and
+every archive cycle in that chain must be adjacent.
 Statuses are `planned`, `in-progress`, `done`, or `unable`; observation results
 are `observed`, `not-observed`, or `unknown`. Done requires the latest local
 PRACTICE observation to be observed; unable requires not-observed or unknown.
+Both `done` and `unable` are terminal and do not carry. A later cycle may create
+a new commitment for the same gap after the prior commitment is terminal.
+Rollover advances the carried item's attempt boundary, so an earlier-cycle
+observation cannot finish or mark unable a later-cycle attempt.
+An unresolved item at the eight-observation limit must be resolved from its
+latest current-cycle result before rollover; the reducer refuses rollover
+rather than carrying an unwritable commitment.
 The record allows at most 30 current items, 8 observations per item, and 16
-cycle archives under the existing 128 KiB limit. Rollover archives the complete
-ending-cycle item snapshot, carries every non-done item and unresolved gap, and
-never claims external execution, acceptance, or adoption.
+cycle archives under the existing 128 KiB limit. Rollover stores an exact
+per-cycle delta for each item: stable identity and configuration, ending status,
+attempt boundary, cumulative observation count, and only the observations added
+in that cycle. Restore reconstructs and verifies the append-only observation
+prefix. H1 and H2 bind the ordered archive digest list whenever history is
+non-empty; empty-history v1-v4 seals remain byte-for-byte unchanged. Rollover
+carries only planned or in-progress items and never claims external execution,
+acceptance, or adoption.
+
+Before immutable H1, the reducer projects the smallest mandatory During state
+and refuses sealing if that transition would exceed 128 KiB. Before rollover,
+it likewise projects the minimum next Before-to-During path. These checks fail
+while the prior state is still editable instead of accepting an action that
+would freeze the next mandatory phase transition.
+
+The lifecycle defaults to a scan-first presentation. Follow-through cards lead
+with gap, status, owner, due horizon, and next action. Exact identifiers, done
+checks, observation timelines, and action controls are one keyboard-accessible
+disclosure away; archive digests are collapsed by default. Critical
+planned/in-progress/unable states and the PRACTICE boundary remain visible.
+Strict records and closeout exports retain the complete underlying data.
 An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a
@@ -389,9 +417,13 @@ rebuild `dist/`. Confirm all test ports are free or belong to this
 worktree before starting.
 
 Closeout packets contain pinned public-evidence summaries plus the saved section
-selection in a fixed section order, and the canonical cycle digest shown in the toolbar in the filename.
-Download stays disabled until the current selection is saved. They are ordinary
-browser downloads and do not enter or evict the offline field-packet cache.
+selection in a fixed section order, and the canonical cycle digest shown in the
+toolbar in the filename. The recovery-register section includes bounded
+archived follow-through outcomes, cumulative observation counts, and attempt
+boundaries so an operator does not need the JSON record to inspect prior
+practice outcomes. Download stays disabled until the current selection is
+saved. They are ordinary browser downloads and do not enter or evict the
+offline field-packet cache.
 
 ## Offline behavior
 
