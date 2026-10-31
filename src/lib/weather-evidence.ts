@@ -569,8 +569,8 @@ type RationalPoint = [Rational, Rational]
 function rational(value: string | number): Rational {
   const match = String(value).match(/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i)
   if (!match) throw new Error('Invalid retained weather coordinate.')
-  const fraction = match[3] ?? ''
-  const exponent = Number(match[4] ?? 0)
+  const fraction = match[3] || ''
+  const exponent = Number(match[4] || 0)
   let numerator = BigInt(`${match[1]}${match[2]}${fraction}`)
   const scale = fraction.length - exponent
   let denominator = 1n
