@@ -21,6 +21,7 @@ import {
   createInitialLifecycleState,
   dueBands,
   exportLifecycleRecord,
+  followThroughDoneChecks,
   gapCatalog,
   generateCloseoutPacket,
   guidanceBlocks,
@@ -31,11 +32,14 @@ import {
   lifecycleGatesMet,
   lifecycleStorageKey,
   legacyLifecycleStorageKey,
+  maxFollowThroughObservations,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
   migrateLifecycleV3State,
+  migrateLifecycleV4State,
   v2LifecycleStorageKey,
   v3LifecycleStorageKey,
+  v4LifecycleStorageKey,
   objectiveCatalog,
   packetSectionChoices,
   practicePartners,
@@ -53,6 +57,7 @@ import type {
   LifecycleAction,
   LifecycleState,
   PracticeRole,
+  RecoveryRow,
 } from '../lib/practice-lifecycle'
 import { practiceLocation } from '../lib/waianae-case'
 import '../lifecycle.css'
@@ -139,6 +144,82 @@ function download(filename: string, text: string, type = 'text/plain') {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function FollowThroughCreator({
+  row,
+  act,
+}: {
+  row: RecoveryRow
+  act: (action: LifecycleAction) => void
+}) {
+  const [owner, setOwner] = useState<PracticeRole>('Recovery lead')
+  const [dueHorizon, setDueHorizon] =
+    useState<RecoveryRow['horizon']>('next day')
+  const [doneCheck, setDoneCheck] = useState<
+    (typeof followThroughDoneChecks)[number]
+  >('practice-review-recorded')
+  return (
+    <details className="lifecycle-choice-group">
+      <summary>Create follow-through for {row.gapId}</summary>
+      <label>
+        Owner
+        <select
+          aria-label={`Follow-through owner for ${row.supportItemId}`}
+          value={owner}
+          onChange={(event) => setOwner(event.target.value as PracticeRole)}
+        >
+          {practiceRoles.map((role) => (
+            <option key={role}>{role}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Due horizon
+        <select
+          aria-label={`Follow-through due horizon for ${row.supportItemId}`}
+          value={dueHorizon}
+          onChange={(event) =>
+            setDueHorizon(event.target.value as RecoveryRow['horizon'])
+          }
+        >
+          {['next shift', 'next day', 'next exercise'].map((horizon) => (
+            <option key={horizon}>{horizon}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Done check
+        <select
+          aria-label={`Follow-through done check for ${row.supportItemId}`}
+          value={doneCheck}
+          onChange={(event) =>
+            setDoneCheck(
+              event.target.value as (typeof followThroughDoneChecks)[number],
+            )
+          }
+        >
+          {followThroughDoneChecks.map((check) => (
+            <option key={check}>{check}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={() =>
+          act({
+            type: 'create-follow-through',
+            supportItemId: row.supportItemId,
+            owner,
+            dueHorizon,
+            doneCheck,
+          })
+        }
+      >
+        Create structured follow-through
+      </button>
+    </details>
+  )
+}
+
 function PracticeLifecycle() {
   const [state, setState] = useState(createInitialLifecycleState)
   const [restored, setRestored] = useState(false)
@@ -163,23 +244,29 @@ function PracticeLifecycle() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(lifecycleStorageKey)
-      const v3 = saved
+      const v4 = saved
         ? null
-        : window.localStorage.getItem(v3LifecycleStorageKey)
+        : window.localStorage.getItem(v4LifecycleStorageKey)
+      const v3 =
+        saved || v4 ? null : window.localStorage.getItem(v3LifecycleStorageKey)
       const v2 =
-        saved || v3 ? null : window.localStorage.getItem(v2LifecycleStorageKey)
+        saved || v4 || v3
+          ? null
+          : window.localStorage.getItem(v2LifecycleStorageKey)
       const legacy =
-        saved || v3 || v2
+        saved || v4 || v3 || v2
           ? null
           : window.localStorage.getItem(legacyLifecycleStorageKey)
-      if (saved || v3 || v2 || legacy) {
+      if (saved || v4 || v3 || v2 || legacy) {
         const next = saved
           ? restoreLifecycleState(saved)
-          : v3
-            ? migrateLifecycleV3State(v3)
-            : v2
-              ? migrateLifecycleV2State(v2)
-              : migrateLifecycleV1State(legacy!)
+          : v4
+            ? migrateLifecycleV4State(v4)
+            : v3
+              ? migrateLifecycleV3State(v3)
+              : v2
+                ? migrateLifecycleV2State(v2)
+                : migrateLifecycleV1State(legacy!)
         setState(next)
         setSelectedObjectives(
           next.objectives.length ? next.objectives : defaultObjectives,
@@ -304,6 +391,17 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
         <div>
           <span>Capabilities</span>
           <strong>{markerCount}/30</strong>
+        </div>
+        <div>
+          <span>Open follow-through</span>
+          <strong>
+            {
+              state.followThroughItems.filter(
+                (item) =>
+                  item.status === 'planned' || item.status === 'in-progress',
+              ).length
+            }
+          </strong>
         </div>
         <div>
           <span>Cycle digest</span>
@@ -1346,26 +1444,180 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             marker={marked('A01')}
           >
             {state.recoveryRows.map((row) => (
-              <div className="lifecycle-row" key={row.supportItemId}>
-                <span>
-                  {row.supportItemId} · {row.state}
-                </span>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() =>
-                    act({
-                      type: 'configure-recovery-row',
-                      supportItemId: row.supportItemId,
-                      horizon: 'next day',
-                      state: 'follow-up-ready',
-                    })
-                  }
-                >
-                  Set follow-up ready
-                </button>
+              <div key={row.supportItemId}>
+                <div className="lifecycle-row">
+                  <span>
+                    {row.supportItemId} · {row.gapId} · {row.horizon} ·{' '}
+                    {row.state}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      act({
+                        type: 'configure-recovery-row',
+                        supportItemId: row.supportItemId,
+                        horizon: 'next day',
+                        state: 'follow-up-ready',
+                      })
+                    }
+                  >
+                    Set follow-up ready
+                  </button>
+                </div>
+                {row.state === 'follow-up-ready' &&
+                  !state.followThroughItems.some(
+                    (item) =>
+                      item.supportItemId === row.supportItemId ||
+                      ((item.status === 'planned' ||
+                        item.status === 'in-progress') &&
+                        item.gapId === row.gapId),
+                  ) && <FollowThroughCreator row={row} act={act} />}
               </div>
             ))}
+            <p className="lifecycle-output">
+              These are local PRACTICE observations only. They do not record
+              external execution, acceptance, or adoption.
+            </p>
+            <div className="lifecycle-button-list">
+              {state.followThroughItems.map((item) => {
+                const latest = item.observations.at(-1)
+                const inProgress = item.status === 'in-progress'
+                const hasCurrentAttemptObservation =
+                  item.observations.length > item.attemptObservationStart
+                const nextAction =
+                  item.status === 'planned'
+                    ? 'Start practice check'
+                    : item.status === 'in-progress'
+                      ? hasCurrentAttemptObservation
+                        ? latest?.result === 'observed'
+                          ? 'Finish or record another observation'
+                          : 'Mark unable or record another observation'
+                        : 'Record an observation'
+                      : item.status === 'done'
+                        ? 'No carry-forward required'
+                        : 'Terminal: no verified practice result'
+                return (
+                  <div className="lifecycle-choice-group" key={item.id}>
+                    <div className="lifecycle-row">
+                      <strong>
+                        {item.gapId} · {item.status}
+                      </strong>
+                      <span>
+                        {item.owner} · {item.dueHorizon}
+                      </span>
+                    </div>
+                    <span>Next: {nextAction}</span>
+                    <details>
+                      <summary>
+                        {item.gapId} · {item.status} · exact practice record and
+                        actions
+                      </summary>
+                      <p>
+                        {item.id} · origin cycle {item.originCycle} ·{' '}
+                        {item.doneCheck} · PRACTICE only
+                      </p>
+                      <p>
+                        Latest observation:{' '}
+                        {latest
+                          ? `${latest.result} · cycle ${latest.cycle} · T${latest.practiceMinute >= 0 ? '+' : ''}${latest.practiceMinute}`
+                          : 'none'}
+                      </p>
+                      <ul className="lifecycle-output-list">
+                        {item.observations.map((observation, index) => (
+                          <li
+                            key={`${observation.cycle}-${observation.practiceMinute}-${index}`}
+                          >
+                            Cycle {observation.cycle} · T
+                            {observation.practiceMinute >= 0 ? '+' : ''}
+                            {observation.practiceMinute} · {observation.result}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="lifecycle-row">
+                        <button
+                          type="button"
+                          disabled={
+                            item.status !== 'planned' ||
+                            item.observations.length >=
+                              maxFollowThroughObservations
+                          }
+                          onClick={() =>
+                            act({ type: 'start-follow-through', id: item.id })
+                          }
+                        >
+                          Start follow-through
+                        </button>
+                        {(['observed', 'not-observed', 'unknown'] as const).map(
+                          (result) => (
+                            <button
+                              type="button"
+                              className="secondary"
+                              disabled={!inProgress}
+                              key={result}
+                              onClick={() =>
+                                act({
+                                  type: 'record-follow-through-observation',
+                                  id: item.id,
+                                  result,
+                                })
+                              }
+                            >
+                              Record {result}
+                            </button>
+                          ),
+                        )}
+                        <button
+                          type="button"
+                          disabled={
+                            !inProgress ||
+                            !hasCurrentAttemptObservation ||
+                            latest?.result !== 'observed'
+                          }
+                          onClick={() =>
+                            act({ type: 'finish-follow-through', id: item.id })
+                          }
+                        >
+                          Finish
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            !inProgress ||
+                            !hasCurrentAttemptObservation ||
+                            (latest?.result !== 'not-observed' &&
+                              latest?.result !== 'unknown')
+                          }
+                          onClick={() =>
+                            act({
+                              type: 'mark-follow-through-unable',
+                              id: item.id,
+                            })
+                          }
+                        >
+                          Mark unable
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+                )
+              })}
+            </div>
+            <details>
+              <summary>
+                Archived follow-through · {state.followThroughHistory.length}{' '}
+                cycles
+              </summary>
+              {state.followThroughHistory.map((archive) => (
+                <div className="lifecycle-choice-group" key={archive.cycle}>
+                  <strong>
+                    Cycle {archive.cycle} · {archive.items.length} records
+                  </strong>
+                  <span>{archive.digest}</span>
+                </div>
+              ))}
+            </details>
             <p className="lifecycle-output">
               Recovery review revision:{' '}
               {state.assumptions.r2
@@ -1742,6 +1994,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               window.localStorage.removeItem(legacyLifecycleStorageKey)
               window.localStorage.removeItem(v2LifecycleStorageKey)
               window.localStorage.removeItem(v3LifecycleStorageKey)
+              window.localStorage.removeItem(v4LifecycleStorageKey)
               setRestoreFailed(false)
               stateRef.current = initial
               setState(initial)

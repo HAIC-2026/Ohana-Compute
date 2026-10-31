@@ -6,17 +6,22 @@ import {
   cmistDomains,
   createInitialLifecycleState,
   exportLifecycleRecord,
+  followThroughArchiveDigest,
+  gapCatalog,
   generateCloseoutPacket,
   guidanceBlocks,
   h1Gates,
   lifecycleDigest,
   lifecycleGates,
   lifecycleGatesMet,
+  maxFollowThroughObservations,
   maxLifecycleImportBytes,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
   migrateLifecycleV3State,
+  migrateLifecycleV4State,
   parseLifecycleComparison,
+  practiceRoles,
   practiceStamp,
   restoreLifecycleState,
   serializeLifecycleState,
@@ -89,8 +94,11 @@ function assertBoundedRoundTrip(state: LifecycleState) {
   expect(parseLifecycleComparison(exported).digest).toBe(lifecycleDigest(state))
 }
 
-function completeLifecycle(startNextCycle = true) {
-  let state = createInitialLifecycleState()
+function completeLifecycle(
+  startNextCycle = true,
+  initial = createInitialLifecycleState(),
+) {
+  let state = initial
   state = apply(state, {
     type: 'lock-event',
     eventId: 'hurricane-amber',
@@ -219,6 +227,20 @@ function completeLifecycle(startNextCycle = true) {
     horizon: 'next day',
     state: 'follow-up-ready',
   })
+  if (
+    !state.followThroughItems.some(
+      (item) =>
+        (item.status === 'planned' || item.status === 'in-progress') &&
+        item.gapId === state.recoveryRows[0].gapId,
+    )
+  )
+    state = apply(state, {
+      type: 'create-follow-through',
+      supportItemId: state.recoveryRows[0].supportItemId,
+      owner: 'Recovery lead',
+      dueHorizon: 'next day',
+      doneCheck: 'practice-review-recorded',
+    })
   for (const [index, domain] of cmistDomains.entries()) {
     state = apply(state, {
       type: 'set-unmet-need',
@@ -326,8 +348,11 @@ function readyBefore(
   })
 }
 
-function startDuring(choice: 'r1' | 'comparison' = 'comparison') {
-  return apply(apply(readyBefore(choice), { type: 'seal-h1' }), {
+function startDuring(
+  choice: 'r1' | 'comparison' = 'comparison',
+  initial = createInitialLifecycleState(),
+) {
+  return apply(apply(readyBefore(choice, initial), { type: 'seal-h1' }), {
     type: 'start-during',
   })
 }
@@ -341,6 +366,219 @@ function sealH2(state: LifecycleState) {
       disposition: index === 0 ? 'carried' : 'set aside',
     })
   return apply(next, { type: 'seal-h2' })
+}
+
+function completeFiveGapStressCycle(
+  initial: LifecycleState,
+  recordObservation: boolean,
+) {
+  let state = initial
+  state = apply(state, { type: 'lock-event', eventId: 'hurricane-amber' })
+  for (const [index, gap] of gapCatalog.entries())
+    state = apply(state, {
+      type: 'carry-gap',
+      gapId: gap.id,
+      owner: practiceRoles[index],
+      dueBand: 'T+60',
+    })
+  state = apply(state, { type: 'set-objectives', objectiveIds: ['timing'] })
+  state = apply(state, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  state = apply(state, {
+    type: 'choose-assumption',
+    choice: 'r1',
+    uptakePercent: 10,
+    supportDays: 3,
+  })
+  state = apply(state, {
+    type: 'record-evidence',
+    gapId: gapCatalog[0].id,
+    state: 'unknown',
+    partner: 'Practice Partner A',
+  })
+  state = apply(state, {
+    type: 'set-scope',
+    area: 'Transportation support',
+    state: 'simulated',
+  })
+  state = apply(state, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+  state = apply(state, { type: 'seal-h1' })
+  state = apply(state, { type: 'start-during' })
+  state = apply(state, { type: 'create-guidance' })
+  for (const item of state.supportItems)
+    state = apply(state, {
+      type: 'set-support-disposition',
+      supportItemId: item.id,
+      disposition: 'carried',
+    })
+  state = apply(state, { type: 'seal-h2' })
+  for (const row of state.recoveryRows) {
+    state = apply(state, {
+      type: 'configure-recovery-row',
+      supportItemId: row.supportItemId,
+      horizon: 'next exercise',
+      state: 'follow-up-ready',
+    })
+    if (
+      !state.followThroughItems.some(
+        (item) =>
+          (item.status === 'planned' || item.status === 'in-progress') &&
+          item.gapId === row.gapId,
+      )
+    )
+      state = apply(state, {
+        type: 'create-follow-through',
+        supportItemId: row.supportItemId,
+        owner: 'Recovery lead',
+        dueHorizon: 'next exercise',
+        doneCheck: 'practice-recheck-recorded',
+      })
+  }
+  for (const item of state.followThroughItems) {
+    if (item.status === 'planned')
+      state = apply(state, { type: 'start-follow-through', id: item.id })
+    if (
+      recordObservation &&
+      item.observations.length < maxFollowThroughObservations
+    )
+      state = apply(state, {
+        type: 'record-follow-through-observation',
+        id: item.id,
+        result: 'unknown',
+      })
+  }
+  for (const domain of cmistDomains)
+    state = apply(state, {
+      type: 'set-unmet-need',
+      domain,
+      band: '1–9 aggregate',
+      basis: 'practice observation',
+      owner: null,
+    })
+  state = apply(state, { type: 'review-holds' })
+  for (const block of guidanceBlocks)
+    state = apply(state, {
+      type: 'classify-guidance',
+      block,
+      classification: 'unknown',
+    })
+  state = apply(state, {
+    type: 'review-objective',
+    objectiveId: 'timing',
+    disposition: 'note-only',
+  })
+  state = apply(state, { type: 'decide-gates', decision: 'gates-met' })
+  return apply(state, { type: 'start-next-cycle' })
+}
+
+function completeDenseTerminalCycle(initial: LifecycleState) {
+  let state = initial
+  state = apply(state, { type: 'lock-event', eventId: 'hurricane-amber' })
+  for (const [gapId, owner] of [
+    ['transportation', 'Planning lead'],
+    ['communication', 'Outreach partner'],
+  ] as const)
+    state = apply(state, {
+      type: 'carry-gap',
+      gapId,
+      owner,
+      dueBand: 'T+60',
+    })
+  state = apply(state, {
+    type: 'set-objectives',
+    objectiveIds: ['transport', 'outreach'],
+  })
+  state = apply(state, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  state = apply(state, {
+    type: 'choose-assumption',
+    choice: 'r1',
+    uptakePercent: 10,
+    supportDays: 3,
+  })
+  state = apply(state, {
+    type: 'record-evidence',
+    gapId: 'transportation',
+    state: 'unknown',
+    partner: 'Practice Partner A',
+  })
+  for (const area of ['Transportation support', 'Community outreach'] as const)
+    state = apply(state, { type: 'set-scope', area, state: 'simulated' })
+  state = apply(state, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+  state = apply(state, { type: 'seal-h1' })
+  state = apply(state, { type: 'start-during' })
+  state = apply(state, { type: 'create-guidance' })
+  for (const item of state.supportItems)
+    state = apply(state, {
+      type: 'set-support-disposition',
+      supportItemId: item.id,
+      disposition: 'carried',
+    })
+  state = apply(state, { type: 'seal-h2' })
+  for (const row of state.recoveryRows) {
+    state = apply(state, {
+      type: 'configure-recovery-row',
+      supportItemId: row.supportItemId,
+      horizon: 'next exercise',
+      state: 'follow-up-ready',
+    })
+    state = apply(state, {
+      type: 'create-follow-through',
+      supportItemId: row.supportItemId,
+      owner: 'Recovery lead',
+      dueHorizon: 'next exercise',
+      doneCheck: 'practice-recheck-recorded',
+    })
+  }
+  for (const item of state.followThroughItems) {
+    state = apply(state, { type: 'start-follow-through', id: item.id })
+    for (let observation = 0; observation < 8; observation++)
+      state = apply(state, {
+        type: 'record-follow-through-observation',
+        id: item.id,
+        result: 'unknown',
+      })
+    state = apply(state, { type: 'mark-follow-through-unable', id: item.id })
+  }
+  for (const domain of cmistDomains)
+    state = apply(state, {
+      type: 'set-unmet-need',
+      domain,
+      band: '1–9 aggregate',
+      basis: 'practice observation',
+      owner: null,
+    })
+  state = apply(state, { type: 'review-holds' })
+  for (const block of guidanceBlocks)
+    state = apply(state, {
+      type: 'classify-guidance',
+      block,
+      classification: 'unknown',
+    })
+  for (const objectiveId of ['transport', 'outreach'] as const)
+    state = apply(state, {
+      type: 'review-objective',
+      objectiveId,
+      disposition: 'carry-forward',
+    })
+  state = apply(state, { type: 'decide-gates', decision: 'gates-met' })
+  return apply(state, { type: 'start-next-cycle' })
 }
 
 test('all 30 capabilities form one deterministic immutable practice chain', () => {
@@ -744,7 +982,7 @@ test('restore rejects malformed ledger and comparison metadata', () => {
   expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
 })
 
-test('migrates saved v1 state to strict v4 preserving original seals', () => {
+test('migrates saved v1 state to strict v5 preserving original seals', () => {
   const before = readyBefore()
   const originalDigest = fnvDigest(
     stableStringify({
@@ -773,11 +1011,13 @@ test('migrates saved v1 state to strict v4 preserving original seals', () => {
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   delete legacy.legacySeals
   delete legacy.h1.evidenceReferences
 
   const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
-  expect(migrated.schema).toBe('practice-lifecycle.v4')
+  expect(migrated.schema).toBe('practice-lifecycle.v5')
   expect(migrated.pinnedEvidence).toEqual([])
   expect(migrated.h1?.evidenceReferences).toEqual([])
   expect(migrated.h1?.digest).toBe(originalDigest)
@@ -803,6 +1043,8 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   delete legacy.legacySeals
   const text = JSON.stringify(legacy)
   const migrated = migrateLifecycleV2State(text)
@@ -846,6 +1088,8 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
     'weatherRechecks',
     'weatherHistory',
     'previousWeatherCycle',
+    'followThroughItems',
+    'followThroughHistory',
     'legacySeals',
   ])
     delete legacy[key]
@@ -1738,6 +1982,8 @@ test('v3 migration preserves sealed digests and creates no weather facts', () =>
   delete legacy.weatherRechecks
   delete legacy.weatherHistory
   delete legacy.previousWeatherCycle
+  delete legacy.followThroughItems
+  delete legacy.followThroughHistory
   const migrated = migrateLifecycleV3State(JSON.stringify(legacy))
   expect(migrated.h1?.digest).toBe(h1)
   expect(migrated.weatherEvidence).toEqual([])
@@ -1747,11 +1993,35 @@ test('v3 migration preserves sealed digests and creates no weather facts', () =>
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
 })
 
-test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () => {
+test('v4 migration preserves sealed H1 H2 and prior H3 digests', () => {
+  const sealed = completeLifecycle(false)
+  const v4Sealed = structuredClone(sealed) as unknown as Record<string, any>
+  v4Sealed.schema = 'practice-lifecycle.v4'
+  delete v4Sealed.followThroughItems
+  delete v4Sealed.followThroughHistory
+  const migratedSealed = migrateLifecycleV4State(JSON.stringify(v4Sealed))
+  expect(migratedSealed.h1?.digest).toBe(sealed.h1?.digest)
+  expect(migratedSealed.h2?.digest).toBe(sealed.h2?.digest)
+
+  const rolled = completeLifecycle(true)
+  const v4Rolled = structuredClone(rolled) as unknown as Record<string, any>
+  v4Rolled.schema = 'practice-lifecycle.v4'
+  delete v4Rolled.followThroughItems
+  delete v4Rolled.followThroughHistory
+  const migratedRolled = migrateLifecycleV4State(JSON.stringify(v4Rolled))
+  expect(migratedRolled.previousCycle?.digest).toBe(
+    rolled.previousCycle?.digest,
+  )
+  expect(migratedRolled.followThroughItems).toEqual([])
+  expect(migratedRolled.followThroughHistory).toEqual([])
+})
+
+test('v1 v2 v3 and v4 near-limit records migrate without empty-field overhead', () => {
   const cases = [
     ['practice-lifecycle.v1', migrateLifecycleV1State],
     ['practice-lifecycle.v2', migrateLifecycleV2State],
     ['practice-lifecycle.v3', migrateLifecycleV3State],
+    ['practice-lifecycle.v4', migrateLifecycleV4State],
   ] as const
   for (const [schema, migrate] of cases) {
     const legacy = structuredClone(
@@ -1766,6 +2036,8 @@ test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () 
       'weatherRechecks',
       'weatherHistory',
       'previousWeatherCycle',
+      'followThroughItems',
+      'followThroughHistory',
       ...(schema === 'practice-lifecycle.v1' ? ['pinnedEvidence'] : []),
     ])
       delete legacy[key]
@@ -1792,6 +2064,471 @@ test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () 
     ).toBeLessThanOrEqual(maxLifecycleImportBytes)
     expect(migrated.weatherEvidence).toEqual([])
   }
+})
+
+test('structured follow-through enforces exact records and bounded transitions', () => {
+  const planned = completeLifecycle(false)
+  const id = planned.followThroughItems[0].id
+  expect(() => apply(planned, { type: 'finish-follow-through', id })).toThrow(
+    /latest observed/,
+  )
+
+  let state = apply(planned, { type: 'start-follow-through', id })
+  state = apply(state, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'unknown',
+  })
+  expect(() => apply(state, { type: 'finish-follow-through', id })).toThrow(
+    /latest observed/,
+  )
+  const unable = apply(state, { type: 'mark-follow-through-unable', id })
+  expect(() => apply(unable, { type: 'start-follow-through', id })).toThrow(
+    /Only planned/,
+  )
+  expect(() =>
+    apply(unable, {
+      type: 'create-follow-through',
+      supportItemId: unable.followThroughItems[0].supportItemId,
+      owner: 'Recovery lead',
+      dueHorizon: 'next day',
+      doneCheck: 'practice-review-recorded',
+    }),
+  ).toThrow(/already has follow-through/)
+  const unableRoll = apply(unable, { type: 'start-next-cycle' })
+  expect(unableRoll.followThroughItems).toEqual([])
+  expect(unableRoll.followThroughHistory[0].items[0].status).toBe('unable')
+  expect(unableRoll.carriedGaps.map((gap) => gap.gapId)).not.toContain(
+    unable.followThroughItems[0].gapId,
+  )
+
+  state = apply(planned, { type: 'start-follow-through', id })
+  for (let index = 0; index < 8; index++)
+    state = apply(state, {
+      type: 'record-follow-through-observation',
+      id,
+      result: index === 7 ? 'observed' : 'not-observed',
+    })
+  expect(() =>
+    apply(state, {
+      type: 'record-follow-through-observation',
+      id,
+      result: 'observed',
+    }),
+  ).toThrow(/observation limit/)
+  expect(() =>
+    apply(state, { type: 'mark-follow-through-unable', id }),
+  ).toThrow(/not-observed or unknown/)
+  const beforeBlockedRollover = serializeLifecycleState(state)
+  expect(() => apply(state, { type: 'start-next-cycle' })).toThrow(
+    /observation limit.*done or unable/,
+  )
+  expect(serializeLifecycleState(state)).toBe(beforeBlockedRollover)
+  state = apply(state, { type: 'finish-follow-through', id })
+  expect(state.followThroughItems[0].status).toBe('done')
+
+  const malformed = structuredClone(state) as any
+  malformed.followThroughItems[0].extra = true
+  expect(() => restoreLifecycleState(JSON.stringify(malformed))).toThrow(
+    /failed validation/,
+  )
+  const duplicate = structuredClone(state) as any
+  duplicate.followThroughItems.push(
+    structuredClone(duplicate.followThroughItems[0]),
+  )
+  expect(() => restoreLifecycleState(JSON.stringify(duplicate))).toThrow(
+    /failed validation/,
+  )
+  const orphan = structuredClone(state) as any
+  orphan.followThroughItems[0].supportItemId = 'orphan'
+  orphan.followThroughItems[0].id = `${orphan.cycle}:orphan`
+  expect(() => restoreLifecycleState(JSON.stringify(orphan))).toThrow(
+    /failed validation/,
+  )
+})
+
+test('a carried attempt needs a new-cycle observation before a terminal outcome', () => {
+  let state = completeLifecycle(false)
+  const id = state.followThroughItems[0].id
+  state = apply(state, { type: 'start-follow-through', id })
+  state = apply(state, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+  const cycle2 = apply(state, { type: 'start-next-cycle' })
+  expect(cycle2.followThroughItems[0].attemptObservationStart).toBe(1)
+  const forgedBoundary = structuredClone(cycle2)
+  forgedBoundary.followThroughItems[0].attemptObservationStart = 0
+  forgedBoundary.followThroughItems[0].status = 'done'
+  expect(() => restoreLifecycleState(JSON.stringify(forgedBoundary))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(forgedBoundary)),
+  ).toThrow()
+
+  const forgedSuffix = structuredClone(cycle2)
+  forgedSuffix.followThroughItems[0].observations.push({
+    cycle: 1,
+    practiceMinute: 61,
+    result: 'unknown',
+  })
+  expect(() => restoreLifecycleState(JSON.stringify(forgedSuffix))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(forgedSuffix)),
+  ).toThrow()
+
+  let after = sealH2(startDuring('comparison', cycle2))
+  expect(() => apply(after, { type: 'finish-follow-through', id })).toThrow(
+    /latest observed/,
+  )
+  after = apply(after, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+  after = apply(after, { type: 'finish-follow-through', id })
+  after = apply(after, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  const cycle3 = apply(after, { type: 'start-next-cycle' })
+  expect(cycle3.followThroughItems).toEqual([])
+  expect(restoreLifecycleState(serializeLifecycleState(cycle3))).toEqual(cycle3)
+
+  let forgedAfter = structuredClone(sealH2(startDuring('comparison', cycle2)))
+  forgedAfter.followThroughItems[0].attemptObservationStart = 0
+  forgedAfter.followThroughItems[0].status = 'done'
+  forgedAfter = applyLifecycleAction(forgedAfter, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  expect(() =>
+    applyLifecycleAction(forgedAfter, { type: 'start-next-cycle' }),
+  ).toThrow(/follow-through.*integrity/i)
+})
+
+test('follow-through linkage gates and rollover preserve stable unresolved work', () => {
+  const linked = completeLifecycle(false)
+  const unlinked = {
+    ...linked,
+    followThroughItems: [],
+  }
+  expect(lifecycleGates(unlinked).recoveryRows).toBe(false)
+  expect(lifecycleGates(linked).recoveryRows).toBe(true)
+
+  const id = linked.followThroughItems[0].id
+  const rolled = apply(linked, { type: 'start-next-cycle' })
+  expect(rolled.followThroughItems).toEqual(linked.followThroughItems)
+  expect(rolled.followThroughItems[0].id).toBe(id)
+  expect(rolled.followThroughHistory).toHaveLength(1)
+  expect(rolled.followThroughHistory[0].items).toEqual(
+    linked.followThroughItems.map((item) => ({
+      ...item,
+      observationCount: item.observations.length,
+      observations: item.observations.filter(
+        (observation) => observation.cycle === linked.cycle,
+      ),
+    })),
+  )
+  expect(rolled.carriedGaps.map((gap) => gap.gapId)).toContain(
+    linked.followThroughItems[0].gapId,
+  )
+  expect(restoreLifecycleState(serializeLifecycleState(rolled))).toEqual(rolled)
+  const missingArchive = structuredClone(rolled)
+  missingArchive.followThroughHistory = []
+  expect(() => restoreLifecycleState(JSON.stringify(missingArchive))).toThrow(
+    /failed validation/,
+  )
+  const alteredArchive = structuredClone(rolled)
+  alteredArchive.followThroughHistory[0].digest =
+    'fnv1a-dual-v1:0000000000000000'
+  expect(() => restoreLifecycleState(JSON.stringify(alteredArchive))).toThrow(
+    /failed validation/,
+  )
+  const stranded = structuredClone(rolled)
+  const observations = Array.from(
+    { length: maxFollowThroughObservations },
+    (_, index) => ({
+      cycle: 1,
+      practiceMinute: 60 + index,
+      result: 'unknown' as const,
+    }),
+  )
+  stranded.followThroughHistory[0].items[0] = {
+    ...stranded.followThroughHistory[0].items[0],
+    status: 'in-progress',
+    observationCount: observations.length,
+    observations,
+  }
+  stranded.followThroughHistory[0].digest = followThroughArchiveDigest({
+    cycle: 1,
+    items: stranded.followThroughHistory[0].items,
+  })
+  stranded.followThroughItems[0] = {
+    ...stranded.followThroughItems[0],
+    status: 'in-progress',
+    attemptObservationStart: observations.length,
+    observations,
+  }
+  expect(() => restoreLifecycleState(JSON.stringify(stranded))).toThrow(
+    /failed validation/,
+  )
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(stranded)),
+  ).toThrow(/exact schema/)
+
+  let completed = apply(linked, { type: 'start-follow-through', id })
+  completed = apply(completed, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+
+  completed = apply(completed, { type: 'finish-follow-through', id })
+  const completedRoll = apply(completed, { type: 'start-next-cycle' })
+  expect(completedRoll.followThroughItems).toEqual([])
+  expect(completedRoll.followThroughHistory[0].items[0].status).toBe('done')
+  const archivedPacket = generateCloseoutPacket({
+    ...completedRoll,
+    packetSections: ['recovery register'],
+  }).text
+  expect(archivedPacket).toContain('done | observations 1')
+  expect(archivedPacket).toContain('attempt observation start 0')
+  expect(archivedPacket).toContain('cycle 1 T+60 | observed')
+  expect(completedRoll.carriedGaps.map((gap) => gap.gapId)).not.toContain(
+    completed.followThroughItems[0].gapId,
+  )
+
+  const disappeared = structuredClone(rolled)
+  disappeared.cycle = 3
+  disappeared.followThroughHistory.push({
+    cycle: 2,
+    items: [],
+    digest: followThroughArchiveDigest({ cycle: 2, items: [] }),
+  })
+  disappeared.followThroughItems = []
+  expect(() => restoreLifecycleState(JSON.stringify(disappeared))).toThrow(
+    /failed validation/,
+  )
+})
+
+test('sealed current cycles reject deleted or rewritten middle follow-through archives', () => {
+  const cycle2 = completeLifecycle(true)
+  const cycle3 = completeLifecycle(true, cycle2)
+  const sealedCycle3 = sealH2(startDuring('comparison', cycle3))
+  expect(sealedCycle3.cycle).toBe(3)
+  expect(
+    sealedCycle3.followThroughHistory.map((archive) => archive.cycle),
+  ).toEqual([1, 2])
+  expect(sealedCycle3.followThroughItems).toHaveLength(1)
+
+  const deleted = structuredClone(sealedCycle3)
+  deleted.followThroughHistory.splice(1, 1)
+  expect(() => restoreLifecycleState(JSON.stringify(deleted))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(deleted)),
+  ).toThrow()
+
+  const rewritten = structuredClone(sealedCycle3)
+  rewritten.followThroughHistory[0].items[0].doneCheck =
+    'practice-artifact-created'
+  rewritten.followThroughHistory[0].digest = followThroughArchiveDigest({
+    cycle: rewritten.followThroughHistory[0].cycle,
+    items: rewritten.followThroughHistory[0].items,
+  })
+  expect(() => restoreLifecycleState(JSON.stringify(rewritten))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(rewritten)),
+  ).toThrow()
+
+  let sealBypass = structuredClone(sealedCycle3)
+  for (const archive of sealBypass.followThroughHistory) {
+    archive.items[0].owner = 'Planning lead'
+    archive.digest = followThroughArchiveDigest({
+      cycle: archive.cycle,
+      items: archive.items,
+    })
+  }
+  sealBypass.followThroughItems[0].owner = 'Planning lead'
+  sealBypass = applyLifecycleAction(sealBypass, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  expect(() =>
+    applyLifecycleAction(sealBypass, { type: 'start-next-cycle' }),
+  ).toThrow(/H1 integrity|H2 integrity/)
+})
+
+test('archive deltas reject reversed practice-minute chronology after digest recomputation', () => {
+  let state = completeLifecycle(false)
+  const id = state.followThroughItems[0].id
+  state = apply(state, { type: 'start-follow-through', id })
+  state = apply(state, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'unknown',
+  })
+  state = apply(state, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+  state = apply(state, { type: 'finish-follow-through', id })
+  const cycle2 = apply(state, { type: 'start-next-cycle' })
+  const reversed = structuredClone(cycle2)
+  reversed.followThroughHistory[0].items[0].observations[0].practiceMinute = 61
+  reversed.followThroughHistory[0].items[0].observations[1].practiceMinute = 60
+  reversed.followThroughHistory[0].digest = followThroughArchiveDigest({
+    cycle: reversed.followThroughHistory[0].cycle,
+    items: reversed.followThroughHistory[0].items,
+  })
+  expect(() => restoreLifecycleState(JSON.stringify(reversed))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(reversed)),
+  ).toThrow()
+})
+
+test('terminal follow-through cannot continue into a later archive', () => {
+  let completed = completeLifecycle(false)
+  const id = completed.followThroughItems[0].id
+  completed = apply(completed, { type: 'start-follow-through', id })
+  completed = apply(completed, {
+    type: 'record-follow-through-observation',
+    id,
+    result: 'observed',
+  })
+  completed = apply(completed, { type: 'finish-follow-through', id })
+  const cycle2 = apply(completed, { type: 'start-next-cycle' })
+  const prior = cycle2.followThroughHistory[0].items[0]
+  const repeated = {
+    ...prior,
+    attemptObservationStart: prior.observationCount,
+    observationCount: prior.observationCount + 1,
+    observations: [
+      { cycle: 2, practiceMinute: 60, result: 'observed' as const },
+    ],
+  }
+  const forged = createInitialLifecycleState()
+  forged.cycle = 3
+  forged.followThroughHistory = [
+    cycle2.followThroughHistory[0],
+    {
+      cycle: 2,
+      items: [repeated],
+      digest: followThroughArchiveDigest({ cycle: 2, items: [repeated] }),
+    },
+  ]
+  expect(() => restoreLifecycleState(JSON.stringify(forged))).toThrow()
+  expect(() =>
+    parseLifecycleComparison(exportLifecycleRecord(forged)),
+  ).toThrow()
+})
+
+test('an unresolved carried follow-through item owns its gap across cycles', () => {
+  const cycle2 = completeLifecycle(true)
+  const carried = cycle2.followThroughItems[0]
+  const after = sealH2(startDuring('comparison', cycle2))
+  const matchingRow = after.recoveryRows.find(
+    (row) => row.gapId === carried.gapId,
+  )
+  expect(matchingRow).toBeTruthy()
+  const ready = apply(after, {
+    type: 'configure-recovery-row',
+    supportItemId: matchingRow!.supportItemId,
+    horizon: 'next day',
+    state: 'follow-up-ready',
+  })
+  expect(lifecycleGates(ready).recoveryRows).toBe(true)
+  expect(() =>
+    apply(ready, {
+      type: 'create-follow-through',
+      supportItemId: matchingRow!.supportItemId,
+      owner: 'Recovery lead',
+      dueHorizon: 'next day',
+      doneCheck: 'practice-review-recorded',
+    }),
+  ).toThrow(/unresolved.*gap|already.*gap/)
+})
+
+test('five unresolved gap commitments remain bounded and transitionable through 16 archives', () => {
+  let state = createInitialLifecycleState()
+  for (let cycle = 1; cycle <= 16; cycle++) {
+    try {
+      state = completeFiveGapStressCycle(state, cycle <= 7)
+    } catch (error) {
+      throw new Error(
+        `Cycle ${cycle} failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  expect(state.cycle).toBe(17)
+  expect(state.followThroughHistory).toHaveLength(16)
+  expect(state.followThroughItems).toHaveLength(gapCatalog.length)
+  expect(new Set(state.followThroughItems.map((item) => item.gapId)).size).toBe(
+    gapCatalog.length,
+  )
+  for (const item of state.followThroughItems) {
+    expect(item.originCycle).toBe(1)
+    expect(item.observations).toHaveLength(maxFollowThroughObservations - 1)
+  }
+  expect(
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength,
+  ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+  expect(
+    new TextEncoder().encode(exportLifecycleRecord(state)).byteLength,
+  ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+  expect(restoreLifecycleState(serializeLifecycleState(state))).toEqual(state)
+  let after = sealH2(startDuring('comparison', state))
+  for (const item of after.followThroughItems) {
+    after = apply(after, {
+      type: 'record-follow-through-observation',
+      id: item.id,
+      result: 'unknown',
+    })
+    after = apply(after, { type: 'mark-follow-through-unable', id: item.id })
+  }
+  expect(after.followThroughItems).toHaveLength(gapCatalog.length)
+  expect(
+    after.followThroughItems.every((item) => item.status === 'unable'),
+  ).toBe(true)
+})
+
+test('dense terminal follow-through completes eight cycles without a mid-cycle dead-end', () => {
+  let state = createInitialLifecycleState()
+  for (let cycle = 1; cycle <= 8; cycle++) {
+    state = completeDenseTerminalCycle(state)
+    expect(state.cycle).toBe(cycle + 1)
+    expect(restoreLifecycleState(serializeLifecycleState(state))).toEqual(state)
+  }
+  expect(state.followThroughHistory).toHaveLength(8)
+  expect(
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength,
+  ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+  expect(restoreLifecycleState(serializeLifecycleState(state))).toEqual(state)
+})
+
+test('H1 refuses sealing when its projected mandatory During state would overflow', () => {
+  const state = readyBefore()
+  const baseBytes = new TextEncoder().encode(
+    serializeLifecycleState(state),
+  ).byteLength
+  const padded = structuredClone(state)
+  padded.ledger.push({
+    sequence: padded.ledger.length + 1,
+    capability: 'B01',
+    cycle: padded.cycle,
+    practiceMinute: padded.practiceMinute,
+    summary: 'x'.repeat(maxLifecycleImportBytes - baseBytes - 512),
+  })
+  expect(
+    new TextEncoder().encode(serializeLifecycleState(padded)).byteLength,
+  ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+  const before = serializeLifecycleState(padded)
+  expect(() => applyLifecycleAction(padded, { type: 'seal-h1' })).toThrow(
+    /projected During state exceeds/,
+  )
+  expect(serializeLifecycleState(padded)).toBe(before)
 })
 
 test('compact restore rejects a reconstructed canonical export over 128 KiB', () => {

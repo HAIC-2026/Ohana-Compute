@@ -19,7 +19,7 @@ const capability = (page: Page, id: string) =>
   page.locator(`[data-capability="${id}"]`)
 const saved = (page: Page): Promise<LifecycleState> =>
   page.evaluate(() =>
-    JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}'),
+    JSON.parse(localStorage.getItem('practice-lifecycle.v5') ?? '{}'),
   )
 const authority = (state: LifecycleState) => ({
   event: state.event,
@@ -172,7 +172,7 @@ test('real backend source chain captures A, reports A-prime, and rechecks withou
     const count = await page.evaluate(
       () =>
         (
-          JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}')
+          JSON.parse(localStorage.getItem('practice-lifecycle.v5') ?? '{}')
             .sourceRechecks ?? []
         ).length,
     )
@@ -382,7 +382,7 @@ test('non-string enum refreshes retain validated cache and persist only source-u
     createInitialLifecycleState(),
   )
   await page.addInitScript((state) => {
-    localStorage.setItem('practice-lifecycle.v4', JSON.stringify(state))
+    localStorage.setItem('practice-lifecycle.v5', JSON.stringify(state))
   }, initial)
   let payload: unknown = sourceSnapshot()
   let malformed = false

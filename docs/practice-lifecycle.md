@@ -38,13 +38,17 @@ Every draft, strict record, and closeout packet is labeled
   traceable; only current stale evidence can be replaced. Every support item is
   carried or set aside before H2 is sealed.
 - **H3 — After to next Before:** carried H2 items become a recovery register.
-  Aggregate CMIST bands, linked hold review, service rechecks, recovery guidance,
-  objective scores, and six end-of-cycle gates determine what carries into the
-  next cycle. Hold review refuses carried held items without a follow-up-ready
-  row; set-aside items do not block it. Stale, unknown, and unavailable service
-  records need a recheck plan. Every guidance block is classified individually.
-  Starting the next cycle refuses a gates-met decision if a gate has since
-  regressed. The prior cycle becomes read-only.
+  Each follow-up-ready row must link to one bounded structured follow-through
+  item with a fixed practice owner, horizon, done check, status, and append-only
+  local PRACTICE observations. Aggregate CMIST bands, linked hold review,
+  service rechecks, recovery guidance, objective scores, and six end-of-cycle
+  gates determine what carries into the next cycle. A linked item need not be
+  done: unresolved items retain their stable identity and carry forward. Hold
+  review refuses carried held items without a follow-up-ready row; set-aside
+  items do not block it. Stale, unknown, and unavailable service records need a
+  recheck plan. Every guidance block is classified individually. Starting the
+  next cycle refuses a gates-met decision if a gate has since regressed. The
+  prior cycle becomes read-only.
 
 ## Capability contract
 
@@ -56,7 +60,7 @@ Every draft, strict record, and closeout packet is labeled
 
 Each capability interaction appends a local ledger event and exposes a stable
 `data-capability="B01"` through `data-capability="A10"` marker. Browser
-persistence uses the strict `practice-lifecycle.v4` schema and an explicit
+persistence uses the strict `practice-lifecycle.v5` schema and an explicit
 reset. Imports are bounded to 128 KiB, reject duplicate or extra JSON keys, and
 pin a read-only comparison without merging content. Exchange metadata and the
 ledger do not change canonical export bytes or the cycle digest.
@@ -64,20 +68,65 @@ Every reducer action checks both persisted-state and canonical-export UTF-8 byte
 after all effects, including ledger additions. Overflow rejects the action and
 preserves the previous valid state, including retained source history.
 
-Saved `practice-lifecycle.v1`, original `practice-lifecycle.v2`, and
-`practice-lifecycle.v3` state migrate explicitly into v4. V1 and v2 receive the
-same empty FEMA source records as before; every older schema receives empty NWS
-weather records, weather rechecks, and weather history. No migration invents a
-weather product. Original H1/H2 digest inputs remain unchanged because empty
-weather collections are omitted from those digest profiles. V1 H1 verification
-still reconstructs its bounded pre-seal evidence states, and v2/v3 use their
+Saved `practice-lifecycle.v1`, original `practice-lifecycle.v2`,
+`practice-lifecycle.v3`, and `practice-lifecycle.v4` state migrate explicitly
+into v5. V1 and v2 receive the same empty FEMA source records as before; v1-v3
+receive empty NWS weather records, weather rechecks, and weather history; and
+v1-v4 receive empty follow-through items and archives. No migration invents a
+weather product, follow-through action, or observation. Original H1/H2 digest
+inputs and retained prior H3 digest values remain unchanged. V1 H1 verification
+still reconstructs its bounded pre-seal evidence states, and v2-v4 use their
 original canonical inputs. Malformed or oversized saved records are not
 overwritten on a failed restore. Strict comparison imports remain
 current-schema-only; they do not silently migrate or merge content. Local
 persistence omits only schema-defined empty collections and empty handoff
 references, then restores them deterministically. This compact form prevents an
-otherwise valid near-limit v1/v2/v3 record from crossing 128 KiB solely because
-v4 introduced empty fields; non-empty evidence is never omitted.
+otherwise valid near-limit v1-v4 record from crossing 128 KiB solely because v5
+introduced empty fields; non-empty evidence is never omitted.
+
+Structured follow-through is internal and fixed-choice only. A current-cycle
+item is keyed as `<origin-cycle>:<support-item-id>` and must match its recovery
+row and gap. One unresolved commitment can own a gap at a time; the matching
+carried commitment satisfies a later recovery row without creating a duplicate.
+Carried items must match the immediately preceding immutable archive entry, and
+every archive cycle in that chain must be adjacent.
+Statuses are `planned`, `in-progress`, `done`, or `unable`; observation results
+are `observed`, `not-observed`, or `unknown`. Done requires the latest local
+PRACTICE observation to be observed; unable requires not-observed or unknown.
+Both `done` and `unable` are terminal and do not carry. A later cycle may create
+a new commitment for the same gap after the prior commitment is terminal.
+Rollover advances the carried item's attempt boundary, so an earlier-cycle
+observation cannot finish or mark unable a later-cycle attempt.
+An unresolved item at the eight-observation limit must be resolved from its
+latest current-cycle result before rollover; the reducer refuses rollover
+rather than carrying an unwritable commitment.
+The record allows at most 30 current items, 8 observations per item, and up to
+16 cycle archives under the existing 128 KiB limit. Sixteen is an archive-count
+ceiling, not a guaranteed horizon: dense observations, source history, or
+ledger activity can reach the byte limit earlier. Rollover stores an exact
+per-cycle delta for each item: stable identity and configuration, ending status,
+attempt boundary, cumulative observation count, and only the observations added
+in that cycle. Restore reconstructs and verifies the append-only observation
+prefix, exact rollover attempt boundary, current-cycle suffix, and per-cycle
+practice-time chronology. H1 and H2 bind the ordered archive digest list
+whenever history is non-empty; empty-history v1-v4 seals remain byte-for-byte
+unchanged. Rollover carries only planned or in-progress items and never claims
+external execution, acceptance, or adoption.
+
+Before immutable H1, the reducer projects the smallest mandatory During state
+and refuses sealing if that transition would exceed 128 KiB. Before rollover,
+it likewise projects the minimum next Before-to-During path. These checks fail
+while the prior state is still editable instead of accepting an action that
+would freeze the next mandatory phase transition.
+
+The A01 follow-through surface uses a reusable scan-first presentation.
+Follow-through cards lead with gap, status, owner, due horizon, and next action.
+Exact identifiers, done checks, observation timelines, and action controls are
+one keyboard-accessible disclosure away; archive digests are collapsed by
+default. Critical planned/in-progress/unable states and the PRACTICE boundary
+remain visible. Strict records and closeout exports retain the complete
+underlying data. Applying this pattern across the rest of the lifecycle remains
+a ready page-wide UX work item.
 An explicit snapshot pin stores only snapshot identity, times, aggregate status,
 bounded counts, and each feed's freshness state and completeness status in the
 current phase. Event-source error/unavailable counts are capped at 99, so a
@@ -373,9 +422,13 @@ rebuild `dist/`. Confirm all test ports are free or belong to this
 worktree before starting.
 
 Closeout packets contain pinned public-evidence summaries plus the saved section
-selection in a fixed section order, and the canonical cycle digest shown in the toolbar in the filename.
-Download stays disabled until the current selection is saved. They are ordinary
-browser downloads and do not enter or evict the offline field-packet cache.
+selection in a fixed section order, and the canonical cycle digest shown in the
+toolbar in the filename. The recovery-register section includes bounded
+archived follow-through outcomes, cumulative observation counts, and attempt
+boundaries so an operator does not need the JSON record to inspect prior
+practice outcomes. Download stays disabled until the current selection is
+saved. They are ordinary browser downloads and do not enter or evict the
+offline field-packet cache.
 
 ## Offline behavior
 
