@@ -1348,6 +1348,49 @@ test('weather rechecks preserve conflicting evaluations as ambiguity', () => {
   expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
 })
 
+test('weather lineage ambiguity uses canonical code-unit candidate ordering', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const accepted = state.weatherEvidence[0]
+  const update = (id: string) => {
+    const product = nwsProduct()
+    product.id = id
+    product.url = `https://api.weather.gov/alerts/${id}`
+    product.message_type = 'Update'
+    product.relationship = 'update'
+    product.references = [
+      {
+        identifier: accepted.product.id,
+        url: accepted.product.url,
+        sender: accepted.product.sender,
+        sent: accepted.product.sent,
+      },
+    ]
+    return product
+  }
+  const reading = weatherReading(update('a'))
+  reading.products.push(update('Z'))
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: accepted.id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'ambiguous',
+    candidates: {
+      count: 2,
+      identities: [{ id: 'Z' }, { id: 'a' }],
+    },
+  })
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
 test('weather counts and multi-cycle archives stay bounded and immutable', () => {
   let state = readyBefore()
   for (let index = 0; index < 4; index++) {

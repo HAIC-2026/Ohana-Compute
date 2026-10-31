@@ -1016,17 +1016,28 @@ function candidateSummary(
       productDigest: row.productDigest,
       evaluationDigest: row.evaluationDigest,
     }))
-    .sort((a, b) =>
-      `${a.id}:${a.url}:${a.productDigest}:${a.evaluationDigest}`.localeCompare(
-        `${b.id}:${b.url}:${b.productDigest}:${b.evaluationDigest}`,
-      ),
-    )
+    .sort((a, b) => compareCandidateIdentity(a, b))
   return {
     count: identities.length,
     digest: contentDigest(identities),
     complete: identities.length <= 8,
     identities: identities.slice(0, 8),
   }
+}
+
+function candidateIdentityKey(
+  identity: WeatherRecheck['candidates']['identities'][number],
+) {
+  return `${identity.id}:${identity.url}:${identity.productDigest}:${identity.evaluationDigest}`
+}
+
+function compareCandidateIdentity(
+  left: WeatherRecheck['candidates']['identities'][number],
+  right: WeatherRecheck['candidates']['identities'][number],
+) {
+  const leftKey = candidateIdentityKey(left)
+  const rightKey = candidateIdentityKey(right)
+  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0
 }
 
 function nullableTime(value: unknown) {
@@ -1601,15 +1612,13 @@ export function validWeatherRecords(
       candidates.identities.every(
         (identity, candidateIndex) =>
           candidateIndex === 0 ||
-          `${candidates.identities[candidateIndex - 1].id}:${candidates.identities[candidateIndex - 1].url}:${candidates.identities[candidateIndex - 1].productDigest}:${candidates.identities[candidateIndex - 1].evaluationDigest}` <
-            `${identity.id}:${identity.url}:${identity.productDigest}:${identity.evaluationDigest}`,
+          compareCandidateIdentity(
+            candidates.identities[candidateIndex - 1],
+            identity,
+          ) < 0,
       ) &&
-      new Set(
-        candidates.identities.map(
-          (identity) =>
-            `${identity.id}:${identity.url}:${identity.productDigest}:${identity.evaluationDigest}`,
-        ),
-      ).size === candidates.identities.length &&
+      new Set(candidates.identities.map(candidateIdentityKey)).size ===
+        candidates.identities.length &&
       candidates.count >= candidates.identities.length &&
       candidates.complete === candidates.count <= 8 &&
       (candidates.complete
