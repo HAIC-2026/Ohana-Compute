@@ -947,7 +947,26 @@ export function createWeatherRecheck(
         product.sent === accepted.product.sent,
     )
     const exactRevisions = distinctObservedRevisions(reading, exact, checkedAt)
-    if (exactRevisions.length === 1) {
+    const lineage = reading.products.filter(
+      (product) =>
+        ['update', 'cancel'].includes(product.relationship) &&
+        (product.references ?? []).some((reference) =>
+          referenceMatches(reference, accepted),
+        ),
+    )
+    const lineageRevisions = distinctObservedRevisions(
+      reading,
+      lineage,
+      checkedAt,
+    )
+    if (exactRevisions.length > 1 || lineageRevisions.length > 1) {
+      result = 'ambiguous'
+      candidates = candidateSummary([...exactRevisions, ...lineageRevisions])
+    } else if (lineageRevisions.length === 1) {
+      observed = lineageRevisions[0]
+      result =
+        observed.product.relationship === 'cancel' ? 'cancelled' : 'superseded'
+    } else if (exactRevisions.length === 1) {
       observed = exactRevisions[0]
       result =
         observed.product.relationship === 'cancel'
@@ -961,33 +980,7 @@ export function createWeatherRecheck(
                 : validityAtCheck === 'expired'
                   ? 'expired'
                   : 'unchanged'
-    } else if (exactRevisions.length > 1) {
-      result = 'ambiguous'
-      candidates = candidateSummary(exactRevisions)
-    } else {
-      const lineage = reading.products.filter(
-        (product) =>
-          ['update', 'cancel'].includes(product.relationship) &&
-          (product.references ?? []).some((reference) =>
-            referenceMatches(reference, accepted),
-          ),
-      )
-      const lineageRevisions = distinctObservedRevisions(
-        reading,
-        lineage,
-        checkedAt,
-      )
-      if (lineageRevisions.length === 1) {
-        observed = lineageRevisions[0]
-        result =
-          observed.product.relationship === 'cancel'
-            ? 'cancelled'
-            : 'superseded'
-      } else if (lineageRevisions.length > 1) {
-        result = 'ambiguous'
-        candidates = candidateSummary(lineageRevisions)
-      } else result = 'not-returned'
-    }
+    } else result = 'not-returned'
   }
   const contents = {
     id: `WR-${cycle}-${index + 1}`,
@@ -1014,15 +1007,20 @@ export function createWeatherRecheck(
 function candidateSummary(
   rows: NonNullable<WeatherRecheck['observed']>[],
 ): WeatherRecheck['candidates'] {
-  const identities = rows
-    .map((row) => ({
-      id: row.product.id,
-      url: row.product.url,
-      relationship: row.product.relationship,
-      productDigest: row.productDigest,
-      evaluationDigest: row.evaluationDigest,
-    }))
-    .sort((a, b) => compareCandidateIdentity(a, b))
+  const identities = [
+    ...new Map(
+      rows.map((row) => {
+        const identity = {
+          id: row.product.id,
+          url: row.product.url,
+          relationship: row.product.relationship,
+          productDigest: row.productDigest,
+          evaluationDigest: row.evaluationDigest,
+        }
+        return [candidateIdentityKey(identity), identity] as const
+      }),
+    ).values(),
+  ].sort((a, b) => compareCandidateIdentity(a, b))
   return {
     count: identities.length,
     digest: contentDigest(identities),

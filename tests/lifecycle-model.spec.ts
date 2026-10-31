@@ -1323,6 +1323,51 @@ test('weather lineage rejects contradictory identifier and URL references', () =
   expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
 })
 
+for (const [relationship, expected] of [
+  ['update', 'superseded'],
+  ['cancel', 'cancelled'],
+] as const) {
+  test(`weather ${relationship} lineage takes precedence over a simultaneous exact revision`, () => {
+    let state = sealH2(
+      apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+        type: 'start-during',
+      }),
+    )
+    const accepted = state.weatherEvidence[0]
+    const successor = nwsProduct()
+    successor.id = `urn:oid:${relationship}-successor`
+    successor.url = `https://api.weather.gov/alerts/urn:oid:${relationship}-successor`
+    successor.message_type = relationship === 'cancel' ? 'Cancel' : 'Update'
+    successor.relationship = relationship
+    successor.eligibility =
+      relationship === 'cancel' ? 'cancellation' : 'eligible'
+    successor.references = [
+      {
+        identifier: accepted.product.id,
+        url: accepted.product.url,
+        sender: accepted.product.sender,
+        sent: accepted.product.sent,
+      },
+    ]
+    const reading = weatherReading()
+    reading.products.push(weatherReading(successor).products[0])
+    state = apply(state, {
+      type: 'recheck-weather',
+      acceptedId: accepted.id,
+      reading,
+      checkedAt: weatherTime,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+    expect(state.weatherRechecks[0]).toMatchObject({
+      result: expected,
+      observed: { product: { id: successor.id } },
+      candidates: { count: 0 },
+    })
+    expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+  })
+}
+
 test('weather rechecks canonicalize identical duplicate source rows', () => {
   let state = sealH2(
     apply(apply(acceptWeather(), { type: 'seal-h1' }), {
