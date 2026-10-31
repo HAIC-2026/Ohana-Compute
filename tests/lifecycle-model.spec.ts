@@ -15,11 +15,17 @@ import {
   maxLifecycleImportBytes,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
+  migrateLifecycleV3State,
   parseLifecycleComparison,
   practiceStamp,
   restoreLifecycleState,
+  serializeLifecycleState,
   serviceRecordNeedsRecheck,
 } from '../src/lib/practice-lifecycle'
+import {
+  nwsQueryReading,
+  parseLifecycleEvidence,
+} from '../src/lib/lifecycle-evidence'
 import {
   displayedSource,
   sourceClaim,
@@ -35,6 +41,13 @@ import type {
   LifecycleState,
   PinnedEvidenceReference,
 } from '../src/lib/practice-lifecycle'
+import {
+  nwsProduct,
+  weatherSnapshot,
+  weatherTime,
+} from './fixtures/nws-product'
+import type { NWSProduct } from '../src/lib/nws-product'
+import type { NWSQueryReading } from '../src/lib/weather-evidence'
 
 function evidenceReference(
   phase: PinnedEvidenceReference['phase'] = 'before',
@@ -64,7 +77,7 @@ function apply(state: LifecycleState, action: LifecycleAction) {
 }
 
 function assertBoundedRoundTrip(state: LifecycleState) {
-  const persisted = JSON.stringify(state)
+  const persisted = serializeLifecycleState(state)
   const exported = exportLifecycleRecord(state)
   expect(new TextEncoder().encode(persisted).byteLength).toBeLessThanOrEqual(
     maxLifecycleImportBytes,
@@ -731,7 +744,7 @@ test('restore rejects malformed ledger and comparison metadata', () => {
   expect(restoreLifecycleState(JSON.stringify(saved))).toEqual(saved)
 })
 
-test('migrates saved v1 state to strict v3 preserving original seals', () => {
+test('migrates saved v1 state to strict v4 preserving original seals', () => {
   const before = readyBefore()
   const originalDigest = fnvDigest(
     stableStringify({
@@ -756,11 +769,15 @@ test('migrates saved v1 state to strict v3 preserving original seals', () => {
   delete legacy.sourceEvidence
   delete legacy.sourceRechecks
   delete legacy.sourceHistory
+  delete legacy.weatherEvidence
+  delete legacy.weatherRechecks
+  delete legacy.weatherHistory
+  delete legacy.previousWeatherCycle
   delete legacy.legacySeals
   delete legacy.h1.evidenceReferences
 
   const migrated = migrateLifecycleV1State(JSON.stringify(legacy))
-  expect(migrated.schema).toBe('practice-lifecycle.v3')
+  expect(migrated.schema).toBe('practice-lifecycle.v4')
   expect(migrated.pinnedEvidence).toEqual([])
   expect(migrated.h1?.evidenceReferences).toEqual([])
   expect(migrated.h1?.digest).toBe(originalDigest)
@@ -772,7 +789,7 @@ test('migrates saved v1 state to strict v3 preserving original seals', () => {
         h1: { ...legacy.h1, digest: '0000000000000000' },
       }),
     ),
-  ).toThrow(/legacy seal integrity/)
+  ).toThrow(/H1 integrity|legacy seal integrity/)
 })
 
 test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and tampered seals', () => {
@@ -782,6 +799,10 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
   delete legacy.sourceEvidence
   delete legacy.sourceRechecks
   delete legacy.sourceHistory
+  delete legacy.weatherEvidence
+  delete legacy.weatherRechecks
+  delete legacy.weatherHistory
+  delete legacy.previousWeatherCycle
   delete legacy.legacySeals
   const text = JSON.stringify(legacy)
   const migrated = migrateLifecycleV2State(text)
@@ -789,6 +810,11 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
   expect(migrated.sourceRechecks).toEqual([])
   expect(migrated.h1).toEqual(state.h1)
   expect(migrated.h2).toEqual(state.h2)
+  const injectedWeather = structuredClone(migrated)
+  injectedWeather.weatherEvidence = acceptWeather().weatherEvidence
+  expect(() => restoreLifecycleState(JSON.stringify(injectedWeather))).toThrow(
+    /H1 integrity|legacy seal integrity/,
+  )
   expect(() => restoreLifecycleState(text)).toThrow()
   expect(() => parseLifecycleComparison(text)).toThrow()
   expect(() =>
@@ -801,7 +827,7 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
         h1: { ...state.h1, digest: 'tampered' },
       }),
     ),
-  ).toThrow(/H1 integrity/)
+  ).toThrow(/H1 integrity|legacy seal integrity/)
   expect(() =>
     migrateLifecycleV2State(text.replace('"cycle":1', '"cycle":1,"cycle":1')),
   ).toThrow(/Duplicate/)
@@ -816,6 +842,10 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
     'sourceEvidence',
     'sourceRechecks',
     'sourceHistory',
+    'weatherEvidence',
+    'weatherRechecks',
+    'weatherHistory',
+    'previousWeatherCycle',
     'legacySeals',
   ])
     delete legacy[key]
@@ -850,7 +880,7 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
   legacy.supportItems[0].disposition = 'set aside'
   expect(() => migrateLifecycleV1State(JSON.stringify(legacy))).toThrow(
-    /legacy seal integrity/,
+    /H2 integrity|legacy seal integrity/,
   )
 })
 
@@ -873,10 +903,12 @@ test('post-action size guard includes the appended source ledger row and preserv
   }
   const next = apply(state, action)
   const delta =
-    new TextEncoder().encode(JSON.stringify(next)).byteLength -
-    new TextEncoder().encode(JSON.stringify(state)).byteLength
+    new TextEncoder().encode(serializeLifecycleState(next)).byteLength -
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength
   const padded = structuredClone(state)
-  const size = new TextEncoder().encode(JSON.stringify(padded)).byteLength
+  const size = new TextEncoder().encode(
+    serializeLifecycleState(padded),
+  ).byteLength
   padded.ledger[0].summary += 'x'.repeat(
     maxLifecycleImportBytes - delta + 1 - size,
   )
@@ -949,6 +981,834 @@ function authorityState(state: LifecycleState) {
     afterGates: lifecycleGates(state),
   }
 }
+
+function weatherReading(
+  product: NWSProduct | null = nwsProduct(),
+  checkedAt = weatherTime,
+): NWSQueryReading {
+  const raw = weatherSnapshot(product ?? nwsProduct())
+  if (product === null) raw.event_triggers.data!.triggers = []
+  return nwsQueryReading({
+    snapshot: parseLifecycleEvidence(raw),
+    error: null,
+    checkedAt,
+    lastShelterSnapshot: null,
+  })
+}
+
+function reviewedWeather(product = nwsProduct(), checkedAt = weatherTime) {
+  const reading = weatherReading(product, checkedAt)
+  return {
+    reviewedAt: checkedAt,
+    reading,
+    product: reading.products[0],
+  }
+}
+
+function acceptWeather(
+  state = readyBefore(),
+  product = nwsProduct(),
+  acceptedAt = weatherTime,
+) {
+  return apply(state, {
+    type: 'accept-weather',
+    reviewed: reviewedWeather(product, acceptedAt),
+    acceptedAt,
+  })
+}
+
+test('weather acceptance freezes the exact reviewed revision without authority effects', () => {
+  const before = readyBefore()
+  before.evidence = []
+  before.capabilityMarkers = before.capabilityMarkers.filter(
+    (id) => id !== 'B07',
+  )
+  const reviewed = reviewedWeather()
+  const newer = structuredClone(reviewed)
+  newer.product.headline = 'Newer source revision'
+  newer.reading.products[0] = newer.product
+  const accepted = apply(before, {
+    type: 'accept-weather',
+    reviewed,
+    acceptedAt: weatherTime,
+  })
+  expect(authorityState(accepted)).toEqual(authorityState(before))
+  expect(accepted.capabilityMarkers).not.toContain('B07')
+  expect(accepted.weatherEvidence[0]).toMatchObject({
+    acceptedBy: 'Facilitator',
+    phase: 'before',
+    authorityEffect: 'none',
+    product: {
+      id: reviewed.product.id,
+      headline: reviewed.product.headline,
+      relationship: 'initial',
+    },
+    observation: {
+      retrievalState: 'fresh',
+      coverage: 'complete',
+      validity: 'current',
+    },
+  })
+  expect(accepted.weatherEvidence[0].product.headline).not.toBe(
+    newer.product.headline,
+  )
+  const raced = structuredClone(reviewed)
+  raced.product = structuredClone(raced.product)
+  raced.reading.products[0].headline = 'Same identity, newer query semantics'
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: raced,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/no longer matches the exact query revision/)
+  const futureSnapshot = reviewedWeather()
+  futureSnapshot.reading.generatedAt = '2026-10-30T18:01:00Z'
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: futureSnapshot,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/fresh complete source check/)
+  const reviewedBeforeCheck = reviewedWeather()
+  reviewedBeforeCheck.reviewedAt = '2026-10-30T17:59:59Z'
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: reviewedBeforeCheck,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/fresh complete source check/)
+  const legacyInline = nwsProduct()
+  legacyInline.geometry = {
+    status: 'valid',
+    type: 'Polygon',
+    shape: {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [-159, 21],
+          [-157, 21],
+          [-157, 22],
+          [-159, 22],
+          [-159, 21],
+        ],
+      ],
+    },
+  }
+  legacyInline.applicability = 'inside'
+  legacyInline.applicability_reason = 'strict_interior'
+  delete legacyInline.applicability_basis
+  const legacyAccepted = acceptWeather(before, legacyInline)
+  expect(
+    restoreLifecycleState(JSON.stringify(legacyAccepted)).weatherEvidence[0]
+      .evaluation.basis,
+  ).toBe('inline_geometry')
+  const falseInlineApplicability = structuredClone(legacyAccepted)
+  falseInlineApplicability.weatherEvidence[0].evaluation.applicability =
+    'outside'
+  falseInlineApplicability.weatherEvidence[0].evaluation.reason =
+    'strict_exterior'
+  falseInlineApplicability.weatherEvidence[0].evaluationDigest = contentDigest({
+    version: 'nws-planning-evaluation.v1',
+    point: falseInlineApplicability.weatherEvidence[0].evaluation.point,
+    algorithmVersion:
+      falseInlineApplicability.weatherEvidence[0].evaluation.algorithmVersion,
+    applicability:
+      falseInlineApplicability.weatherEvidence[0].evaluation.applicability,
+    reason: falseInlineApplicability.weatherEvidence[0].evaluation.reason,
+    basis: falseInlineApplicability.weatherEvidence[0].evaluation.basis,
+    coverage: falseInlineApplicability.weatherEvidence[0].evaluation.coverage,
+    zones: [],
+  })
+  const { recordDigest: _inlineDigest, ...inlineContents } =
+    falseInlineApplicability.weatherEvidence[0]
+  falseInlineApplicability.weatherEvidence[0].recordDigest =
+    contentDigest(inlineContents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(falseInlineApplicability)),
+  ).toThrow(/failed validation/)
+  const futureAcceptedSnapshot = structuredClone(legacyAccepted)
+  futureAcceptedSnapshot.weatherEvidence[0].observation.generatedAt =
+    '2026-10-30T18:01:00Z'
+  const { recordDigest: _futureDigest, ...futureContents } =
+    futureAcceptedSnapshot.weatherEvidence[0]
+  futureAcceptedSnapshot.weatherEvidence[0].recordDigest =
+    contentDigest(futureContents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(futureAcceptedSnapshot)),
+  ).toThrow(/failed validation/)
+  const boundaryProduct = structuredClone(legacyInline)
+  boundaryProduct.geometry.shape = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [-158.193548, 21.450404],
+        [-158.193543, 21.450499],
+        [-158.3, 21.6],
+        [-158.193548, 21.450404],
+      ],
+    ],
+  }
+  boundaryProduct.applicability = 'unknown'
+  boundaryProduct.applicability_reason = 'boundary'
+  const boundaryAccepted = acceptWeather(before, boundaryProduct)
+  expect(
+    restoreLifecycleState(JSON.stringify(boundaryAccepted)).weatherEvidence[0]
+      .evaluation.reason,
+  ).toBe('boundary')
+  for (const [firstLongitude, secondLongitude] of [
+    [-158, -157],
+    [-160, -159],
+  ]) {
+    const extensionProduct = structuredClone(legacyInline)
+    extensionProduct.geometry.shape = {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [firstLongitude, 21.450442],
+          [secondLongitude, 21.450442],
+          [(firstLongitude + secondLongitude) / 2, 22],
+          [firstLongitude, 21.450442],
+        ],
+      ],
+    }
+    extensionProduct.applicability = 'outside'
+    extensionProduct.applicability_reason = 'strict_exterior'
+    const extensionAccepted = acceptWeather(before, extensionProduct)
+    expect(
+      restoreLifecycleState(JSON.stringify(extensionAccepted))
+        .weatherEvidence[0].evaluation.reason,
+    ).toBe('strict_exterior')
+  }
+  const badPoint = reviewedWeather(legacyInline)
+  badPoint.reading.point = ['NaN', 'NaN']
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: badPoint,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/exact reviewed revision/)
+  expect(Object.isFrozen(accepted.weatherEvidence[0].product)).toBe(true)
+  expect(() =>
+    apply(accepted, {
+      type: 'accept-weather',
+      reviewed,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/already accepted/)
+})
+
+test('weather rechecks distinguish source lineage without mutating accepted or manual state', () => {
+  let state = acceptWeather()
+  state = apply(state, { type: 'seal-h1' })
+  const h1 = structuredClone(state.h1)
+  state = apply(state, { type: 'start-during' })
+  state = sealH2(state)
+  const h2 = structuredClone(state.h2)
+  const accepted = structuredClone(state.weatherEvidence)
+  const authority = authorityState(state)
+  const same = weatherReading()
+  const changedProduct = nwsProduct()
+  changedProduct.headline = 'Same identity changed source content'
+  const cancelledProduct = nwsProduct()
+  cancelledProduct.message_type = 'Cancel'
+  cancelledProduct.relationship = 'cancel'
+  cancelledProduct.eligibility = 'cancellation'
+  const updateProduct = nwsProduct()
+  updateProduct.id = 'urn:oid:replacement-update'
+  updateProduct.url =
+    'https://api.weather.gov/alerts/urn:oid:replacement-update'
+  updateProduct.message_type = 'Update'
+  updateProduct.relationship = 'update'
+  updateProduct.references = [
+    {
+      identifier: accepted[0].product.id,
+      url: accepted[0].product.url,
+      sender: accepted[0].product.sender,
+      sent: accepted[0].product.sent,
+    },
+  ]
+  const unavailable = weatherReading()
+  unavailable.transport = 'unavailable'
+  unavailable.retrievalState = 'unavailable'
+  unavailable.coverage = 'unavailable'
+  const staleZoneProduct = nwsProduct()
+  staleZoneProduct.geometry = { status: 'absent', type: null, shape: null }
+  staleZoneProduct.applicability_basis = 'affected_zones'
+  staleZoneProduct.applicability = 'inside'
+  staleZoneProduct.applicability_reason = 'strict_interior'
+  staleZoneProduct.zone_evidence = {
+    result: 'inside',
+    reason: 'strict_interior',
+    coverage: 'complete',
+    zones: [
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ001',
+        id: 'HIZ001',
+        type: 'forecast',
+        source_revision: 'a'.repeat(64),
+        effective: '2026-10-30T17:00:00Z',
+        expires: '2026-10-30T19:00:00Z',
+        retrieved_at: '2026-10-30T17:50:00Z',
+        fresh_until: '2026-10-30T17:59:00Z',
+        state: 'fresh',
+        result: 'inside',
+        reason: 'strict_interior',
+      },
+    ],
+  }
+  const scenarios: Array<[NWSQueryReading, string]> = [
+    [same, 'unchanged'],
+    [weatherReading(changedProduct), 'changed'],
+    [weatherReading(cancelledProduct), 'cancelled'],
+    [weatherReading(updateProduct), 'superseded'],
+    [weatherReading(null), 'not-returned'],
+    [unavailable, 'source-unavailable'],
+    [weatherReading(nwsProduct(), '2026-10-30T18:03:00Z'), 'expired'],
+    [
+      weatherReading(staleZoneProduct, '2026-10-30T18:04:00Z'),
+      'source-unavailable',
+    ],
+  ]
+  for (const [reading, result] of scenarios) {
+    state = apply(state, {
+      type: 'recheck-weather',
+      acceptedId: accepted[0].id,
+      reading,
+      checkedAt: reading.checkedAt!,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+    expect(state.weatherRechecks.at(-1)?.result).toBe(result)
+    expect(state.weatherEvidence).toEqual(accepted)
+    expect(state.h1).toEqual(h1)
+    expect(state.h2).toEqual(h2)
+    expect(authorityState(state)).toEqual(authority)
+  }
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+test('weather lineage rejects contradictory identifier and URL references', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const accepted = state.weatherEvidence[0]
+  const update = nwsProduct()
+  update.id = 'urn:oid:contradictory-update'
+  update.url = 'https://api.weather.gov/alerts/urn:oid:contradictory-update'
+  update.message_type = 'Update'
+  update.relationship = 'update'
+  update.references = [
+    {
+      identifier: 'urn:oid:different-alert',
+      url: accepted.product.url,
+      sender: accepted.product.sender,
+      sent: accepted.product.sent,
+    },
+  ]
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: accepted.id,
+    reading: weatherReading(update),
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0].result).toBe('not-returned')
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+for (const [relationship, expected] of [
+  ['update', 'superseded'],
+  ['cancel', 'cancelled'],
+] as const) {
+  test(`weather ${relationship} lineage takes precedence over a simultaneous exact revision`, () => {
+    let state = sealH2(
+      apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+        type: 'start-during',
+      }),
+    )
+    const accepted = state.weatherEvidence[0]
+    const successor = nwsProduct()
+    successor.id = `urn:oid:${relationship}-successor`
+    successor.url = `https://api.weather.gov/alerts/urn:oid:${relationship}-successor`
+    successor.message_type = relationship === 'cancel' ? 'Cancel' : 'Update'
+    successor.relationship = relationship
+    successor.eligibility =
+      relationship === 'cancel' ? 'cancellation' : 'eligible'
+    successor.references = [
+      {
+        identifier: accepted.product.id,
+        url: accepted.product.url,
+        sender: accepted.product.sender,
+        sent: accepted.product.sent,
+      },
+    ]
+    const reading = weatherReading()
+    reading.products.push(weatherReading(successor).products[0])
+    state = apply(state, {
+      type: 'recheck-weather',
+      acceptedId: accepted.id,
+      reading,
+      checkedAt: weatherTime,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+    expect(state.weatherRechecks[0]).toMatchObject({
+      result: expected,
+      observed: { product: { id: successor.id } },
+      candidates: { count: 0 },
+    })
+    expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+  })
+}
+
+test('weather rechecks canonicalize identical duplicate source rows', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const reading = weatherReading()
+  reading.products.push(structuredClone(reading.products[0]))
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: state.weatherEvidence[0].id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'unchanged',
+    candidates: { count: 0 },
+  })
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+test('weather rechecks preserve conflicting evaluations as ambiguity', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const reading = weatherReading()
+  const affected = structuredClone(reading.products[0])
+  affected.applicability_basis = 'affected_zones'
+  affected.applicability = 'inside'
+  affected.applicability_reason = 'strict_interior'
+  affected.zone_evidence = {
+    result: 'inside',
+    reason: 'strict_interior',
+    coverage: 'complete',
+    zones: [
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ001',
+        id: 'HIZ001',
+        type: 'forecast',
+        source_revision: 'c'.repeat(64),
+        effective: '2026-10-30T17:00:00Z',
+        expires: '2026-10-30T19:00:00Z',
+        retrieved_at: '2026-10-30T17:50:00Z',
+        fresh_until: '2026-10-30T18:05:00Z',
+        state: 'fresh',
+        result: 'inside',
+        reason: 'strict_interior',
+      },
+    ],
+  }
+  reading.products.push(affected)
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: state.weatherEvidence[0].id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'ambiguous',
+    candidates: { count: 2 },
+  })
+  expect(
+    new Set(
+      state.weatherRechecks[0].candidates.identities.map(
+        (candidate) => candidate.evaluationDigest,
+      ),
+    ).size,
+  ).toBe(2)
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+test('weather lineage ambiguity uses canonical code-unit candidate ordering', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const accepted = state.weatherEvidence[0]
+  const update = (id: string) => {
+    const product = nwsProduct()
+    product.id = id
+    product.url = `https://api.weather.gov/alerts/${id}`
+    product.message_type = 'Update'
+    product.relationship = 'update'
+    product.references = [
+      {
+        identifier: accepted.product.id,
+        url: accepted.product.url,
+        sender: accepted.product.sender,
+        sent: accepted.product.sent,
+      },
+    ]
+    return product
+  }
+  const reading = weatherReading(update('a'))
+  reading.products.push(update('Z'))
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: accepted.id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'ambiguous',
+    candidates: {
+      count: 2,
+      identities: [{ id: 'Z' }, { id: 'a' }],
+    },
+  })
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+test('weather counts and multi-cycle archives stay bounded and immutable', () => {
+  let state = readyBefore()
+  for (let index = 0; index < 4; index++) {
+    const product = nwsProduct()
+    product.id = `urn:oid:fixture-${index}`
+    product.url = `https://api.weather.gov/alerts/urn:oid:fixture-${index}`
+    state = acceptWeather(state, product)
+  }
+  const beforeOverflow = JSON.stringify(state)
+  const overflow = nwsProduct()
+  overflow.id = 'urn:oid:fixture-overflow'
+  overflow.url = 'https://api.weather.gov/alerts/urn:oid:fixture-overflow'
+  expect(() => acceptWeather(state, overflow)).toThrow(/limit is full/)
+  expect(JSON.stringify(state)).toBe(beforeOverflow)
+  state = apply(state, { type: 'seal-h1' })
+  state = sealH2(apply(state, { type: 'start-during' }))
+  for (let index = 0; index < 8; index++) {
+    const reading = weatherReading(
+      nwsProduct(),
+      new Date(Date.parse(weatherTime) + index * 1000).toISOString(),
+    )
+    state = apply(state, {
+      type: 'recheck-weather',
+      acceptedId: state.weatherEvidence[0].id,
+      reading,
+      checkedAt: reading.checkedAt!,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    })
+  }
+  const beforeRecheckOverflow = JSON.stringify(state)
+  expect(() =>
+    apply(state, {
+      type: 'recheck-weather',
+      acceptedId: state.weatherEvidence[0].id,
+      reading: weatherReading(),
+      checkedAt: weatherTime,
+      owner: 'Recovery lead',
+      horizon: 'next shift',
+    }),
+  ).toThrow(/limit is full/)
+  expect(JSON.stringify(state)).toBe(beforeRecheckOverflow)
+  state = apply(state, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  const next = apply(state, { type: 'start-next-cycle' })
+  expect(next.previousWeatherCycle?.accepted).toHaveLength(4)
+  expect(next.previousWeatherCycle?.rechecks).toHaveLength(8)
+  expect(next.weatherEvidence).toEqual([])
+  expect(restoreLifecycleState(JSON.stringify(next))).toEqual(next)
+  let cycle2 = acceptWeather(readyBefore('comparison', next))
+  cycle2 = sealH2(
+    apply(apply(cycle2, { type: 'seal-h1' }), { type: 'start-during' }),
+  )
+  cycle2 = apply(cycle2, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  const cycle3 = apply(cycle2, { type: 'start-next-cycle' })
+  expect(cycle3.weatherHistory).toEqual([next.previousWeatherCycle])
+  expect(cycle3.previousWeatherCycle?.accepted).toHaveLength(1)
+  expect(restoreLifecycleState(JSON.stringify(cycle3))).toEqual(cycle3)
+})
+
+test('weather records reject stale acceptance, invalid enums, tampering, and re-signed invalid imports', () => {
+  const stale = reviewedWeather()
+  stale.reading.retrievalState = 'stale'
+  expect(() =>
+    apply(readyBefore(), {
+      type: 'accept-weather',
+      reviewed: stale,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/fresh complete/)
+  const good = acceptWeather()
+  const tampered = structuredClone(good)
+  ;(
+    tampered.weatherEvidence[0].product as { eligibility: string }
+  ).eligibility = 'warning'
+  const { recordDigest: _digest, ...contents } = tampered.weatherEvidence[0]
+  tampered.weatherEvidence[0].recordDigest = contentDigest(contents)
+  expect(() => restoreLifecycleState(JSON.stringify(tampered))).toThrow(
+    /failed validation/,
+  )
+  const falseValidity = structuredClone(good)
+  falseValidity.weatherEvidence[0].observation.validity = 'expired'
+  const { recordDigest: _validityDigest, ...validityContents } =
+    falseValidity.weatherEvidence[0]
+  falseValidity.weatherEvidence[0].recordDigest =
+    contentDigest(validityContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseValidity))).toThrow(
+    /failed validation/,
+  )
+  const falseRelationship = structuredClone(good)
+  falseRelationship.weatherEvidence[0].product.relationship = 'update'
+  falseRelationship.weatherEvidence[0].productDigest = contentDigest({
+    version: 'nws-product-semantic.v1',
+    product: falseRelationship.weatherEvidence[0].product,
+  })
+  const { recordDigest: _relationshipDigest, ...relationshipContents } =
+    falseRelationship.weatherEvidence[0]
+  falseRelationship.weatherEvidence[0].recordDigest =
+    contentDigest(relationshipContents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(falseRelationship)),
+  ).toThrow(/failed validation/)
+  const falseGeometry = structuredClone(good)
+  falseGeometry.weatherEvidence[0].product.geometry.status = 'unsupported'
+  falseGeometry.weatherEvidence[0].productDigest = contentDigest({
+    version: 'nws-product-semantic.v1',
+    product: falseGeometry.weatherEvidence[0].product,
+  })
+  const { recordDigest: _geometryDigest, ...geometryContents } =
+    falseGeometry.weatherEvidence[0]
+  falseGeometry.weatherEvidence[0].recordDigest =
+    contentDigest(geometryContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseGeometry))).toThrow(
+    /failed validation/,
+  )
+
+  const zoneProduct = nwsProduct()
+  zoneProduct.geometry = { status: 'absent', type: null, shape: null }
+  zoneProduct.applicability_basis = 'affected_zones'
+  zoneProduct.applicability = 'outside'
+  zoneProduct.applicability_reason = 'strict_exterior'
+  zoneProduct.zone_evidence = {
+    result: 'outside',
+    reason: 'strict_exterior',
+    coverage: 'complete',
+    zones: [
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ001',
+        id: 'HIZ001',
+        type: 'forecast',
+        source_revision: 'b'.repeat(64),
+        effective: '2026-10-30T17:00:00Z',
+        expires: '2026-10-30T19:00:00Z',
+        retrieved_at: '2026-10-30T17:50:00Z',
+        fresh_until: '2026-10-30T18:05:00Z',
+        state: 'fresh',
+        result: 'outside',
+        reason: 'strict_exterior',
+      },
+    ],
+  }
+  const falseApplicability = structuredClone(
+    acceptWeather(readyBefore(), zoneProduct),
+  )
+  falseApplicability.weatherEvidence[0].evaluation.applicability = 'unknown'
+  falseApplicability.weatherEvidence[0].evaluation.reason = 'zone_incomplete'
+  falseApplicability.weatherEvidence[0].evaluation.coverage = 'partial'
+  falseApplicability.weatherEvidence[0].evaluationDigest = contentDigest({
+    version: 'nws-planning-evaluation.v1',
+    point: falseApplicability.weatherEvidence[0].evaluation.point,
+    algorithmVersion:
+      falseApplicability.weatherEvidence[0].evaluation.algorithmVersion,
+    applicability:
+      falseApplicability.weatherEvidence[0].evaluation.applicability,
+    reason: falseApplicability.weatherEvidence[0].evaluation.reason,
+    basis: falseApplicability.weatherEvidence[0].evaluation.basis,
+    coverage: falseApplicability.weatherEvidence[0].evaluation.coverage,
+    zones: falseApplicability.weatherEvidence[0].evaluation.zones.map(
+      (zone) => ({
+        url: zone.url,
+        id: zone.id,
+        type: zone.type,
+        source_revision: zone.source_revision,
+        effective: zone.effective,
+        expires: zone.expires,
+        result: zone.result,
+        reason: zone.reason,
+      }),
+    ),
+  })
+  const { recordDigest: _applicabilityDigest, ...applicabilityContents } =
+    falseApplicability.weatherEvidence[0]
+  falseApplicability.weatherEvidence[0].recordDigest = contentDigest(
+    applicabilityContents,
+  )
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(falseApplicability)),
+  ).toThrow(/failed validation/)
+
+  let checked = apply(good, { type: 'seal-h1' })
+  checked = sealH2(apply(checked, { type: 'start-during' }))
+  const unavailable = weatherReading()
+  unavailable.transport = 'unavailable'
+  unavailable.retrievalState = 'unavailable'
+  unavailable.coverage = 'unavailable'
+  checked = apply(checked, {
+    type: 'recheck-weather',
+    acceptedId: checked.weatherEvidence[0].id,
+    reading: unavailable,
+    checkedAt: unavailable.checkedAt!,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  const falseResult = structuredClone(checked)
+  falseResult.weatherRechecks[0].result = 'cancelled'
+  const { recordDigest: _resultDigest, ...resultContents } =
+    falseResult.weatherRechecks[0]
+  falseResult.weatherRechecks[0].recordDigest = contentDigest(resultContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseResult))).toThrow(
+    /failed validation/,
+  )
+  const falseCandidates = structuredClone(checked)
+  falseCandidates.weatherRechecks[0].candidates = {
+    count: 2,
+    complete: true,
+    identities: [
+      {
+        id: 'a',
+        url: 'https://api.weather.gov/alerts/a',
+        relationship: 'update',
+        productDigest: 'fnv1a-dual-v1:1111111111111111',
+        evaluationDigest: 'fnv1a-dual-v1:3333333333333333',
+      },
+      {
+        id: 'b',
+        url: 'https://api.weather.gov/alerts/b',
+        relationship: 'update',
+        productDigest: 'fnv1a-dual-v1:2222222222222222',
+        evaluationDigest: 'fnv1a-dual-v1:4444444444444444',
+      },
+    ],
+    digest: null,
+  }
+  falseCandidates.weatherRechecks[0].candidates.digest = contentDigest(
+    falseCandidates.weatherRechecks[0].candidates.identities,
+  )
+  const { recordDigest: _candidateDigest, ...candidateContents } =
+    falseCandidates.weatherRechecks[0]
+  falseCandidates.weatherRechecks[0].recordDigest =
+    contentDigest(candidateContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseCandidates))).toThrow(
+    /failed validation/,
+  )
+})
+
+test('v3 migration preserves sealed digests and creates no weather facts', () => {
+  let state = readyBefore()
+  state = apply(state, { type: 'seal-h1' })
+  const h1 = state.h1?.digest
+  const legacy = structuredClone(state) as unknown as Record<string, unknown>
+  legacy.schema = 'practice-lifecycle.v3'
+  delete legacy.weatherEvidence
+  delete legacy.weatherRechecks
+  delete legacy.weatherHistory
+  delete legacy.previousWeatherCycle
+  const migrated = migrateLifecycleV3State(JSON.stringify(legacy))
+  expect(migrated.h1?.digest).toBe(h1)
+  expect(migrated.weatherEvidence).toEqual([])
+  expect(migrated.weatherRechecks).toEqual([])
+  expect(migrated.weatherHistory).toEqual([])
+  expect(migrated.previousWeatherCycle).toBeNull()
+  expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
+})
+
+test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () => {
+  const cases = [
+    ['practice-lifecycle.v1', migrateLifecycleV1State],
+    ['practice-lifecycle.v2', migrateLifecycleV2State],
+    ['practice-lifecycle.v3', migrateLifecycleV3State],
+  ] as const
+  for (const [schema, migrate] of cases) {
+    const legacy = structuredClone(
+      createInitialLifecycleState(),
+    ) as unknown as Record<string, any>
+    legacy.schema = schema
+    for (const key of [
+      ...(schema === 'practice-lifecycle.v3'
+        ? []
+        : ['sourceEvidence', 'sourceRechecks', 'sourceHistory', 'legacySeals']),
+      'weatherEvidence',
+      'weatherRechecks',
+      'weatherHistory',
+      'previousWeatherCycle',
+      ...(schema === 'practice-lifecycle.v1' ? ['pinnedEvidence'] : []),
+    ])
+      delete legacy[key]
+    legacy.ledger = [
+      {
+        sequence: 1,
+        capability: 'B01',
+        cycle: 1,
+        practiceMinute: -60,
+        summary: '',
+      },
+    ]
+    const baseBytes = new TextEncoder().encode(JSON.stringify(legacy)).length
+    legacy.ledger[0].summary = 'x'.repeat(
+      maxLifecycleImportBytes - baseBytes - 1,
+    )
+    const text = JSON.stringify(legacy)
+    expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(
+      maxLifecycleImportBytes,
+    )
+    const migrated = migrate(text)
+    expect(
+      new TextEncoder().encode(serializeLifecycleState(migrated)).length,
+    ).toBeLessThanOrEqual(maxLifecycleImportBytes)
+    expect(migrated.weatherEvidence).toEqual([])
+  }
+})
+
+test('compact restore rejects a reconstructed canonical export over 128 KiB', () => {
+  const oversized = createInitialLifecycleState()
+  oversized.packetSections = Array.from(
+    { length: 8_000 },
+    () => 'cycle summary',
+  )
+  const compact = serializeLifecycleState(oversized)
+  expect(new TextEncoder().encode(compact).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(
+    new TextEncoder().encode(exportLifecycleRecord(oversized)).byteLength,
+  ).toBeGreaterThan(maxLifecycleImportBytes)
+  expect(() => restoreLifecycleState(compact)).toThrow(/128 KiB limit/)
+})
 
 test('source acceptance is attributable, append-only, and never criteria or authority', () => {
   const before = readyBefore()
@@ -1237,11 +2097,11 @@ test('non-string enums cannot be accepted, rechecked, or persisted as not-return
   assertBoundedRoundTrip(after)
 })
 
-test('strict v2 restore rejects missing or malformed pinned evidence', () => {
+test('compact restore permits empty omitted pins and rejects malformed pinned evidence', () => {
   const state = createInitialLifecycleState()
   const missing = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
   delete missing.pinnedEvidence
-  expect(() => restoreLifecycleState(JSON.stringify(missing))).toThrow()
+  expect(restoreLifecycleState(JSON.stringify(missing))).toEqual(state)
 
   const malformed = {
     ...state,

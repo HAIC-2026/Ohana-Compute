@@ -60,6 +60,7 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 	for _, mode := range []string{"baseline", "changed", "empty", "unavailable", "partial", "stale"} {
 		fixtureConfig := config
 		fixtureConfig.Registry = nil
+		fixtureConfig.Now = now
 		fixtureConfig.OperationalStatus = operationalstatus.NewService(operationalstatus.Config{
 			Shelters: lifecycleShelterFixture{mode: mode, now: now},
 			Now:      now,
@@ -69,10 +70,13 @@ func lifecycleFixtureHandler(config api.Config, now func() time.Time) http.Handl
 	for _, mode := range []string{"current", "changed", "cancel", "update", "ack", "error", "test", "exercise", "draft", "system", "expired", "null-times", "missing", "no-polygon", "invalid-geometry", "topology-invalid", "zone-inside", "zone-outside", "zone-boundary", "zone-partial", "zone-invalid", "zone-stale", "zone-pending", "zone-update", "zone-cancel", "stale", "partial", "empty", "unavailable"} {
 		fixtureConfig := config
 		fixtureConfig.Registry = nil
+		fixtureConfig.Now = func() time.Time {
+			return time.Date(2026, 10, 30, 18, 0, 0, 0, time.UTC)
+		}
 		fixtureConfig.EventTriggers = eventtriggers.NewService(eventtriggers.Config{
 			NWS: weatherFixture{mode: mode}, PTWC: weatherFixture{mode: mode},
 			ComCat: fixtureSources{}, HANS: hans.NewClient(nil),
-			Now: func() time.Time { return time.Date(2026, 10, 30, 18, 0, 0, 0, time.UTC) },
+			Now: fixtureConfig.Now,
 		})
 		if strings.HasPrefix(mode, "zone-") {
 			fixtureConfig.ZoneApplicability = weatherZoneFixture{mode: mode}

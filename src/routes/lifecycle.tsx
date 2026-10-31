@@ -33,7 +33,9 @@ import {
   legacyLifecycleStorageKey,
   migrateLifecycleV1State,
   migrateLifecycleV2State,
+  migrateLifecycleV3State,
   v2LifecycleStorageKey,
+  v3LifecycleStorageKey,
   objectiveCatalog,
   packetSectionChoices,
   practicePartners,
@@ -44,6 +46,7 @@ import {
   serviceAreas,
   serviceRecordNeedsRecheck,
   serviceRecordStale,
+  serializeLifecycleState,
 } from '../lib/practice-lifecycle'
 import type {
   CapabilityId,
@@ -160,19 +163,23 @@ function PracticeLifecycle() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(lifecycleStorageKey)
-      const v2 = saved
+      const v3 = saved
         ? null
-        : window.localStorage.getItem(v2LifecycleStorageKey)
+        : window.localStorage.getItem(v3LifecycleStorageKey)
+      const v2 =
+        saved || v3 ? null : window.localStorage.getItem(v2LifecycleStorageKey)
       const legacy =
-        saved || v2
+        saved || v3 || v2
           ? null
           : window.localStorage.getItem(legacyLifecycleStorageKey)
-      if (saved || v2 || legacy) {
+      if (saved || v3 || v2 || legacy) {
         const next = saved
           ? restoreLifecycleState(saved)
-          : v2
-            ? migrateLifecycleV2State(v2)
-            : migrateLifecycleV1State(legacy!)
+          : v3
+            ? migrateLifecycleV3State(v3)
+            : v2
+              ? migrateLifecycleV2State(v2)
+              : migrateLifecycleV1State(legacy!)
         setState(next)
         setSelectedObjectives(
           next.objectives.length ? next.objectives : defaultObjectives,
@@ -195,7 +202,10 @@ function PracticeLifecycle() {
   useEffect(() => {
     if (!restored || restoreFailed) return
     try {
-      window.localStorage.setItem(lifecycleStorageKey, JSON.stringify(state))
+      window.localStorage.setItem(
+        lifecycleStorageKey,
+        serializeLifecycleState(state),
+      )
     } catch {
       setMessage(
         'Local persistence failed. Keep this page open and export the strict record before leaving.',
@@ -406,7 +416,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 Refreshing public evidence…
               </p>
             )}
-            <LifecycleWeatherContext live={liveEvidence} />
+            <LifecycleWeatherContext
+              live={liveEvidence}
+              state={state}
+              act={act}
+            />
             <button
               type="button"
               disabled={
@@ -1727,6 +1741,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               window.localStorage.removeItem(lifecycleStorageKey)
               window.localStorage.removeItem(legacyLifecycleStorageKey)
               window.localStorage.removeItem(v2LifecycleStorageKey)
+              window.localStorage.removeItem(v3LifecycleStorageKey)
               setRestoreFailed(false)
               stateRef.current = initial
               setState(initial)

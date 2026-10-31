@@ -39,7 +39,8 @@ func lifecycleFixtureConfig() api.Config {
 }
 
 type lifecycleFixtureResponse struct {
-	SchemaVersion  string `json:"schema_version"`
+	SchemaVersion  string    `json:"schema_version"`
+	GeneratedAt    time.Time `json:"generated_at"`
 	ShelterContext struct {
 		State       string `json:"state"`
 		Coverage    string `json:"coverage"`
@@ -130,8 +131,14 @@ func TestLifecycleFixtureRetrievalChurnAndScope(t *testing.T) {
 	now := time.Now().UTC()
 	handler := lifecycleFixtureHandler(lifecycleFixtureConfig(), func() time.Time { return now })
 	first := requestLifecycleFixture(t, handler, "baseline")
+	if !first.GeneratedAt.Equal(now) {
+		t.Fatalf("fixture snapshot used inconsistent clock: got %s want %s", first.GeneratedAt, now)
+	}
 	now = now.Add(time.Minute)
 	second := requestLifecycleFixture(t, handler, "baseline")
+	if !second.GeneratedAt.Equal(now) {
+		t.Fatalf("fixture snapshot did not advance configured clock: got %s want %s", second.GeneratedAt, now)
+	}
 	if first.ShelterContext.RetrievedAt == second.ShelterContext.RetrievedAt ||
 		first.ShelterContext.Items[0].Digest != second.ShelterContext.Items[0].Digest {
 		t.Fatal("retrieval churn altered source facts or digest")

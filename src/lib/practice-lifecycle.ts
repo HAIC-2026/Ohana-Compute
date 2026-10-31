@@ -18,9 +18,26 @@ import type {
   SourceReading,
   SourceRecheckResult,
 } from './source-evidence'
+import {
+  createAcceptedWeatherEvidence,
+  createWeatherRecheck,
+  maxWeatherAcceptances,
+  maxWeatherRechecks,
+  validWeatherArchive,
+  validWeatherRecords,
+  weatherArchiveDigest,
+} from './weather-evidence'
+import type {
+  AcceptedWeatherEvidence,
+  NWSQueryReading,
+  ReviewedNWSProduct,
+  WeatherCycleArchive,
+  WeatherRecheck,
+} from './weather-evidence'
 
-export const lifecycleSchema = 'practice-lifecycle.v3' as const
-export const lifecycleStorageKey = 'practice-lifecycle.v3'
+export const lifecycleSchema = 'practice-lifecycle.v4' as const
+export const lifecycleStorageKey = 'practice-lifecycle.v4'
+export const v3LifecycleStorageKey = 'practice-lifecycle.v3'
 export const v2LifecycleStorageKey = 'practice-lifecycle.v2'
 export const legacyLifecycleStorageKey = 'practice-lifecycle.v1'
 export const maxLifecycleImportBytes = 128 * 1024
@@ -290,6 +307,10 @@ export type LifecycleState = {
   pinnedEvidence: PinnedEvidenceReference[]
   sourceEvidence: AcceptedSourceEvidence[]
   sourceRechecks: SourceRecheck[]
+  weatherEvidence: AcceptedWeatherEvidence[]
+  weatherRechecks: WeatherRecheck[]
+  weatherHistory: WeatherCycleArchive[]
+  previousWeatherCycle: WeatherCycleArchive | null
   sourceHistory: Array<NonNullable<LifecycleState['previousCycle']>>
   legacySeals: null | {
     h1: string | null
@@ -508,6 +529,19 @@ export type LifecycleAction =
       horizon: RecoveryRow['horizon']
     }
   | {
+      type: 'accept-weather'
+      reviewed: ReviewedNWSProduct
+      acceptedAt: string
+    }
+  | {
+      type: 'recheck-weather'
+      acceptedId: string
+      reading: NWSQueryReading
+      checkedAt: string
+      owner: PracticeRole
+      horizon: RecoveryRow['horizon']
+    }
+  | {
       type: 'select-packet-sections'
       sections: LifecycleState['packetSections']
     }
@@ -522,6 +556,7 @@ const beforeActionTypes = new Set<LifecycleAction['type']>([
   'set-format',
   'record-evidence',
   'accept-source',
+  'accept-weather',
   'set-scope',
   'schedule-inject',
   'seal-h1',
@@ -605,6 +640,10 @@ export function createInitialLifecycleState(): LifecycleState {
     pinnedEvidence: [],
     sourceEvidence: [],
     sourceRechecks: [],
+    weatherEvidence: [],
+    weatherRechecks: [],
+    weatherHistory: [],
+    previousWeatherCycle: null,
     sourceHistory: [],
     legacySeals: null,
     simulationScope: { ...emptyScope },
@@ -705,6 +744,17 @@ function h1Digest(state: LifecycleState) {
       ...(state.sourceEvidence.length
         ? { sourceEvidence: state.sourceEvidence }
         : {}),
+      ...(state.weatherEvidence.length
+        ? { weatherEvidence: state.weatherEvidence }
+        : {}),
+      ...(state.previousWeatherCycle
+        ? { previousWeatherDigest: state.previousWeatherCycle.digest }
+        : {}),
+      ...(state.weatherHistory.length
+        ? {
+            weatherHistory: state.weatherHistory.map((item) => item.digest),
+          }
+        : {}),
       ...(state.previousCycle?.sourceEvidence.length
         ? { previousSourceDigest: state.previousCycle.sourceDigest }
         : {}),
@@ -729,6 +779,17 @@ function h2Digest(state: LifecycleState) {
       ),
       ...(state.sourceEvidence.length
         ? { sourceEvidence: state.sourceEvidence }
+        : {}),
+      ...(state.weatherEvidence.length
+        ? { weatherEvidence: state.weatherEvidence }
+        : {}),
+      ...(state.previousWeatherCycle
+        ? { previousWeatherDigest: state.previousWeatherCycle.digest }
+        : {}),
+      ...(state.weatherHistory.length
+        ? {
+            weatherHistory: state.weatherHistory.map((item) => item.digest),
+          }
         : {}),
       ...(state.previousCycle?.sourceEvidence.length
         ? { previousSourceDigest: state.previousCycle.sourceDigest }
@@ -760,6 +821,10 @@ export function canonicalLifecycleRecord(state: LifecycleState) {
     pinnedEvidence: state.pinnedEvidence,
     sourceEvidence: state.sourceEvidence,
     sourceRechecks: state.sourceRechecks,
+    weatherEvidence: state.weatherEvidence,
+    weatherRechecks: state.weatherRechecks,
+    weatherHistory: state.weatherHistory,
+    previousWeatherCycle: state.previousWeatherCycle,
     sourceHistory: state.sourceHistory,
     legacySeals: state.legacySeals,
     simulationScope: state.simulationScope,
@@ -788,6 +853,36 @@ export function lifecycleDigest(state: LifecycleState) {
 
 export function exportLifecycleRecord(state: LifecycleState) {
   return JSON.stringify(canonicalLifecycleRecord(state), null, 2)
+}
+
+export function serializeLifecycleState(state: LifecycleState) {
+  const compact = structuredClone(state) as Partial<LifecycleState>
+  if (!state.pinnedEvidence.length) delete compact.pinnedEvidence
+  if (!state.sourceEvidence.length) delete compact.sourceEvidence
+  if (!state.sourceRechecks.length) delete compact.sourceRechecks
+  if (!state.sourceHistory.length) delete compact.sourceHistory
+  if (state.legacySeals === null) delete compact.legacySeals
+  if (!state.weatherEvidence.length) delete compact.weatherEvidence
+  if (!state.weatherRechecks.length) delete compact.weatherRechecks
+  if (!state.weatherHistory.length) delete compact.weatherHistory
+  if (state.previousWeatherCycle === null) delete compact.previousWeatherCycle
+  if (compact.h1 && !compact.h1.evidenceReferences.length)
+    delete (compact.h1 as Partial<NonNullable<LifecycleState['h1']>>)
+      .evidenceReferences
+  if (compact.h2 && !compact.h2.evidenceReferences.length)
+    delete (compact.h2 as Partial<NonNullable<LifecycleState['h2']>>)
+      .evidenceReferences
+  if (compact.previousCycle) {
+    const previous = compact.previousCycle as Partial<
+      NonNullable<LifecycleState['previousCycle']>
+    >
+    if (!previous.evidenceReferences?.length) delete previous.evidenceReferences
+    if (!previous.sourceEvidence?.length) delete previous.sourceEvidence
+    if (!previous.sourceRechecks?.length) delete previous.sourceRechecks
+    if (!previous.sourceEvidence && !previous.sourceRechecks)
+      delete previous.sourceDigest
+  }
+  return JSON.stringify(compact)
 }
 
 function exactKeys(
@@ -952,6 +1047,36 @@ function sourceLedger(
   }
 }
 
+function weatherLedger(
+  state: LifecycleState,
+  capability: 'SOURCE_ACCEPT' | 'SOURCE_RECHECK',
+  summary: string,
+): LifecycleState {
+  if (
+    !validWeatherRecords(
+      state.weatherEvidence,
+      state.weatherRechecks,
+      state.cycle,
+    )
+  )
+    throw new Error(
+      'Weather records failed validation or exceeded the bounded record limit.',
+    )
+  return {
+    ...state,
+    ledger: [
+      ...state.ledger,
+      {
+        sequence: state.ledger.length + 1,
+        capability,
+        cycle: state.cycle,
+        practiceMinute: state.practiceMinute,
+        summary,
+      },
+    ],
+  }
+}
+
 function previousSourceDigest(
   previous: NonNullable<LifecycleState['previousCycle']>,
 ) {
@@ -1076,6 +1201,11 @@ function validCanonicalRecord(
     !validSourceRecords(
       record.sourceEvidence,
       record.sourceRechecks,
+      Number(record.cycle),
+    ) ||
+    !validWeatherRecords(
+      record.weatherEvidence,
+      record.weatherRechecks,
       Number(record.cycle),
     ) ||
     !(
@@ -1208,6 +1338,16 @@ function validCanonicalRecord(
     !Array.isArray(record.sourceHistory) ||
     record.sourceHistory.length > 16 ||
     !record.sourceHistory.every(validPreviousCycle)
+  )
+    return false
+  if (
+    !Array.isArray(record.weatherHistory) ||
+    record.weatherHistory.length > 8 ||
+    !record.weatherHistory.every(validWeatherArchive) ||
+    !(
+      record.previousWeatherCycle === null ||
+      validWeatherArchive(record.previousWeatherCycle)
+    )
   )
     return false
   if (
@@ -1416,12 +1556,80 @@ export function restoreLifecycleState(text: string): LifecycleState {
   rejectDuplicateKeys(text)
   const value: unknown = JSON.parse(text)
   const initial = createInitialLifecycleState()
+  const optionalCompactKeys = new Set([
+    'pinnedEvidence',
+    'sourceEvidence',
+    'sourceRechecks',
+    'sourceHistory',
+    'legacySeals',
+    'weatherEvidence',
+    'weatherRechecks',
+    'weatherHistory',
+    'previousWeatherCycle',
+  ])
+  const initialKeys = Object.keys(initial)
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Saved lifecycle state is not supported.')
+  const record = value as Record<string, unknown>
   if (
-    !exactKeys(value, Object.keys(initial)) ||
-    value.schema !== lifecycleSchema
+    Object.keys(record).some((key) => !initialKeys.includes(key)) ||
+    initialKeys.some(
+      (key) =>
+        !optionalCompactKeys.has(key) &&
+        !Object.prototype.hasOwnProperty.call(record, key),
+    ) ||
+    record.schema !== lifecycleSchema
   )
     throw new Error('Saved lifecycle state is not supported.')
-  const state = value as LifecycleState
+  const compact = record as unknown as Partial<LifecycleState>
+  const compactH1 = compact.h1 as Partial<
+    NonNullable<LifecycleState['h1']>
+  > | null
+  const compactH2 = compact.h2 as Partial<
+    NonNullable<LifecycleState['h2']>
+  > | null
+  const compactPrevious = compact.previousCycle as Partial<
+    NonNullable<LifecycleState['previousCycle']>
+  > | null
+  const h1 = compactH1
+    ? {
+        ...compactH1,
+        evidenceReferences: compactH1.evidenceReferences ?? [],
+      }
+    : null
+  const h2 = compactH2
+    ? {
+        ...compactH2,
+        evidenceReferences: compactH2.evidenceReferences ?? [],
+      }
+    : null
+  const previousCycle = compactPrevious
+    ? {
+        ...compactPrevious,
+        evidenceReferences: compactPrevious.evidenceReferences ?? [],
+        sourceEvidence: compactPrevious.sourceEvidence ?? [],
+        sourceRechecks: compactPrevious.sourceRechecks ?? [],
+        sourceDigest: compactPrevious.sourceDigest ?? '',
+      }
+    : null
+  if (
+    previousCycle &&
+    !previousCycle.sourceDigest &&
+    Number.isSafeInteger(previousCycle.cycle) &&
+    typeof previousCycle.digest === 'string' &&
+    Array.isArray(previousCycle.carriedGapIds) &&
+    Array.isArray(previousCycle.carriedObjectiveIds)
+  )
+    previousCycle.sourceDigest = previousSourceDigest(
+      previousCycle as NonNullable<LifecycleState['previousCycle']>,
+    )
+  const state = {
+    ...initial,
+    ...compact,
+    h1,
+    h2,
+    previousCycle,
+  } as LifecycleState
   if (
     !validCanonicalRecord(canonicalLifecycleRecord(state)) ||
     !Number.isSafeInteger(state.cycle) ||
@@ -1430,7 +1638,7 @@ export function restoreLifecycleState(text: string): LifecycleState {
     !Array.isArray(state.capabilityMarkers) ||
     state.capabilityMarkers.some((id) => !capabilityIds.includes(id)) ||
     !arrayOfExact(
-      value.ledger,
+      state.ledger,
       ['sequence', 'capability', 'cycle', 'practiceMinute', 'summary'],
       (row) =>
         Number.isSafeInteger(row.sequence) &&
@@ -1443,11 +1651,11 @@ export function restoreLifecycleState(text: string): LifecycleState {
         typeof row.summary === 'string',
     ) ||
     !(
-      value.comparison === null ||
-      (exactKeys(value.comparison, ['digest', 'cycle', 'phase']) &&
-        typeof value.comparison.digest === 'string' &&
-        Number.isSafeInteger(value.comparison.cycle) &&
-        stringIn(value.comparison.phase, [
+      state.comparison === null ||
+      (exactKeys(state.comparison, ['digest', 'cycle', 'phase']) &&
+        typeof state.comparison.digest === 'string' &&
+        Number.isSafeInteger(state.comparison.cycle) &&
+        stringIn(state.comparison.phase, [
           'before',
           'during',
           'after',
@@ -1457,10 +1665,21 @@ export function restoreLifecycleState(text: string): LifecycleState {
   )
     throw new Error('Saved lifecycle state failed validation.')
   assertLifecycleIntegrity(state)
+  if (
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength >
+      maxLifecycleImportBytes ||
+    new TextEncoder().encode(exportLifecycleRecord(state)).byteLength >
+      maxLifecycleImportBytes
+  )
+    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
   return {
     ...state,
     sourceEvidence: immutableSourceRecord(state.sourceEvidence),
     sourceRechecks: immutableSourceRecord(state.sourceRechecks),
+    weatherEvidence: immutableSourceRecord(state.weatherEvidence),
+    weatherRechecks: immutableSourceRecord(state.weatherRechecks),
+    weatherHistory: immutableSourceRecord(state.weatherHistory),
+    previousWeatherCycle: immutableSourceRecord(state.previousWeatherCycle),
     sourceHistory: immutableSourceRecord(state.sourceHistory),
     previousCycle: immutableSourceRecord(state.previousCycle),
   }
@@ -1521,6 +1740,11 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   )
     throw new Error('Source rechecks require a sealed response handoff.')
   if (
+    state.weatherRechecks.length &&
+    (!state.h2 || !['after', 'complete'].includes(state.phase))
+  )
+    throw new Error('Weather rechecks require a sealed response handoff.')
+  if (
     state.sourceEvidence.some(
       (item) => !state.carriedGaps.some((gap) => gap.gapId === item.gapId),
     )
@@ -1553,7 +1777,7 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   )
   if (
     state.h1 &&
-    (state.h1.digest !== (state.legacySeals?.h1 ?? h1Digest(state)) ||
+    (!(state.h1.digest === (state.legacySeals?.h1 ?? h1Digest(state))) ||
       stableStringify(state.h1.evidenceReferences) !==
         stableStringify(beforeReferences) ||
       stableStringify(state.h1.carriedGapIds) !==
@@ -1570,7 +1794,7 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   ).length
   if (
     state.h2 &&
-    (state.h2.digest !== (state.legacySeals?.h2 ?? h2Digest(state)) ||
+    (!(state.h2.digest === (state.legacySeals?.h2 ?? h2Digest(state))) ||
       stableStringify(state.h2.evidenceReferences) !==
         stableStringify(duringReferences) ||
       state.h2.carried !== carried ||
@@ -1593,6 +1817,19 @@ function assertLifecycleIntegrity(state: LifecycleState) {
     )
       throw new Error('Saved source history integrity check failed.')
   }
+  if (
+    state.previousWeatherCycle &&
+    state.previousWeatherCycle.cycle !== state.cycle - 1
+  )
+    throw new Error('Saved weather previous-cycle relationship failed.')
+  for (const [index, previous] of state.weatherHistory.entries()) {
+    if (
+      previous.cycle >= state.cycle - 1 ||
+      (index > 0 && state.weatherHistory[index - 1].cycle >= previous.cycle) ||
+      !validWeatherArchive(previous)
+    )
+      throw new Error('Saved weather history integrity check failed.')
+  }
 }
 
 export function migrateLifecycleV1State(text: string): LifecycleState {
@@ -1601,6 +1838,37 @@ export function migrateLifecycleV1State(text: string): LifecycleState {
 
 export function migrateLifecycleV2State(text: string): LifecycleState {
   return migrateLegacyLifecycleState(text, v2LifecycleStorageKey)
+}
+
+export function migrateLifecycleV3State(text: string): LifecycleState {
+  if (new TextEncoder().encode(text).byteLength > maxLifecycleImportBytes)
+    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
+  rejectDuplicateKeys(text)
+  const value: unknown = JSON.parse(text)
+  const initial = createInitialLifecycleState()
+  const v3Keys = Object.keys(initial).filter(
+    (key) =>
+      ![
+        'weatherEvidence',
+        'weatherRechecks',
+        'weatherHistory',
+        'previousWeatherCycle',
+      ].includes(key),
+  )
+  if (!exactKeys(value, v3Keys) || value.schema !== v3LifecycleStorageKey)
+    throw new Error('Saved v3 lifecycle state is not supported.')
+  const candidate = {
+    ...(value as LifecycleState),
+    schema: lifecycleSchema,
+    weatherEvidence: [],
+    weatherRechecks: [],
+    weatherHistory: [],
+    previousWeatherCycle: null,
+  }
+  if (!validCanonicalRecord(canonicalLifecycleRecord(candidate)))
+    throw new Error('Saved v3 lifecycle state failed validation.')
+  assertLifecycleIntegrity(candidate)
+  return restoreLifecycleState(serializeLifecycleState(candidate))
 }
 
 function migrateLegacyLifecycleState(
@@ -1618,6 +1886,10 @@ function migrateLegacyLifecycleState(
         'sourceEvidence',
         'sourceHistory',
         'sourceRechecks',
+        'weatherEvidence',
+        'weatherRechecks',
+        'weatherHistory',
+        'previousWeatherCycle',
         'legacySeals',
         ...(schema === legacyLifecycleStorageKey ? ['pinnedEvidence'] : []),
       ].includes(key),
@@ -1659,7 +1931,18 @@ function migrateLegacyLifecycleState(
     sourceEvidence: [],
     sourceRechecks: [],
     sourceHistory: [],
-    legacySeals: null,
+    weatherEvidence: [],
+    weatherRechecks: [],
+    weatherHistory: [],
+    previousWeatherCycle: null,
+    legacySeals:
+      schema === legacyLifecycleStorageKey && (h1 || h2)
+        ? {
+            h1: (h1 as LifecycleState['h1'])?.digest ?? null,
+            h2: (h2 as LifecycleState['h2'])?.digest ?? null,
+            integrity: '',
+          }
+        : null,
     h1,
     h2,
     previousCycle: previous
@@ -1686,22 +1969,15 @@ function migrateLegacyLifecycleState(
     migrated.previousCycle.sourceDigest = previousSourceDigest(
       migrated.previousCycle,
     )
-  // Keep the original v1 seals; its bounded evidence states are reconstructed for verification.
-  if (schema === legacyLifecycleStorageKey && (h1 || h2)) {
-    migrated.legacySeals = {
-      h1: migrated.h1?.digest ?? null,
-      h2: migrated.h2?.digest ?? null,
-      integrity: '',
-    }
+  if (migrated.legacySeals)
     migrated.legacySeals.integrity = legacySealIntegrity(migrated)
-  }
   return restoreLifecycleState(
-    JSON.stringify({
+    serializeLifecycleState({
       ...migrated,
       comparison: candidate.comparison,
       capabilityMarkers: candidate.capabilityMarkers,
       ledger: candidate.ledger,
-    }),
+    } as LifecycleState),
   )
 }
 
@@ -1872,6 +2148,10 @@ export function generateCloseoutPacket(state: LifecycleState) {
         rechecks: state.sourceRechecks,
         previousCycle: state.previousCycle,
         sourceHistory: state.sourceHistory,
+        acceptedWeather: state.weatherEvidence,
+        weatherRechecks: state.weatherRechecks,
+        previousWeatherCycle: state.previousWeatherCycle,
+        weatherHistory: state.weatherHistory,
         legacySeals: state.legacySeals,
       },
     )}`,
@@ -1927,7 +2207,7 @@ export function applyLifecycleAction(
 ): LifecycleState {
   const next = reduceLifecycleAction(state, action)
   if (
-    new TextEncoder().encode(JSON.stringify(next)).byteLength >
+    new TextEncoder().encode(serializeLifecycleState(next)).byteLength >
       maxLifecycleImportBytes ||
     new TextEncoder().encode(exportLifecycleRecord(next)).byteLength >
       maxLifecycleImportBytes
@@ -1952,6 +2232,62 @@ function reduceLifecycleAction(
   if (state.h1 && beforeActionTypes.has(action.type))
     throw new Error('H1 is immutable. Start response practice to continue.')
   switch (action.type) {
+    case 'accept-weather': {
+      if (state.weatherEvidence.length >= maxWeatherAcceptances)
+        throw new Error('The bounded weather acceptance limit is full.')
+      const accepted = immutableSourceRecord(
+        createAcceptedWeatherEvidence(
+          state.cycle,
+          state.weatherEvidence.length,
+          action.reviewed,
+          action.acceptedAt,
+        ),
+      )
+      if (
+        state.weatherEvidence.some(
+          (item) =>
+            item.productDigest === accepted.productDigest &&
+            item.evaluationDigest === accepted.evaluationDigest,
+        )
+      )
+        throw new Error('This exact weather revision is already accepted.')
+      return weatherLedger(
+        {
+          ...state,
+          weatherEvidence: [...state.weatherEvidence, accepted],
+        },
+        'SOURCE_ACCEPT',
+        `Accepted ${accepted.id}; NWS planning context with no authority effect.`,
+      )
+    }
+    case 'recheck-weather': {
+      if (state.weatherRechecks.length >= maxWeatherRechecks)
+        throw new Error('The bounded weather recheck limit is full.')
+      const accepted = state.weatherEvidence.find(
+        (item) => item.id === action.acceptedId,
+      )
+      if (!accepted)
+        throw new Error('Weather recheck requires an accepted revision.')
+      const recheck = immutableSourceRecord(
+        createWeatherRecheck(
+          state.cycle,
+          state.weatherRechecks.length,
+          accepted,
+          action.reading,
+          action.checkedAt,
+          action.owner,
+          action.horizon,
+        ),
+      )
+      return weatherLedger(
+        {
+          ...state,
+          weatherRechecks: [...state.weatherRechecks, recheck],
+        },
+        'SOURCE_RECHECK',
+        `${accepted.id}: ${recheck.result}; ${action.owner}, ${action.horizon}. Source comparison only.`,
+      )
+    }
     case 'accept-source': {
       if (!state.carriedGaps.some((gap) => gap.gapId === action.gapId))
         throw new Error(
@@ -2705,6 +3041,25 @@ function reduceLifecycleAction(
           ? [state.previousCycle]
           : []),
       ])
+      next.weatherHistory = immutableSourceRecord([
+        ...state.weatherHistory,
+        ...(state.previousWeatherCycle ? [state.previousWeatherCycle] : []),
+      ])
+      if (next.weatherHistory.length > 8)
+        throw new Error(
+          'Weather history is full. Export the record before an explicit reset.',
+        )
+      if (state.weatherEvidence.length || state.weatherRechecks.length) {
+        const weatherArchive = {
+          cycle: state.cycle,
+          accepted: immutableSourceRecord(state.weatherEvidence),
+          rechecks: immutableSourceRecord(state.weatherRechecks),
+        }
+        next.previousWeatherCycle = {
+          ...weatherArchive,
+          digest: weatherArchiveDigest(weatherArchive),
+        }
+      }
       if (next.sourceHistory.length > 16)
         throw new Error(
           'Source history is full. Export the record before an explicit reset.',

@@ -115,7 +115,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
     panel.getByRole('button', { name: 'Pinned in before' }),
   ).toBeDisabled()
   const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('practice-lifecycle.v3') ?? '{}'),
+    JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}'),
   )
   expect(saved.pinnedEvidence).toEqual([
     expect.objectContaining({
@@ -200,7 +200,7 @@ test('live evidence panel shows feed states and pins immutable phase summary', a
   expect(
     await page.evaluate(
       () =>
-        JSON.parse(localStorage.getItem('practice-lifecycle.v3') ?? '{}')
+        JSON.parse(localStorage.getItem('practice-lifecycle.v4') ?? '{}')
           .pinnedEvidence[0].snapshotId,
     ),
   ).toBe('snapshot-browser-a')
@@ -379,7 +379,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     /^practice-lifecycle-[a-f0-9]{16}\.json$/,
   )
   const recordText = await readFile(await record.path(), 'utf8')
-  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v3')
+  expect(JSON.parse(recordText).schema).toBe('practice-lifecycle.v4')
   expect(recordText).toContain(practiceStamp)
   await capability(page, 'A08')
     .getByRole('button', {
@@ -434,7 +434,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   expect(apiWrites).toEqual([])
   await expect
     .poll(() =>
-      page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+      page.evaluate(() => localStorage.getItem('practice-lifecycle.v4')),
     )
     .not.toBeNull()
   const width = await page.evaluate(() => ({
@@ -491,4 +491,24 @@ test('lifecycle has no forbidden controls, free-text operational fields, or real
   await expect(
     page.getByRole('region', { name: 'FEMA-reported shelter context' }),
   ).toContainText('Honolulu')
+})
+
+test('reset removes failed v3 migration state durably', async ({ page }) => {
+  await page.goto('/lifecycle')
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('practice-lifecycle.v3', '{"schema":"broken"}')
+  })
+  await page.reload()
+  await expect(
+    page.getByText(/Reset to start a new local practice cycle/),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Reset lifecycle' }).click()
+  expect(
+    await page.evaluate(() => localStorage.getItem('practice-lifecycle.v3')),
+  ).toBeNull()
+  await page.reload()
+  await expect(
+    page.getByText(/Reset to start a new local practice cycle/),
+  ).toHaveCount(0)
 })

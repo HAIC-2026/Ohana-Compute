@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const primaryBackendPort = 18080
+const secondaryBackendPort = 18181
+
 export default defineConfig({
   testDir: './tests',
   testMatch: [
@@ -24,29 +27,25 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command:
-        'cd backend && PORT=18080 E2E_ENABLE_COLLABORATION=1 E2E_ENABLE_GROUNDED_PLANNING=1 go run ./cmd/e2e-server',
-      url: 'http://127.0.0.1:18080/healthz',
+      command: `cd backend && PORT=${primaryBackendPort} E2E_ENABLE_COLLABORATION=1 E2E_ENABLE_GROUNDED_PLANNING=1 go run ./cmd/e2e-server`,
+      url: `http://127.0.0.1:${primaryBackendPort}/healthz`,
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command:
-        'VITE_BACKEND_API_URL=http://127.0.0.1:18080 VITE_ENABLE_TEST_IDENTITY=true npm run dev -- --host 127.0.0.1 --port 13000',
+      command: `VITE_BACKEND_API_URL=http://127.0.0.1:${primaryBackendPort} VITE_ENABLE_TEST_IDENTITY=true npm run dev -- --host 127.0.0.1 --port 13000`,
       url: 'http://127.0.0.1:13000',
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command:
-        'cd backend && PORT=18081 E2E_ENABLE_COLLABORATION=1 go run ./cmd/e2e-server',
-      url: 'http://127.0.0.1:18081/healthz',
+      command: `cd backend && PORT=${secondaryBackendPort} E2E_ENABLE_COLLABORATION=1 go run ./cmd/e2e-server`,
+      url: `http://127.0.0.1:${secondaryBackendPort}/healthz`,
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command:
-        'VITE_BACKEND_API_URL=http://127.0.0.1:18081 VITE_ENABLE_TEST_IDENTITY=true npm run dev -- --host 127.0.0.1 --port 13001',
+      command: `VITE_BACKEND_API_URL=http://127.0.0.1:${secondaryBackendPort} VITE_ENABLE_TEST_IDENTITY=true npm run dev -- --host 127.0.0.1 --port 13001`,
       url: 'http://127.0.0.1:13001',
       reuseExistingServer: false,
       timeout: 120_000,
