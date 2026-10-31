@@ -148,6 +148,10 @@ function compareExceptions(left: string, right: string) {
   )
 }
 
+function primaryKey(capability: CapabilityId, target: string, action: string) {
+  return `${capability}:${target}:${action}`
+}
+
 function capabilitySnapshot(
   id: CapabilityId,
   state: LifecycleState,
@@ -405,15 +409,30 @@ function capabilitySnapshot(
       return {
         fact: `${state.packetSections.length} packet sections`,
       }
-    case 'A10':
+    case 'A10': {
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      const decisionCurrent = state.gateDecision === impliedDecision
       return {
         fact: state.previousCycle
           ? `Cycle ${state.previousCycle.cycle} sealed read-only`
-          : state.gateDecision
+          : decisionCurrent
             ? 'Gate decision recorded; H3 can be sealed'
-            : 'H3 needs gate decision',
-        exceptions: state.gateDecision ? undefined : ['gate decision pending'],
+            : state.gateDecision
+              ? 'Gate decision stale; record the current result'
+              : 'H3 needs gate decision',
+        exceptions: state.previousCycle
+          ? undefined
+          : decisionCurrent
+            ? undefined
+            : [
+                state.gateDecision
+                  ? `gate decision stale: ${impliedDecision}`
+                  : 'gate decision pending',
+              ],
       }
+    }
   }
 }
 
@@ -421,44 +440,48 @@ function primaryActionSelector(
   id: CapabilityId,
   state: LifecycleState,
   context: PrimaryActionContext,
-): string | RegExp | null {
+): string | null {
+  if (id.startsWith('B') && id !== 'B10' && state.h1) return null
   switch (id) {
     case 'B01':
-      return state.event ? null : 'Lock practice event'
+      return state.event ? null : primaryKey(id, 'event', 'lock')
     case 'B02': {
-      if (state.h1) return null
       const gap = gapCatalog.find(
         (candidate) =>
           !state.carriedGaps.some((item) => item.gapId === candidate.id),
       )
-      return gap ? `Carry ${gap.label}` : null
+      return gap ? primaryKey(id, gap.id, 'carry') : null
     }
     case 'B03':
-      return state.objectives.length ? null : 'Freeze objective selection'
+      return state.objectives.length
+        ? null
+        : primaryKey(id, 'objectives', 'freeze')
     case 'B04':
       return state.timing.marginMinutes === null
-        ? 'Compute bounded margin'
+        ? primaryKey(id, 'margin', 'compute')
         : null
     case 'B05':
-      return state.assumptions.chosen ? null : 'Carry comparison'
+      return state.assumptions.chosen
+        ? null
+        : primaryKey(id, 'comparison', 'carry')
     case 'B06': {
       const format = Object.entries(state.formats).find(
         ([, formatState]) => formatState !== 'planned',
       )?.[0]
-      return format ? `Mark ${format} planned` : null
+      return format ? primaryKey(id, format, 'planned') : null
     }
     case 'B07': {
       const gap = state.carriedGaps.find(
         (candidate) =>
           !state.evidence.some((item) => item.gapId === candidate.gapId),
       )
-      return gap ? `Record criteria present for ${gap.gapId}` : null
+      return gap ? primaryKey(id, gap.gapId, 'criteria-present') : null
     }
     case 'B08': {
       const area = serviceAreas.find(
         (candidate) => state.simulationScope[candidate] !== 'simulated',
       )
-      return area ? `Mark ${area} simulated` : null
+      return area ? primaryKey(id, area, 'simulated') : null
     }
     case 'B09': {
       const area = serviceAreas.find(
@@ -466,99 +489,131 @@ function primaryActionSelector(
           state.simulationScope[candidate] === 'simulated' &&
           !state.injects.some((inject) => inject.area === candidate),
       )
-      return area ? `Schedule ${area} inject` : null
+      return area ? primaryKey(id, area, 'schedule-inject') : null
     }
     case 'B10':
-      return !state.h1 && h1Ready(state) ? 'Seal immutable H1' : null
+      return !state.h1 && h1Ready(state) ? primaryKey(id, 'h1', 'seal') : null
     case 'D01':
       return state.h1 && state.phase === 'before'
-        ? 'Start response practice'
+        ? primaryKey(id, 'h1', 'start-response')
         : null
     case 'D02':
-      return state.phase === 'during' ? 'Advance 60m' : null
+      return state.phase === 'during'
+        ? primaryKey(id, 'clock', 'advance-60')
+        : null
     case 'D03': {
       const area = serviceAreas.find(
         (candidate) =>
           state.simulationScope[candidate] === 'simulated' &&
           !state.serviceRecords.some((record) => record.area === candidate),
       )
-      return area ? `Record ${area} as unknown` : null
+      return area ? primaryKey(id, area, 'unknown') : null
     }
     case 'D04': {
       const item = state.supportItems.find(
         (candidate) => candidate.response === 'not asked',
       )
       if (!item) return null
-      const index = state.supportItems.indexOf(item)
-      return `Record hold from ${
-        practicePartners[index % practicePartners.length]
-      } for ${item.id}`
+      return primaryKey(id, item.id, 'hold')
     }
-    case 'D05':
-      return state.supportItems.some(
-        (item) =>
-          item.response === 'decline' || item.dueMinute < state.practiceMinute,
+    case 'D05': {
+      const item = state.supportItems.find(
+        (candidate) =>
+          !candidate.escalation &&
+          (candidate.response === 'decline' ||
+            candidate.dueMinute < state.practiceMinute),
       )
-        ? 'Escalate with bounded deadline'
-        : null
+      return item ? primaryKey(id, item.id, 'escalate') : null
+    }
     case 'D06':
       return !state.assumptions.r2 && revealedInjects(state).length
-        ? 'Add r2 after revealed inject'
+        ? primaryKey(id, 'r2', 'add')
         : null
-    case 'D07':
-      return state.phase === 'during' ? 'Create next guidance version' : null
+    case 'D07': {
+      const guidanceBasisMinute = revealedInjects(state).at(-1)?.minute ?? 0
+      const hasCurrentVersion = state.guidanceVersions.some(
+        (version) => version.createdMinute >= guidanceBasisMinute,
+      )
+      return state.phase === 'during' && !hasCurrentVersion
+        ? primaryKey(id, String(guidanceBasisMinute), 'create-guidance')
+        : null
+    }
     case 'D08':
-      return state.shiftSnapshot ? null : 'Freeze shift counts'
+      return state.shiftSnapshot ? null : primaryKey(id, 'shift', 'freeze')
     case 'D09': {
       const evidence = state.evidence.find((item) => item.state === 'stale')
-      return evidence ? `Replace ${evidence.id}` : null
+      return evidence ? primaryKey(id, evidence.id, 'replace') : null
     }
     case 'D10': {
       const item = state.supportItems.find(
         (candidate) => candidate.disposition === 'undecided',
       )
-      if (item) return `Mark ${item.id} carried`
-      return state.supportItems.length && !state.h2 ? 'Seal immutable H2' : null
+      if (item) return primaryKey(id, item.id, 'carried')
+      return state.supportItems.length && !state.h2
+        ? primaryKey(id, 'h2', 'seal')
+        : null
     }
     case 'A01': {
       const active = state.followThroughItems.find(
         (item) => item.status === 'planned' || item.status === 'in-progress',
       )
-      if (active?.status === 'planned') return 'Start follow-through'
+      if (active?.status === 'planned')
+        return primaryKey(id, active.id, 'start')
       if (active?.status === 'in-progress') {
         const latest = active.observations.at(-1)
         const hasObservation =
           active.observations.length > active.attemptObservationStart
-        if (!hasObservation) return 'Record observed'
-        return latest?.result === 'observed' ? 'Finish' : 'Mark unable'
+        if (!hasObservation) return primaryKey(id, active.id, 'observe')
+        return latest?.result === 'observed'
+          ? primaryKey(id, active.id, 'finish')
+          : primaryKey(id, active.id, 'unable')
       }
       const row = state.recoveryRows.find(
         (candidate) => candidate.state !== 'follow-up-ready',
       )
-      return row ? 'Set follow-up ready' : null
+      if (row) return primaryKey(id, row.supportItemId, 'ready')
+      const readyWithoutFollowThrough = state.recoveryRows.find(
+        (candidate) =>
+          candidate.state === 'follow-up-ready' &&
+          !state.followThroughItems.some(
+            (item) =>
+              item.supportItemId === candidate.supportItemId ||
+              ((item.status === 'planned' || item.status === 'in-progress') &&
+                item.gapId === candidate.gapId),
+          ),
+      )
+      return readyWithoutFollowThrough
+        ? primaryKey(
+            id,
+            readyWithoutFollowThrough.supportItemId,
+            'create-follow-through',
+          )
+        : null
     }
     case 'A02': {
       const domain = cmistDomains.find(
         (candidate) =>
           !state.unmetNeeds.some((item) => item.domain === candidate),
       )
-      return domain ? `Record ${domain} as Unknown — not zero` : null
+      return domain ? primaryKey(id, domain, 'unknown') : null
     }
     case 'A03':
-      return state.holdReview.attempted ? null : 'Attempt hold review'
+      return state.holdReview.attempted
+        ? null
+        : primaryKey(id, 'holds', 'review')
     case 'A04': {
-      const record = state.serviceRecords.find((candidate) =>
-        serviceRecordNeedsRecheck(candidate, state.practiceMinute),
+      const record = state.serviceRecords.find(
+        (candidate) =>
+          serviceRecordNeedsRecheck(candidate, state.practiceMinute) &&
+          !state.recheckPlans.some((plan) => plan.area === candidate.area),
       )
-      return record ? `Plan ${record.area} recheck` : null
+      return record ? primaryKey(id, record.area, 'plan-recheck') : null
     }
     case 'A05': {
       const block = guidanceBlocks.find(
         (candidate) => !state.recoveryDraft?.classifications[candidate],
       )
-      return block
-        ? `Classify ${block} as carried into recovery draft r1`
-        : null
+      return block ? primaryKey(id, block, 'carry-recovery') : null
     }
     case 'A06': {
       const objective = state.objectives.find(
@@ -567,7 +622,7 @@ function primaryActionSelector(
             (review) => review.objectiveId === candidate,
           ),
       )
-      return objective ? `Score ${objective} and mark carry-forward` : null
+      return objective ? primaryKey(id, objective, 'carry-forward') : null
     }
     case 'A07': {
       const canonicalDecision = lifecycleGatesMet(state)
@@ -575,38 +630,30 @@ function primaryActionSelector(
         : 'gates-unmet-carry-forward'
       if (state.gateDecision === canonicalDecision) return null
       return canonicalDecision === 'gates-met'
-        ? 'Record gates met'
-        : 'Carry unmet gates'
+        ? primaryKey(id, 'gates', 'met')
+        : primaryKey(id, 'gates', 'carry-unmet')
     }
     case 'A08':
       if (state.comparison) return null
       return context.comparisonText.trim()
-        ? 'Pin read-only comparison'
-        : 'Copy current record into comparison field'
+        ? primaryKey(id, 'comparison', 'pin')
+        : primaryKey(id, 'comparison', 'copy')
     case 'A09':
       return context.packetSelectionSaved
-        ? new RegExp(`^Download ${practiceStamp} packet$`)
-        : 'Save packet section selection'
-    case 'A10':
-      return state.gateDecision && !state.previousCycle
-        ? 'Seal carry-forward and start next cycle'
+        ? primaryKey(id, 'packet', 'download')
+        : primaryKey(id, 'packet', 'save-selection')
+    case 'A10': {
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      return state.gateDecision === impliedDecision && !state.previousCycle
+        ? primaryKey(id, 'cycle', 'seal')
         : null
+    }
   }
 }
 
-function nodeText(node: ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(nodeText).join('')
-  if (!isValidElement(node)) return ''
-  return nodeText(
-    (node as ReactElement<{ children?: ReactNode }>).props.children,
-  )
-}
-
-function splitPrimaryAction(
-  children: ReactNode,
-  selector: string | RegExp | null,
-) {
+function splitPrimaryAction(children: ReactNode, selector: string | null) {
   const result: { primary: ReactElement | null } = { primary: null }
 
   const visit = (node: ReactNode): ReactNode => {
@@ -615,17 +662,11 @@ function splitPrimaryAction(
       children?: ReactNode
       disabled?: boolean
       className?: string
+      'data-primary-key'?: string
     }>
-    const label = nodeText(element.props.children).replace(/\s+/g, ' ').trim()
-    const matches =
-      typeof selector === 'string'
-        ? label === selector
-        : selector
-          ? selector.test(label)
-          : false
     if (
       !result.primary &&
-      matches &&
+      selector === element.props['data-primary-key'] &&
       element.type === 'button' &&
       element.props.disabled !== true
     ) {
@@ -674,22 +715,25 @@ function Capability({
   )
   const isFuture = phaseIndex > currentPhaseIndex
   const isPast = phaseIndex < currentPhaseIndex
+  const isSealedBeforeReview =
+    Boolean(state.h1) && phase === 'before' && id !== 'B10'
   const isTransitionAction =
     id === 'D01' && state.phase === 'before' && Boolean(state.h1)
   const selector =
-    !isPast && (!isFuture || isTransitionAction)
+    !isPast && !isSealedBeforeReview && (!isFuture || isTransitionAction)
       ? primaryActionSelector(id, state, primaryActionContext)
       : null
   const { primary, detail } = splitPrimaryAction(children, selector)
-  const status = isPast
-    ? 'Review'
-    : isFuture && !isTransitionAction
-      ? 'Waiting'
-      : primary
-        ? 'Ready'
-        : marker
-          ? 'Recorded'
-          : 'Open'
+  const status =
+    isPast || isSealedBeforeReview
+      ? 'Review'
+      : isFuture && !isTransitionAction
+        ? 'Waiting'
+        : primary
+          ? 'Ready'
+          : marker
+            ? 'Recorded'
+            : 'Open'
 
   return (
     <article
@@ -961,6 +1005,10 @@ function PracticeLifecycle() {
   const h1 = h1Gates(state)
   const gates = lifecycleGates(state)
   const injects = revealedInjects(state)
+  const guidanceBasisMinute = injects.at(-1)?.minute ?? 0
+  const guidanceNeeded = !state.guidanceVersions.some(
+    (version) => version.createdMinute >= guidanceBasisMinute,
+  )
   const staleEvidence = state.evidence.filter((item) => item.state === 'stale')
   const sealedChoice = state.assumptions.chosen ?? 'r1'
   const sealedRevision = state.assumptions[sealedChoice]
@@ -1446,6 +1494,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('B01', 'event', 'lock')}
               disabled={Boolean(state.event)}
               onClick={() => {
                 const element =
@@ -1482,6 +1531,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={primaryKey('B02', gap.id, 'carry')}
                   key={gap.id}
                   onClick={() =>
                     act({
@@ -1531,6 +1581,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </fieldset>
             <button
               type="button"
+              data-primary-key={primaryKey('B03', 'objectives', 'freeze')}
               onClick={() =>
                 act({
                   type: 'set-objectives',
@@ -1575,6 +1626,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </div>
             <button
               type="button"
+              data-primary-key={primaryKey('B04', 'margin', 'compute')}
               onClick={() =>
                 act({
                   type: 'set-timing',
@@ -1647,6 +1699,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               </button>
               <button
                 type="button"
+                data-primary-key={primaryKey('B05', 'comparison', 'carry')}
                 onClick={() =>
                   act({
                     type: 'choose-assumption',
@@ -1703,6 +1756,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                     <button
                       type="button"
                       className="secondary"
+                      data-primary-key={
+                        choice === 'planned'
+                          ? primaryKey('B06', format, 'planned')
+                          : undefined
+                      }
                       key={choice}
                       onClick={() =>
                         act({
@@ -1744,6 +1802,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'B07',
+                      gap.gapId,
+                      'criteria-present',
+                    )}
                     onClick={() =>
                       act({
                         type: 'record-evidence',
@@ -1803,6 +1866,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={
+                    state.simulationScope[area] === 'simulated'
+                      ? undefined
+                      : primaryKey('B08', area, 'simulated')
+                  }
                   onClick={() =>
                     act({
                       type: 'set-scope',
@@ -1839,6 +1907,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'B09',
+                      area,
+                      'schedule-inject',
+                    )}
                     key={area}
                     onClick={() =>
                       act({
@@ -1880,6 +1953,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </ul>
             <button
               type="button"
+              data-primary-key={primaryKey('B10', 'h1', 'seal')}
               disabled={!h1Ready(state) || Boolean(state.h1)}
               onClick={() => act({ type: 'seal-h1' })}
             >
@@ -1909,6 +1983,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <button
               type="button"
+              data-primary-key={primaryKey('D01', 'h1', 'start-response')}
               disabled={!state.h1 || state.phase !== 'before'}
               onClick={() => act({ type: 'start-during' })}
             >
@@ -1931,6 +2006,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={
+                    minutes === 60
+                      ? primaryKey('D02', 'clock', 'advance-60')
+                      : undefined
+                  }
                   key={minutes}
                   disabled={state.phase !== 'during'}
                   onClick={() =>
@@ -1975,6 +2055,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <button
                         type="button"
                         className="secondary"
+                        data-primary-key={
+                          serviceState === 'unknown'
+                            ? primaryKey('D03', area, 'unknown')
+                            : undefined
+                        }
                         key={serviceState}
                         onClick={() =>
                           act({
@@ -2019,6 +2104,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      response === 'hold'
+                        ? primaryKey('D04', item.id, 'hold')
+                        : undefined
+                    }
                     key={response}
                     onClick={() =>
                       act({
@@ -2064,7 +2154,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
-                    disabled={!reason}
+                    data-primary-key={primaryKey('D05', item.id, 'escalate')}
+                    disabled={!reason || Boolean(item.escalation)}
                     onClick={() => {
                       if (reason)
                         act({
@@ -2076,7 +2167,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         })
                     }}
                   >
-                    Escalate with bounded deadline
+                    Escalate {item.id} with bounded deadline
                   </button>
                 </div>
               )
@@ -2091,6 +2182,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <button
               type="button"
+              data-primary-key={primaryKey('D06', 'r2', 'add')}
               disabled={injects.length === 0}
               onClick={() =>
                 act({
@@ -2123,7 +2215,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <button
               type="button"
-              disabled={state.phase !== 'during'}
+              data-primary-key={primaryKey(
+                'D07',
+                String(guidanceBasisMinute),
+                'create-guidance',
+              )}
+              disabled={state.phase !== 'during' || !guidanceNeeded}
               onClick={() => act({ type: 'create-guidance' })}
             >
               Create next guidance version
@@ -2161,6 +2258,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('D08', 'shift', 'freeze')}
               onClick={() =>
                 act({
                   type: 'freeze-shift',
@@ -2192,6 +2290,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                 <button
                   type="button"
                   className="secondary"
+                  data-primary-key={primaryKey('D09', item.id, 'replace')}
                   key={item.id}
                   onClick={() =>
                     act({
@@ -2227,6 +2326,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      disposition === 'carried'
+                        ? primaryKey('D10', item.id, 'carried')
+                        : undefined
+                    }
                     key={disposition}
                     onClick={() =>
                       act({
@@ -2243,6 +2347,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             ))}
             <button
               type="button"
+              data-primary-key={primaryKey('D10', 'h2', 'seal')}
               disabled={
                 state.supportItems.length === 0 ||
                 state.supportItems.some(
@@ -2275,38 +2380,74 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             title="Build the recovery register"
             marker={marked('A01')}
           >
-            {state.recoveryRows.map((row) => (
-              <div key={row.supportItemId}>
-                <div className="lifecycle-row">
-                  <span>
-                    {row.supportItemId} · {row.gapId} · {row.horizon} ·{' '}
-                    {row.state}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      act({
-                        type: 'configure-recovery-row',
-                        supportItemId: row.supportItemId,
-                        horizon: 'next day',
-                        state: 'follow-up-ready',
-                      })
-                    }
-                  >
-                    Set follow-up ready
-                  </button>
+            {state.recoveryRows.map((row) => {
+              const canCreateFollowThrough =
+                row.state === 'follow-up-ready' &&
+                !state.followThroughItems.some(
+                  (item) =>
+                    item.supportItemId === row.supportItemId ||
+                    ((item.status === 'planned' ||
+                      item.status === 'in-progress') &&
+                      item.gapId === row.gapId),
+                )
+              return (
+                <div key={row.supportItemId}>
+                  <div className="lifecycle-row">
+                    <span>
+                      {row.supportItemId} · {row.gapId} · {row.horizon} ·{' '}
+                      {row.state}
+                    </span>
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={`Set ${row.supportItemId} follow-up ready`}
+                      data-primary-key={
+                        row.state === 'follow-up-ready'
+                          ? undefined
+                          : primaryKey('A01', row.supportItemId, 'ready')
+                      }
+                      disabled={row.state === 'follow-up-ready'}
+                      onClick={() =>
+                        act({
+                          type: 'configure-recovery-row',
+                          supportItemId: row.supportItemId,
+                          horizon: 'next day',
+                          state: 'follow-up-ready',
+                        })
+                      }
+                    >
+                      Set follow-up ready
+                    </button>
+                  </div>
+                  {canCreateFollowThrough && (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary"
+                        aria-label={`Create structured follow-through for ${row.supportItemId}`}
+                        data-primary-key={primaryKey(
+                          'A01',
+                          row.supportItemId,
+                          'create-follow-through',
+                        )}
+                        onClick={() =>
+                          act({
+                            type: 'create-follow-through',
+                            supportItemId: row.supportItemId,
+                            owner: 'Recovery lead',
+                            dueHorizon: 'next day',
+                            doneCheck: 'practice-review-recorded',
+                          })
+                        }
+                      >
+                        Create structured follow-through
+                      </button>
+                      <FollowThroughCreator row={row} act={act} />
+                    </>
+                  )}
                 </div>
-                {row.state === 'follow-up-ready' &&
-                  !state.followThroughItems.some(
-                    (item) =>
-                      item.supportItemId === row.supportItemId ||
-                      ((item.status === 'planned' ||
-                        item.status === 'in-progress') &&
-                        item.gapId === row.gapId),
-                  ) && <FollowThroughCreator row={row} act={act} />}
-              </div>
-            ))}
+              )
+            })}
             <p className="lifecycle-output">
               These are local PRACTICE observations only. They do not record
               external execution, acceptance, or adoption.
@@ -2369,6 +2510,8 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <div className="lifecycle-row">
                         <button
                           type="button"
+                          aria-label={`Start follow-through for ${item.id}`}
+                          data-primary-key={primaryKey('A01', item.id, 'start')}
                           disabled={
                             item.status !== 'planned' ||
                             item.observations.length >=
@@ -2385,6 +2528,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                             <button
                               type="button"
                               className="secondary"
+                              aria-label={`Record ${result} for ${item.id}`}
+                              data-primary-key={
+                                result === 'observed'
+                                  ? primaryKey('A01', item.id, 'observe')
+                                  : undefined
+                              }
                               disabled={!inProgress}
                               key={result}
                               onClick={() =>
@@ -2401,6 +2550,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         )}
                         <button
                           type="button"
+                          aria-label={`Finish follow-through for ${item.id}`}
+                          data-primary-key={primaryKey(
+                            'A01',
+                            item.id,
+                            'finish',
+                          )}
                           disabled={
                             !inProgress ||
                             !hasCurrentAttemptObservation ||
@@ -2418,6 +2573,12 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                         <button
                           type="button"
                           className="secondary"
+                          aria-label={`Mark ${item.id} unable`}
+                          data-primary-key={primaryKey(
+                            'A01',
+                            item.id,
+                            'unable',
+                          )}
                           disabled={
                             !inProgress ||
                             !hasCurrentAttemptObservation ||
@@ -2476,6 +2637,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey('A02', domain, 'unknown')}
                     onClick={() =>
                       act({
                         type: 'set-unmet-need',
@@ -2522,7 +2684,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             title="Review linked practice holds"
             marker={marked('A03')}
           >
-            <button type="button" onClick={() => act({ type: 'review-holds' })}>
+            <button
+              type="button"
+              data-primary-key={primaryKey('A03', 'holds', 'review')}
+              onClick={() => act({ type: 'review-holds' })}
+            >
               Attempt hold review
             </button>
             <p className="lifecycle-output">
@@ -2542,13 +2708,22 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <div className="lifecycle-button-list">
               {state.serviceRecords
-                .filter((record) =>
-                  serviceRecordNeedsRecheck(record, state.practiceMinute),
+                .filter(
+                  (record) =>
+                    serviceRecordNeedsRecheck(record, state.practiceMinute) &&
+                    !state.recheckPlans.some(
+                      (plan) => plan.area === record.area,
+                    ),
                 )
                 .map((record) => (
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={primaryKey(
+                      'A04',
+                      record.area,
+                      'plan-recheck',
+                    )}
                     key={record.area}
                     onClick={() =>
                       act({
@@ -2593,6 +2768,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                   <button
                     type="button"
                     className="secondary"
+                    data-primary-key={
+                      classification === 'carried into recovery draft r1'
+                        ? primaryKey('A05', block, 'carry-recovery')
+                        : undefined
+                    }
                     key={classification}
                     onClick={() =>
                       act({
@@ -2631,6 +2811,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
                       <button
                         type="button"
                         className="secondary"
+                        data-primary-key={
+                          disposition === 'carry-forward'
+                            ? primaryKey('A06', objectiveId, 'carry-forward')
+                            : undefined
+                        }
                         key={disposition}
                         onClick={() =>
                           act({
@@ -2666,6 +2851,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               <button
                 type="button"
                 className="secondary"
+                data-primary-key={primaryKey('A07', 'gates', 'carry-unmet')}
                 onClick={() =>
                   act({
                     type: 'decide-gates',
@@ -2677,6 +2863,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               </button>
               <button
                 type="button"
+                data-primary-key={primaryKey('A07', 'gates', 'met')}
                 disabled={!lifecycleGatesMet(state)}
                 onClick={() =>
                   act({ type: 'decide-gates', decision: 'gates-met' })
@@ -2710,6 +2897,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               <button
                 type="button"
                 className="secondary"
+                data-primary-key={primaryKey('A08', 'comparison', 'copy')}
                 onClick={() => setComparisonText(canonicalExport)}
               >
                 Copy current record into comparison field
@@ -2725,6 +2913,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </label>
             <button
               type="button"
+              data-primary-key={primaryKey('A08', 'comparison', 'pin')}
               onClick={() =>
                 act({ type: 'pin-comparison', text: comparisonText })
               }
@@ -2765,6 +2954,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             </fieldset>
             <button
               type="button"
+              data-primary-key={primaryKey('A09', 'packet', 'save-selection')}
               onClick={() =>
                 act({
                   type: 'select-packet-sections',
@@ -2777,6 +2967,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             <button
               type="button"
               className="secondary"
+              data-primary-key={primaryKey('A09', 'packet', 'download')}
               disabled={!packetSelectionSaved}
               onClick={() => {
                 try {
@@ -2811,7 +3002,13 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
           >
             <button
               type="button"
-              disabled={!state.gateDecision}
+              data-primary-key={primaryKey('A10', 'cycle', 'seal')}
+              disabled={
+                state.gateDecision !==
+                (lifecycleGatesMet(state)
+                  ? 'gates-met'
+                  : 'gates-unmet-carry-forward')
+              }
               onClick={() => act({ type: 'start-next-cycle' })}
             >
               Seal carry-forward and start next cycle

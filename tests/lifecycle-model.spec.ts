@@ -799,6 +799,39 @@ test('the recovery draft gate needs every guidance block classified', () => {
   expect(lifecycleGates(state).recoveryDraft).toBe(true)
 })
 
+test('D07 creates at most one guidance version for the latest reveal', () => {
+  let state = startDuring()
+  state = apply(state, { type: 'create-guidance' })
+  expect(() => apply(state, { type: 'create-guidance' })).toThrow(
+    /already covers the latest revealed inject/,
+  )
+  state = apply(state, { type: 'advance-clock', minutes: 60 })
+  state = apply(state, { type: 'create-guidance' })
+  expect(state.guidanceVersions).toHaveLength(2)
+  expect(() => apply(state, { type: 'create-guidance' })).toThrow(
+    /already covers the latest revealed inject/,
+  )
+
+  const duplicated = structuredClone(state)
+  duplicated.guidanceVersions = [
+    { ...duplicated.guidanceVersions[0], superseded: true },
+    {
+      ...duplicated.guidanceVersions[0],
+      version: 2,
+      superseded: false,
+    },
+  ]
+  expect(() => restoreLifecycleState(JSON.stringify(duplicated))).toThrow(
+    /failed validation/,
+  )
+
+  const duplicatedComparison = JSON.parse(exportLifecycleRecord(state))
+  duplicatedComparison.guidanceVersions = duplicated.guidanceVersions
+  expect(() =>
+    parseLifecycleComparison(JSON.stringify(duplicatedComparison)),
+  ).toThrow(/exact schema/)
+})
+
 test('escalation needs a blocked or overdue item with a matching reason', () => {
   let state = startDuring()
   const [first, second] = state.supportItems
@@ -829,10 +862,13 @@ test('escalation needs a blocked or overdue item with a matching reason', () => 
   expect(() => escalate(state, second.id, 'overdue')).toThrow(
     /blocked or overdue/,
   )
-  expect(
-    escalate(state, second.id, 'all responses declined').supportItems[1]
-      .escalation?.reason,
-  ).toBe('all responses declined')
+  const escalated = escalate(state, second.id, 'all responses declined')
+  expect(escalated.supportItems[1].escalation?.reason).toBe(
+    'all responses declined',
+  )
+  expect(() =>
+    escalate(escalated, second.id, 'all responses declined'),
+  ).toThrow(/already has a bounded escalation/)
   state = apply(state, { type: 'advance-clock', minutes: 60 })
   state = apply(state, { type: 'advance-clock', minutes: 60 })
   expect(first.dueMinute).toBeLessThan(state.practiceMinute)
@@ -998,6 +1034,33 @@ test('A07 records only the canonical decision for the current gate result', () =
   expect(JSON.parse(exportLifecycleRecord(unmet)).gateDecision).toBe(
     'gates-unmet-carry-forward',
   )
+})
+
+test('A10 rejects a stale carry-unmet decision after all gates become met', () => {
+  let state = completeLifecycle(false)
+  const row = state.recoveryRows[0]
+  state = apply(state, {
+    type: 'configure-recovery-row',
+    supportItemId: row.supportItemId,
+    horizon: row.horizon,
+    state: 'pending',
+  })
+  state = apply(state, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  state = apply(state, {
+    type: 'configure-recovery-row',
+    supportItemId: row.supportItemId,
+    horizon: row.horizon,
+    state: 'follow-up-ready',
+  })
+  expect(lifecycleGatesMet(state)).toBe(true)
+  expect(() => apply(state, { type: 'start-next-cycle' })).toThrow(
+    /Gates changed after the recorded decision/,
+  )
+  state = apply(state, { type: 'decide-gates', decision: 'gates-met' })
+  expect(apply(state, { type: 'start-next-cycle' }).cycle).toBe(2)
 })
 
 test('restore rejects malformed ledger and comparison metadata', () => {

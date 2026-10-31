@@ -30,6 +30,25 @@ const closeAllCapabilityDetails = async (page: Page) => {
     )
 }
 
+const sealH1WithCollapsedActions = async (
+  page: Page,
+  { gaps = 2, areas = 2 }: { gaps?: number; areas?: number } = {},
+) => {
+  await capability(page, 'B01').locator('.lifecycle-primary-action').click()
+  for (let index = 0; index < gaps; index++)
+    await capability(page, 'B02').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B03').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B04').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B05').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B06').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B07').locator('.lifecycle-primary-action').click()
+  for (let index = 0; index < areas; index++)
+    await capability(page, 'B08').locator('.lifecycle-primary-action').click()
+  for (let index = 0; index < areas; index++)
+    await capability(page, 'B09').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B10').locator('.lifecycle-primary-action').click()
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
     if (
@@ -312,7 +331,7 @@ test('scan-first default keeps critical state visible and exact records keyboard
   expect(scan.words).toBeLessThanOrEqual(700)
   expect(scan.controls).toBeLessThanOrEqual(65)
   expect(scan.firstCapabilityTop / scan.viewportHeight).toBeLessThanOrEqual(
-    testInfo.project.name.includes('mobile') ? 3.1 : 2,
+    testInfo.project.name.includes('mobile') ? 3 : 2,
   )
   expect(scan.scrollWidth).toBeLessThanOrEqual(scan.clientWidth)
 })
@@ -460,9 +479,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await expect(page.getByRole('heading', { name: 'After phase' })).toBeVisible()
   await openAllCapabilityDetails(page)
 
-  await capability(page, 'A01')
-    .getByRole('button', { name: 'Set follow-up ready' })
-    .click()
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
   const creator = capability(page, 'A01').getByText(
     /^Create follow-through for /,
   )
@@ -482,7 +499,10 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByLabel(/Follow-through done check/)
     .selectOption('practice-recheck-recorded')
   await capability(page, 'A01')
-    .getByRole('button', { name: 'Create structured follow-through' })
+    .getByRole('button', {
+      name: 'Create structured follow-through',
+      exact: true,
+    })
     .click()
   await closeAllCapabilityDetails(page)
   await expect(
@@ -551,13 +571,28 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     ).gateDecision,
   ).toBe('gates-unmet-carry-forward')
   await openAllCapabilityDetails(page)
-  const recheckButtons = capability(page, 'A04').getByRole('button')
   for (let index = 0; index < 2; index++)
-    await recheckButtons.nth(index).click()
+    await capability(page, 'A04').locator('.lifecycle-primary-action').click()
   for (let index = 0; index < 4; index++)
     await capability(page, 'A05').locator('.lifecycle-primary-action').click()
   for (let index = 0; index < 3; index++)
     await capability(page, 'A06').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A10').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await expect(
+    capability(page, 'A10')
+      .locator('.lifecycle-capability-snapshot > p')
+      .first(),
+  ).toHaveText('Gate decision stale; record the current result')
+  await expect(capability(page, 'A10')).toContainText(
+    'gate decision stale: gates-met',
+  )
+  await expect(
+    capability(page, 'A10').getByRole('button', {
+      name: 'Seal carry-forward and start next cycle',
+    }),
+  ).toBeDisabled()
   await expect(
     capability(page, 'A07').getByRole('button', {
       name: 'Record gates met',
@@ -668,6 +703,152 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await openAllCapabilityDetails(page)
   await expect(page.getByText('30/30', { exact: true })).toBeVisible()
   await expect(page.getByText('Cycle 1 is read-only.')).toBeVisible()
+})
+
+test('collapsed repeated actions advance distinct support items', async ({
+  page,
+}) => {
+  await sealH1WithCollapsedActions(page)
+  for (const id of ['B01', 'B06', 'B07', 'B08', 'B09']) {
+    await expect(capability(page, id).getByLabel(`${id} marker`)).toHaveText(
+      'Review',
+    )
+    await expect(
+      capability(page, id).locator('.lifecycle-primary-action'),
+    ).toHaveCount(0)
+  }
+  await capability(page, 'D01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create next guidance version')
+  await capability(page, 'D07').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await capability(page, 'D02').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create next guidance version')
+  await capability(page, 'D07').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D07').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await capability(page, 'D03').locator('.lifecycle-primary-action').click()
+  await capability(page, 'D03').locator('.lifecycle-primary-action').click()
+
+  for (const index of [0, 1]) {
+    await capability(page, 'D04')
+      .locator('.lifecycle-capability-details')
+      .evaluate((details) => ((details as HTMLDetailsElement).open = true))
+    await capability(page, 'D04')
+      .getByRole('button', { name: /Record decline/ })
+      .nth(index)
+      .click()
+  }
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'D05').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Escalate S-1-1 with bounded deadline')
+  await capability(page, 'D05').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'D05').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Escalate S-1-2 with bounded deadline')
+  await capability(page, 'D05').locator('.lifecycle-primary-action').click()
+
+  const supportItems = await page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem('practice-lifecycle.v5')!).supportItems,
+  )
+  expect(
+    supportItems.filter((item: { escalation: unknown }) => item.escalation),
+  ).toHaveLength(2)
+
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A04').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Plan Community outreach recheck')
+  await capability(page, 'A04').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A04').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Plan Mass-care support recheck')
+  await capability(page, 'A04').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A04').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  const recheckPlans = await page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem('practice-lifecycle.v5')!).recheckPlans,
+  )
+  expect(recheckPlans.map((plan: { area: string }) => plan.area)).toEqual([
+    'Community outreach',
+    'Mass-care support',
+  ])
+})
+
+test('collapsed A01 advances five rows and keeps unable follow-through visible', async ({
+  page,
+}) => {
+  await sealH1WithCollapsedActions(page, { gaps: 5, areas: 1 })
+  await capability(page, 'D01').locator('.lifecycle-primary-action').click()
+  for (let index = 0; index < 5; index++)
+    await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+
+  for (let index = 1; index <= 5; index++) {
+    await expect(
+      capability(page, 'A01').locator('.lifecycle-primary-action'),
+    ).toHaveAccessibleName(`Set S-1-${index} follow-up ready`)
+    await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  }
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create structured follow-through for S-1-1')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Start follow-through for 1:S-1-1')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Record observed for 1:S-1-1')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Finish follow-through for 1:S-1-1')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create structured follow-through for S-1-2')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await openAllCapabilityDetails(page)
+  await capability(page, 'A01')
+    .locator('details')
+    .evaluateAll((details) =>
+      details.forEach((detail) => ((detail as HTMLDetailsElement).open = true)),
+    )
+  await capability(page, 'A01')
+    .getByRole('button', { name: 'Record not-observed for 1:S-1-2' })
+    .click()
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Mark 1:S-1-2 unable')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+
+  await expect(capability(page, 'A01')).toContainText(
+    '0 open · 1 unable follow-through',
+  )
+  await expect(capability(page, 'A01')).toContainText('medical: unable')
+  await expect(page.getByLabel('Lifecycle attention summary')).toContainText(
+    '1 unable follow-through',
+  )
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveAccessibleName('Create structured follow-through for S-1-3')
 })
 
 test('legacy exercise path resolves to the single lifecycle workspace', async ({

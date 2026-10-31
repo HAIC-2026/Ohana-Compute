@@ -1636,6 +1636,50 @@ function validCanonicalRecord(
       Number(previous.cycle),
     ) &&
     typeof previous.sourceDigest === 'string'
+  const validGuidanceVersions = (
+    versions: unknown,
+    injectRows: unknown,
+  ): boolean => {
+    if (!Array.isArray(versions) || !Array.isArray(injectRows)) return false
+    const injectMinutes = injectRows.flatMap((inject) =>
+      exactKeys(inject, ['id', 'stage', 'minute', 'area']) &&
+      Number.isSafeInteger(inject.minute)
+        ? [Number(inject.minute)]
+        : [],
+    )
+    if (injectMinutes.length !== injectRows.length) return false
+    const seenBasisMinutes = new Set<number>()
+    let previousCreatedMinute = -1
+    return versions.every((row, index) => {
+      if (
+        !exactKeys(row, [
+          'version',
+          'createdMinute',
+          'status',
+          'blocks',
+          'superseded',
+        ]) ||
+        row.version !== index + 1 ||
+        !Number.isSafeInteger(row.createdMinute) ||
+        Number(row.createdMinute) <= previousCreatedMinute ||
+        row.status !== practiceStamp ||
+        row.superseded !== index < versions.length - 1 ||
+        !exactKeys(row.blocks, [...guidanceBlocks]) ||
+        !Object.values(row.blocks).every((item) => typeof item === 'string')
+      )
+        return false
+      const createdMinute = Number(row.createdMinute)
+      const basisMinute = injectMinutes.reduce(
+        (latest, minute) =>
+          minute <= createdMinute && minute > latest ? minute : latest,
+        0,
+      )
+      if (seenBasisMinutes.has(basisMinute)) return false
+      seenBasisMinutes.add(basisMinute)
+      previousCreatedMinute = createdMinute
+      return true
+    })
+  }
   if (
     !Array.isArray(record.sourceHistory) ||
     record.sourceHistory.length > 16 ||
@@ -1711,17 +1755,7 @@ function validCanonicalRecord(
         [15, 30, 60].includes(Number(row.recheckMinutes)) &&
         Number.isSafeInteger(row.recordedMinute),
     ) ||
-    !arrayOfExact(
-      record.guidanceVersions,
-      ['version', 'createdMinute', 'status', 'blocks', 'superseded'],
-      (row) =>
-        Number.isSafeInteger(row.version) &&
-        Number.isSafeInteger(row.createdMinute) &&
-        row.status === practiceStamp &&
-        typeof row.superseded === 'boolean' &&
-        exactKeys(row.blocks, [...guidanceBlocks]) &&
-        Object.values(row.blocks).every((item) => typeof item === 'string'),
-    ) ||
+    !validGuidanceVersions(record.guidanceVersions, record.injects) ||
     !validHandoff(
       record.shiftSnapshot,
       [
@@ -3347,6 +3381,8 @@ function reduceLifecycleAction(
         (item) => item.id === action.supportItemId,
       )
       if (!target) throw new Error('Support item not found.')
+      if (target.escalation)
+        throw new Error('This support item already has a bounded escalation.')
       const blocked = target.response === 'decline'
       const overdue = target.dueMinute < state.practiceMinute
       const evidenceNeedsReview = state.evidence.some(
@@ -3410,6 +3446,15 @@ function reduceLifecycleAction(
       )
     }
     case 'create-guidance': {
+      const guidanceBasisMinute = revealedInjects(state).at(-1)?.minute ?? 0
+      if (
+        state.guidanceVersions.some(
+          (version) => version.createdMinute >= guidanceBasisMinute,
+        )
+      )
+        throw new Error(
+          'A guidance version already covers the latest revealed inject.',
+        )
       const version = state.guidanceVersions.length + 1
       const conditions =
         state.serviceRecords
@@ -3862,9 +3907,12 @@ function reduceLifecycleAction(
       assertLifecycleIntegrity(state)
       if (!state.gateDecision)
         throw new Error('Record an end-of-cycle gate decision first.')
-      if (state.gateDecision === 'gates-met' && !lifecycleGatesMet(state))
+      const impliedDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      if (state.gateDecision !== impliedDecision)
         throw new Error(
-          'Gates changed after the gates-met decision; record the gate decision again.',
+          'Gates changed after the recorded decision; record the gate decision again.',
         )
       const carriedGapIds = state.objectiveReview
         .filter((item) => item.disposition === 'carry-forward')

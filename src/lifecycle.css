@@ -170,19 +170,6 @@
   display: grid;
 }
 
-.lifecycle-evidence-summary {
-  grid-template-columns: 1fr;
-}
-
-.lifecycle-evidence-summary > div {
-  border-right: 0;
-  border-bottom: 1px solid var(--cp-border);
-}
-
-.lifecycle-evidence-summary > div:last-child {
-  border-bottom: 0;
-}
-
 .lifecycle-phases li:last-child {
   border-right: 0;
 }
@@ -806,7 +793,7 @@
   }
 
   .lifecycle-evidence-summary {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .lifecycle-evidence-summary > div {
@@ -814,7 +801,12 @@
     border-bottom: 1px solid var(--cp-border);
   }
 
+  .lifecycle-evidence-summary > div:nth-child(odd):not(:last-child) {
+    border-right: 1px solid var(--cp-border);
+  }
+
   .lifecycle-evidence-summary > div:last-child {
+    grid-column: 1 / -1;
     border-bottom: 0;
   }
 
