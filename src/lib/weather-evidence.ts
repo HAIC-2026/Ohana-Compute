@@ -563,45 +563,111 @@ function validStoredEvaluation(
   }
 }
 
-function pointOnSegment(
-  point: [number, number],
-  start: number[],
-  end: number[],
-) {
-  const cross =
-    (point[1] - start[1]) * (end[0] - start[0]) -
-    (point[0] - start[0]) * (end[1] - start[1])
+type Rational = { numerator: bigint; denominator: bigint }
+type RationalPoint = [Rational, Rational]
+
+function rational(value: string | number): Rational {
+  const match = String(value).match(/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i)
+  if (!match) throw new Error('Invalid retained weather coordinate.')
+  const fraction = match[3] ?? ''
+  const exponent = Number(match[4] ?? 0)
+  let numerator = BigInt(`${match[1]}${match[2]}${fraction}`)
+  const scale = fraction.length - exponent
+  let denominator = 1n
+  if (scale >= 0) denominator = 10n ** BigInt(scale)
+  else numerator *= 10n ** BigInt(-scale)
+  return { numerator, denominator }
+}
+
+function add(left: Rational, right: Rational): Rational {
+  return {
+    numerator:
+      left.numerator * right.denominator + right.numerator * left.denominator,
+    denominator: left.denominator * right.denominator,
+  }
+}
+
+function subtract(left: Rational, right: Rational): Rational {
+  return {
+    numerator:
+      left.numerator * right.denominator - right.numerator * left.denominator,
+    denominator: left.denominator * right.denominator,
+  }
+}
+
+function multiply(left: Rational, right: Rational): Rational {
+  return {
+    numerator: left.numerator * right.numerator,
+    denominator: left.denominator * right.denominator,
+  }
+}
+
+function divide(left: Rational, right: Rational): Rational {
+  const sign = right.numerator < 0n ? -1n : 1n
+  return {
+    numerator: left.numerator * right.denominator * sign,
+    denominator: left.denominator * right.numerator * sign,
+  }
+}
+
+function compare(left: Rational, right: Rational) {
+  const difference =
+    left.numerator * right.denominator - right.numerator * left.denominator
+  return difference < 0n ? -1 : difference > 0n ? 1 : 0
+}
+
+function rationalPoint(point: number[]): RationalPoint {
+  return [rational(point[0]), rational(point[1])]
+}
+
+function between(value: Rational, start: Rational, end: Rational) {
   return (
-    cross === 0 &&
-    point[0] >= Math.min(start[0], end[0]) &&
-    point[0] <= Math.max(start[0], end[0]) &&
-    point[1] >= Math.min(start[1], end[1]) &&
-    point[1] <= Math.max(start[1], end[1])
+    compare(value, start) >= Math.min(0, compare(end, start)) &&
+    compare(value, start) <= Math.max(0, compare(end, start))
   )
 }
 
-function classifyRing(point: [number, number], ring: number[][]) {
+function pointOnSegment(
+  point: RationalPoint,
+  start: RationalPoint,
+  end: RationalPoint,
+) {
+  const cross = subtract(
+    multiply(subtract(point[1], start[1]), subtract(end[0], start[0])),
+    multiply(subtract(point[0], start[0]), subtract(end[1], start[1])),
+  )
+  return (
+    cross.numerator === 0n &&
+    between(point[0], start[0], end[0]) &&
+    between(point[1], start[1], end[1])
+  )
+}
+
+function classifyRing(point: RationalPoint, ring: number[][]) {
   let inside = false
   for (
     let index = 0, previous = ring.length - 1;
     index < ring.length;
     previous = index++
   ) {
-    const start = ring[previous]
-    const end = ring[index]
+    const start = rationalPoint(ring[previous])
+    const end = rationalPoint(ring[index])
     if (pointOnSegment(point, start, end)) return 'boundary' as const
-    if (
-      start[1] > point[1] !== end[1] > point[1] &&
-      point[0] <
-        ((end[0] - start[0]) * (point[1] - start[1])) / (end[1] - start[1]) +
-          start[0]
-    )
-      inside = !inside
+    if (compare(start[1], point[1]) > 0 !== compare(end[1], point[1]) > 0) {
+      const intersection = add(
+        start[0],
+        divide(
+          multiply(subtract(end[0], start[0]), subtract(point[1], start[1])),
+          subtract(end[1], start[1]),
+        ),
+      )
+      if (compare(point[0], intersection) < 0) inside = !inside
+    }
   }
   return inside ? ('inside' as const) : ('outside' as const)
 }
 
-function classifyPolygon(point: [number, number], polygon: number[][][]) {
+function classifyPolygon(point: RationalPoint, polygon: number[][][]) {
   const exterior = classifyRing(point, polygon[0])
   if (exterior !== 'inside') return exterior
   for (const hole of polygon.slice(1)) {
@@ -616,7 +682,7 @@ function classifyRetainedGeometry(
   shape: NonNullable<NWSProduct['geometry']['shape']>,
   point: [string, string],
 ) {
-  const evaluatedPoint: [number, number] = [Number(point[0]), Number(point[1])]
+  const evaluatedPoint: RationalPoint = [rational(point[0]), rational(point[1])]
   const polygons =
     shape.type === 'Polygon' ? [shape.coordinates] : shape.coordinates
   let inside = false
@@ -969,6 +1035,24 @@ function nullableBoundedText(value: unknown, maximum: number) {
   return value === null || boundedText(value, maximum)
 }
 
+function validPlanningPoint(value: unknown): value is [string, string] {
+  if (!Array.isArray(value) || value.length !== 2) return false
+  return value.every((coordinate, index) => {
+    if (
+      typeof coordinate !== 'string' ||
+      coordinate.length > 64 ||
+      !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(coordinate)
+    )
+      return false
+    const numeric = Number(coordinate)
+    return (
+      Number.isFinite(numeric) &&
+      numeric >= (index === 0 ? -180 : -90) &&
+      numeric <= (index === 0 ? 180 : 90)
+    )
+  })
+}
+
 function canonicalAPIURL(value: string, prefix: string) {
   try {
     const url = new URL(value)
@@ -1179,9 +1263,7 @@ function validWeatherEvaluation(value: unknown): value is WeatherEvaluation {
       'coverage',
       'zones',
     ]) &&
-    Array.isArray(value.point) &&
-    value.point.length === 2 &&
-    value.point.every((coordinate) => boundedText(coordinate, 128)) &&
+    validPlanningPoint(value.point) &&
     value.algorithmVersion === 'rfc7946-planar-rational-v1' &&
     stringIn(value.applicability, ['inside', 'outside', 'unknown']) &&
     stringIn(value.reason, [
@@ -1264,10 +1346,7 @@ export function validNWSQueryReading(value: unknown): value is NWSQueryReading {
     stringIn(value.coverage, ['complete', 'partial', 'unavailable']) &&
     nullableTime(value.retrievedAt) &&
     nullableTime(value.freshUntil) &&
-    (value.point === null ||
-      (Array.isArray(value.point) &&
-        value.point.length === 2 &&
-        value.point.every((coordinate) => boundedText(coordinate, 128)))) &&
+    (value.point === null || validPlanningPoint(value.point)) &&
     (value.algorithmVersion === null ||
       value.algorithmVersion === 'rfc7946-planar-rational-v1') &&
     Array.isArray(value.products) &&
@@ -1535,8 +1614,14 @@ export function validWeatherRecords(
             ? candidates.digest === null
             : candidates.digest === contentDigest(candidates.identities))
         : candidates.digest !== null)
+    const emptyCandidates =
+      candidates.count === 0 &&
+      candidates.digest === null &&
+      candidates.complete &&
+      candidates.identities.length === 0
     const consistentResult =
       canonicalCandidates &&
+      (row.result === 'ambiguous' || emptyCandidates) &&
       row.validityAtCheck ===
         projectedValidity(prior.product, Date.parse(row.checkedAt)) &&
       (row.result === 'source-unavailable'

@@ -1106,6 +1106,34 @@ test('weather acceptance freezes the exact reviewed revision without authority e
   expect(() =>
     restoreLifecycleState(JSON.stringify(falseInlineApplicability)),
   ).toThrow(/failed validation/)
+  const boundaryProduct = structuredClone(legacyInline)
+  boundaryProduct.geometry.shape = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [-158.193548, 21.450404],
+        [-158.193543, 21.450499],
+        [-158.3, 21.6],
+        [-158.193548, 21.450404],
+      ],
+    ],
+  }
+  boundaryProduct.applicability = 'unknown'
+  boundaryProduct.applicability_reason = 'boundary'
+  const boundaryAccepted = acceptWeather(before, boundaryProduct)
+  expect(
+    restoreLifecycleState(JSON.stringify(boundaryAccepted)).weatherEvidence[0]
+      .evaluation.reason,
+  ).toBe('boundary')
+  const badPoint = reviewedWeather(legacyInline)
+  badPoint.reading.point = ['NaN', 'NaN']
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: badPoint,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/exact reviewed revision/)
   expect(Object.isFrozen(accepted.weatherEvidence[0].product)).toBe(true)
   expect(() =>
     apply(accepted, {
@@ -1465,6 +1493,36 @@ test('weather records reject stale acceptance, invalid enums, tampering, and re-
     falseResult.weatherRechecks[0]
   falseResult.weatherRechecks[0].recordDigest = contentDigest(resultContents)
   expect(() => restoreLifecycleState(JSON.stringify(falseResult))).toThrow(
+    /failed validation/,
+  )
+  const falseCandidates = structuredClone(checked)
+  falseCandidates.weatherRechecks[0].candidates = {
+    count: 2,
+    complete: true,
+    identities: [
+      {
+        id: 'a',
+        url: 'https://api.weather.gov/alerts/a',
+        relationship: 'update',
+        productDigest: 'fnv1a-dual-v1:1111111111111111',
+      },
+      {
+        id: 'b',
+        url: 'https://api.weather.gov/alerts/b',
+        relationship: 'update',
+        productDigest: 'fnv1a-dual-v1:2222222222222222',
+      },
+    ],
+    digest: null,
+  }
+  falseCandidates.weatherRechecks[0].candidates.digest = contentDigest(
+    falseCandidates.weatherRechecks[0].candidates.identities,
+  )
+  const { recordDigest: _candidateDigest, ...candidateContents } =
+    falseCandidates.weatherRechecks[0]
+  falseCandidates.weatherRechecks[0].recordDigest =
+    contentDigest(candidateContents)
+  expect(() => restoreLifecycleState(JSON.stringify(falseCandidates))).toThrow(
     /failed validation/,
   )
 })
