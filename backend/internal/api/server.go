@@ -126,6 +126,7 @@ type Config struct {
 	Logger            *slog.Logger
 	Registry          *prometheus.Registry
 	TelemetryRate     int
+	Now               func() time.Time
 }
 
 type Server struct {
@@ -133,6 +134,10 @@ type Server struct {
 }
 
 func NewServer(config Config) *Server {
+	now := config.Now
+	if now == nil {
+		now = time.Now
+	}
 	if config.Alerts == nil {
 		panic("api: Alerts is required")
 	}
@@ -335,7 +340,7 @@ func NewServer(config Config) *Server {
 			metrics,
 			config.EventTriggers,
 			config.OperationalStatus,
-			time.Now,
+			now,
 			config.ZoneApplicability,
 		),
 	)
