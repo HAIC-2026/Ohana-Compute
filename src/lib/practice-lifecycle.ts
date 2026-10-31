@@ -1777,10 +1777,7 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   )
   if (
     state.h1 &&
-    (!(
-      state.h1.digest === (state.legacySeals?.h1 ?? h1Digest(state)) ||
-      (!state.legacySeals && validLegacyH1Digest(state, state.h1.digest))
-    ) ||
+    (!(state.h1.digest === (state.legacySeals?.h1 ?? h1Digest(state))) ||
       stableStringify(state.h1.evidenceReferences) !==
         stableStringify(beforeReferences) ||
       stableStringify(state.h1.carriedGapIds) !==
@@ -1797,19 +1794,7 @@ function assertLifecycleIntegrity(state: LifecycleState) {
   ).length
   if (
     state.h2 &&
-    (!(
-      state.h2.digest === (state.legacySeals?.h2 ?? h2Digest(state)) ||
-      (!state.legacySeals &&
-        state.h2.digest ===
-          fnvDigest(
-            stableStringify(
-              state.supportItems.map(({ id, disposition }) => ({
-                id,
-                disposition,
-              })),
-            ),
-          ))
-    ) ||
+    (!(state.h2.digest === (state.legacySeals?.h2 ?? h2Digest(state))) ||
       stableStringify(state.h2.evidenceReferences) !==
         stableStringify(duringReferences) ||
       state.h2.carried !== carried ||
@@ -1950,7 +1935,14 @@ function migrateLegacyLifecycleState(
     weatherRechecks: [],
     weatherHistory: [],
     previousWeatherCycle: null,
-    legacySeals: null,
+    legacySeals:
+      schema === legacyLifecycleStorageKey && (h1 || h2)
+        ? {
+            h1: (h1 as LifecycleState['h1'])?.digest ?? null,
+            h2: (h2 as LifecycleState['h2'])?.digest ?? null,
+            integrity: '',
+          }
+        : null,
     h1,
     h2,
     previousCycle: previous
@@ -1977,6 +1969,8 @@ function migrateLegacyLifecycleState(
     migrated.previousCycle.sourceDigest = previousSourceDigest(
       migrated.previousCycle,
     )
+  if (migrated.legacySeals)
+    migrated.legacySeals.integrity = legacySealIntegrity(migrated)
   return restoreLifecycleState(
     serializeLifecycleState({
       ...migrated,

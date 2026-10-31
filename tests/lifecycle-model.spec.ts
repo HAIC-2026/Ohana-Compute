@@ -789,7 +789,7 @@ test('migrates saved v1 state to strict v4 preserving original seals', () => {
         h1: { ...legacy.h1, digest: '0000000000000000' },
       }),
     ),
-  ).toThrow(/H1 integrity/)
+  ).toThrow(/H1 integrity|legacy seal integrity/)
 })
 
 test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and tampered seals', () => {
@@ -810,6 +810,11 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
   expect(migrated.sourceRechecks).toEqual([])
   expect(migrated.h1).toEqual(state.h1)
   expect(migrated.h2).toEqual(state.h2)
+  const injectedWeather = structuredClone(migrated)
+  injectedWeather.weatherEvidence = acceptWeather().weatherEvidence
+  expect(() => restoreLifecycleState(JSON.stringify(injectedWeather))).toThrow(
+    /H1 integrity|legacy seal integrity/,
+  )
   expect(() => restoreLifecycleState(text)).toThrow()
   expect(() => parseLifecycleComparison(text)).toThrow()
   expect(() =>
@@ -822,7 +827,7 @@ test('explicit v2 migration preserves PR3 handoffs and rejects extra fields and 
         h1: { ...state.h1, digest: 'tampered' },
       }),
     ),
-  ).toThrow(/H1 integrity/)
+  ).toThrow(/H1 integrity|legacy seal integrity/)
   expect(() =>
     migrateLifecycleV2State(text.replace('"cycle":1', '"cycle":1,"cycle":1')),
   ).toThrow(/Duplicate/)
@@ -875,7 +880,7 @@ test('original v1 After restores both original handoffs and rejects changed H2 i
   expect(restoreLifecycleState(JSON.stringify(migrated))).toEqual(migrated)
   legacy.supportItems[0].disposition = 'set aside'
   expect(() => migrateLifecycleV1State(JSON.stringify(legacy))).toThrow(
-    /H2 integrity/,
+    /H2 integrity|legacy seal integrity/,
   )
 })
 
@@ -1289,6 +1294,60 @@ test('weather rechecks canonicalize identical duplicate source rows', () => {
   expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
 })
 
+test('weather rechecks preserve conflicting evaluations as ambiguity', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const reading = weatherReading()
+  const affected = structuredClone(reading.products[0])
+  affected.applicability_basis = 'affected_zones'
+  affected.applicability = 'inside'
+  affected.applicability_reason = 'strict_interior'
+  affected.zone_evidence = {
+    result: 'inside',
+    reason: 'strict_interior',
+    coverage: 'complete',
+    zones: [
+      {
+        url: 'https://api.weather.gov/zones/forecast/HIZ001',
+        id: 'HIZ001',
+        type: 'forecast',
+        source_revision: 'c'.repeat(64),
+        effective: '2026-10-30T17:00:00Z',
+        expires: '2026-10-30T19:00:00Z',
+        retrieved_at: '2026-10-30T17:50:00Z',
+        fresh_until: '2026-10-30T18:05:00Z',
+        state: 'fresh',
+        result: 'inside',
+        reason: 'strict_interior',
+      },
+    ],
+  }
+  reading.products.push(affected)
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: state.weatherEvidence[0].id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'ambiguous',
+    candidates: { count: 2 },
+  })
+  expect(
+    new Set(
+      state.weatherRechecks[0].candidates.identities.map(
+        (candidate) => candidate.evaluationDigest,
+      ),
+    ).size,
+  ).toBe(2)
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
 test('weather counts and multi-cycle archives stay bounded and immutable', () => {
   let state = readyBefore()
   for (let index = 0; index < 4; index++) {
@@ -1505,12 +1564,14 @@ test('weather records reject stale acceptance, invalid enums, tampering, and re-
         url: 'https://api.weather.gov/alerts/a',
         relationship: 'update',
         productDigest: 'fnv1a-dual-v1:1111111111111111',
+        evaluationDigest: 'fnv1a-dual-v1:3333333333333333',
       },
       {
         id: 'b',
         url: 'https://api.weather.gov/alerts/b',
         relationship: 'update',
         productDigest: 'fnv1a-dual-v1:2222222222222222',
+        evaluationDigest: 'fnv1a-dual-v1:4444444444444444',
       },
     ],
     digest: null,

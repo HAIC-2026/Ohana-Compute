@@ -154,6 +154,7 @@ export type WeatherRecheck = {
       url: string
       relationship: NWSProduct['relationship']
       productDigest: string
+      evaluationDigest: string
     }>
   }
   recordDigest: string
@@ -1013,10 +1014,11 @@ function candidateSummary(
       url: row.product.url,
       relationship: row.product.relationship,
       productDigest: row.productDigest,
+      evaluationDigest: row.evaluationDigest,
     }))
     .sort((a, b) =>
-      `${a.id}:${a.url}:${a.productDigest}`.localeCompare(
-        `${b.id}:${b.url}:${b.productDigest}`,
+      `${a.id}:${a.url}:${a.productDigest}:${a.evaluationDigest}`.localeCompare(
+        `${b.id}:${b.url}:${b.productDigest}:${b.evaluationDigest}`,
       ),
     )
   return {
@@ -1548,6 +1550,7 @@ export function validWeatherRecords(
             'url',
             'relationship',
             'productDigest',
+            'evaluationDigest',
           ]) &&
           boundedText(identity.id, 512) &&
           boundedText(identity.url, 512) &&
@@ -1559,7 +1562,8 @@ export function validWeatherRecords(
             'error',
             'unknown',
           ]) &&
-          boundedText(identity.productDigest, 64),
+          boundedText(identity.productDigest, 64) &&
+          boundedText(identity.evaluationDigest, 64),
       )
     )
       return false
@@ -1597,13 +1601,13 @@ export function validWeatherRecords(
       candidates.identities.every(
         (identity, candidateIndex) =>
           candidateIndex === 0 ||
-          `${candidates.identities[candidateIndex - 1].id}:${candidates.identities[candidateIndex - 1].url}:${candidates.identities[candidateIndex - 1].productDigest}` <
-            `${identity.id}:${identity.url}:${identity.productDigest}`,
+          `${candidates.identities[candidateIndex - 1].id}:${candidates.identities[candidateIndex - 1].url}:${candidates.identities[candidateIndex - 1].productDigest}:${candidates.identities[candidateIndex - 1].evaluationDigest}` <
+            `${identity.id}:${identity.url}:${identity.productDigest}:${identity.evaluationDigest}`,
       ) &&
       new Set(
         candidates.identities.map(
           (identity) =>
-            `${identity.id}:${identity.url}:${identity.productDigest}`,
+            `${identity.id}:${identity.url}:${identity.productDigest}:${identity.evaluationDigest}`,
         ),
       ).size === candidates.identities.length &&
       candidates.count >= candidates.identities.length &&
