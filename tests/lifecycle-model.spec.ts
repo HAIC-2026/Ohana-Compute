@@ -1062,6 +1062,24 @@ test('weather acceptance freezes the exact reviewed revision without authority e
       acceptedAt: weatherTime,
     }),
   ).toThrow(/no longer matches the exact query revision/)
+  const futureSnapshot = reviewedWeather()
+  futureSnapshot.reading.generatedAt = '2026-10-30T18:01:00Z'
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: futureSnapshot,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/fresh complete source check/)
+  const reviewedBeforeCheck = reviewedWeather()
+  reviewedBeforeCheck.reviewedAt = '2026-10-30T17:59:59Z'
+  expect(() =>
+    apply(before, {
+      type: 'accept-weather',
+      reviewed: reviewedBeforeCheck,
+      acceptedAt: weatherTime,
+    }),
+  ).toThrow(/fresh complete source check/)
   const legacyInline = nwsProduct()
   legacyInline.geometry = {
     status: 'valid',
@@ -1110,6 +1128,16 @@ test('weather acceptance freezes the exact reviewed revision without authority e
     contentDigest(inlineContents)
   expect(() =>
     restoreLifecycleState(JSON.stringify(falseInlineApplicability)),
+  ).toThrow(/failed validation/)
+  const futureAcceptedSnapshot = structuredClone(legacyAccepted)
+  futureAcceptedSnapshot.weatherEvidence[0].observation.generatedAt =
+    '2026-10-30T18:01:00Z'
+  const { recordDigest: _futureDigest, ...futureContents } =
+    futureAcceptedSnapshot.weatherEvidence[0]
+  futureAcceptedSnapshot.weatherEvidence[0].recordDigest =
+    contentDigest(futureContents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(futureAcceptedSnapshot)),
   ).toThrow(/failed validation/)
   const boundaryProduct = structuredClone(legacyInline)
   boundaryProduct.geometry.shape = {

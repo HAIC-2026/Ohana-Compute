@@ -731,6 +731,7 @@ function qualifiedReading(reading: NWSQueryReading, at: string) {
     reading.freshUntil !== null &&
     reading.point !== null &&
     reading.algorithmVersion !== null &&
+    Date.parse(reading.generatedAt) <= Date.parse(reading.checkedAt) &&
     Date.parse(reading.checkedAt) <= Date.parse(at) &&
     Date.parse(reading.freshUntil) > Date.parse(at)
   )
@@ -746,6 +747,9 @@ export function createAcceptedWeatherEvidence(
     !validSourceTime(reviewed.reviewedAt) ||
     !validSourceTime(acceptedAt) ||
     Date.parse(reviewed.reviewedAt) > Date.parse(acceptedAt) ||
+    (reviewed.reading.checkedAt !== null &&
+      Date.parse(reviewed.reading.checkedAt) >
+        Date.parse(reviewed.reviewedAt)) ||
     !validNWSQueryReading(reviewed.reading) ||
     !validNWSProduct(reviewed.product) ||
     !qualifiedReading(reviewed.reading, acceptedAt)
@@ -1439,6 +1443,8 @@ export function validAcceptedWeatherEvidence(
       'not_yet_effective',
       'unknown',
     ]) ||
+    Date.parse(value.observation.generatedAt) >
+      Date.parse(value.observation.checkedAt) ||
     Date.parse(value.observation.checkedAt) > Date.parse(value.acceptedAt) ||
     Date.parse(value.observation.retrievedAt) >
       Date.parse(value.observation.checkedAt) ||
