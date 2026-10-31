@@ -1082,6 +1082,30 @@ test('weather acceptance freezes the exact reviewed revision without authority e
     restoreLifecycleState(JSON.stringify(legacyAccepted)).weatherEvidence[0]
       .evaluation.basis,
   ).toBe('inline_geometry')
+  const falseInlineApplicability = structuredClone(legacyAccepted)
+  falseInlineApplicability.weatherEvidence[0].evaluation.applicability =
+    'outside'
+  falseInlineApplicability.weatherEvidence[0].evaluation.reason =
+    'strict_exterior'
+  falseInlineApplicability.weatherEvidence[0].evaluationDigest = contentDigest({
+    version: 'nws-planning-evaluation.v1',
+    point: falseInlineApplicability.weatherEvidence[0].evaluation.point,
+    algorithmVersion:
+      falseInlineApplicability.weatherEvidence[0].evaluation.algorithmVersion,
+    applicability:
+      falseInlineApplicability.weatherEvidence[0].evaluation.applicability,
+    reason: falseInlineApplicability.weatherEvidence[0].evaluation.reason,
+    basis: falseInlineApplicability.weatherEvidence[0].evaluation.basis,
+    coverage: falseInlineApplicability.weatherEvidence[0].evaluation.coverage,
+    zones: [],
+  })
+  const { recordDigest: _inlineDigest, ...inlineContents } =
+    falseInlineApplicability.weatherEvidence[0]
+  falseInlineApplicability.weatherEvidence[0].recordDigest =
+    contentDigest(inlineContents)
+  expect(() =>
+    restoreLifecycleState(JSON.stringify(falseInlineApplicability)),
+  ).toThrow(/failed validation/)
   expect(Object.isFrozen(accepted.weatherEvidence[0].product)).toBe(true)
   expect(() =>
     apply(accepted, {
@@ -1211,6 +1235,29 @@ test('weather lineage rejects contradictory identifier and URL references', () =
     horizon: 'next shift',
   })
   expect(state.weatherRechecks[0].result).toBe('not-returned')
+  expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
+})
+
+test('weather rechecks canonicalize identical duplicate source rows', () => {
+  let state = sealH2(
+    apply(apply(acceptWeather(), { type: 'seal-h1' }), {
+      type: 'start-during',
+    }),
+  )
+  const reading = weatherReading()
+  reading.products.push(structuredClone(reading.products[0]))
+  state = apply(state, {
+    type: 'recheck-weather',
+    acceptedId: state.weatherEvidence[0].id,
+    reading,
+    checkedAt: weatherTime,
+    owner: 'Recovery lead',
+    horizon: 'next shift',
+  })
+  expect(state.weatherRechecks[0]).toMatchObject({
+    result: 'unchanged',
+    candidates: { count: 0 },
+  })
   expect(restoreLifecycleState(JSON.stringify(state))).toEqual(state)
 })
 
@@ -1486,6 +1533,22 @@ test('v1 v2 and v3 near-limit records migrate without empty-field overhead', () 
     ).toBeLessThanOrEqual(maxLifecycleImportBytes)
     expect(migrated.weatherEvidence).toEqual([])
   }
+})
+
+test('compact restore rejects a reconstructed canonical export over 128 KiB', () => {
+  const oversized = createInitialLifecycleState()
+  oversized.packetSections = Array.from(
+    { length: 8_000 },
+    () => 'cycle summary',
+  )
+  const compact = serializeLifecycleState(oversized)
+  expect(new TextEncoder().encode(compact).byteLength).toBeLessThanOrEqual(
+    maxLifecycleImportBytes,
+  )
+  expect(
+    new TextEncoder().encode(exportLifecycleRecord(oversized)).byteLength,
+  ).toBeGreaterThan(maxLifecycleImportBytes)
+  expect(() => restoreLifecycleState(compact)).toThrow(/128 KiB limit/)
 })
 
 test('source acceptance is attributable, append-only, and never criteria or authority', () => {

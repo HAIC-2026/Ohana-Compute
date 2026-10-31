@@ -68,6 +68,7 @@ export type WeatherProductRevision = {
   geometry: {
     status: NWSProduct['geometry']['status']
     type: string | null
+    shape: NWSProduct['geometry']['shape']
     contentDigest: string | null
   }
   eligibility: NWSProduct['eligibility']
@@ -238,6 +239,9 @@ function projectedProduct(product: NWSProduct): WeatherProductRevision {
     geometry: {
       status: product.geometry.status,
       type: product.geometry.type,
+      shape: product.geometry.shape
+        ? structuredClone(product.geometry.shape)
+        : null,
       contentDigest: product.geometry.shape
         ? contentDigest(product.geometry.shape)
         : null,
@@ -516,21 +520,28 @@ function validStoredEvaluation(
       evaluation.applicability === 'unknown' &&
       evaluation.reason === 'no_polygon'
     )
+  const retainedApplicability =
+    product.geometry.shape === null
+      ? null
+      : classifyRetainedGeometry(product.geometry.shape, evaluation.point)
   switch (evaluation.reason) {
     case 'strict_interior':
       return (
         evaluation.applicability === 'inside' &&
-        product.geometry.status === 'valid'
+        product.geometry.status === 'valid' &&
+        retainedApplicability === 'inside'
       )
     case 'strict_exterior':
       return (
         evaluation.applicability === 'outside' &&
-        product.geometry.status === 'valid'
+        product.geometry.status === 'valid' &&
+        retainedApplicability === 'outside'
       )
     case 'boundary':
       return (
         evaluation.applicability === 'unknown' &&
-        product.geometry.status === 'valid'
+        product.geometry.status === 'valid' &&
+        retainedApplicability === 'boundary'
       )
     case 'unsupported':
       return (
@@ -550,6 +561,71 @@ function validStoredEvaluation(
     default:
       return false
   }
+}
+
+function pointOnSegment(
+  point: [number, number],
+  start: number[],
+  end: number[],
+) {
+  const cross =
+    (point[1] - start[1]) * (end[0] - start[0]) -
+    (point[0] - start[0]) * (end[1] - start[1])
+  return (
+    cross === 0 &&
+    point[0] >= Math.min(start[0], end[0]) &&
+    point[0] <= Math.max(start[0], end[0]) &&
+    point[1] >= Math.min(start[1], end[1]) &&
+    point[1] <= Math.max(start[1], end[1])
+  )
+}
+
+function classifyRing(point: [number, number], ring: number[][]) {
+  let inside = false
+  for (
+    let index = 0, previous = ring.length - 1;
+    index < ring.length;
+    previous = index++
+  ) {
+    const start = ring[previous]
+    const end = ring[index]
+    if (pointOnSegment(point, start, end)) return 'boundary' as const
+    if (
+      start[1] > point[1] !== end[1] > point[1] &&
+      point[0] <
+        ((end[0] - start[0]) * (point[1] - start[1])) / (end[1] - start[1]) +
+          start[0]
+    )
+      inside = !inside
+  }
+  return inside ? ('inside' as const) : ('outside' as const)
+}
+
+function classifyPolygon(point: [number, number], polygon: number[][][]) {
+  const exterior = classifyRing(point, polygon[0])
+  if (exterior !== 'inside') return exterior
+  for (const hole of polygon.slice(1)) {
+    const result = classifyRing(point, hole)
+    if (result === 'boundary') return result
+    if (result === 'inside') return 'outside' as const
+  }
+  return 'inside' as const
+}
+
+function classifyRetainedGeometry(
+  shape: NonNullable<NWSProduct['geometry']['shape']>,
+  point: [string, string],
+) {
+  const evaluatedPoint: [number, number] = [Number(point[0]), Number(point[1])]
+  const polygons =
+    shape.type === 'Polygon' ? [shape.coordinates] : shape.coordinates
+  let inside = false
+  for (const polygon of polygons as number[][][][]) {
+    const result = classifyPolygon(evaluatedPoint, polygon)
+    if (result === 'boundary') return result
+    if (result === 'inside') inside = true
+  }
+  return inside ? ('inside' as const) : ('outside' as const)
 }
 
 function evaluationDigest(evaluation: WeatherEvaluation) {
@@ -743,6 +819,22 @@ function observedRevision(
   }
 }
 
+function distinctObservedRevisions(
+  reading: NWSQueryReading,
+  products: NWSProduct[],
+  checkedAt: string,
+) {
+  const distinct = new Map<string, NonNullable<WeatherRecheck['observed']>>()
+  for (const product of products) {
+    const observed = observedRevision(reading, product, checkedAt)
+    distinct.set(
+      `${observed.productDigest}:${observed.evaluationDigest}`,
+      observed,
+    )
+  }
+  return [...distinct.values()]
+}
+
 export function createWeatherRecheck(
   cycle: number,
   index: number,
@@ -781,10 +873,11 @@ export function createWeatherRecheck(
         product.sender === accepted.product.sender &&
         product.sent === accepted.product.sent,
     )
-    if (exact.length === 1) {
-      observed = observedRevision(reading, exact[0], checkedAt)
+    const exactRevisions = distinctObservedRevisions(reading, exact, checkedAt)
+    if (exactRevisions.length === 1) {
+      observed = exactRevisions[0]
       result =
-        exact[0].relationship === 'cancel'
+        observed.product.relationship === 'cancel'
           ? 'cancelled'
           : observed.productDigest !== accepted.productDigest
             ? 'changed'
@@ -795,11 +888,9 @@ export function createWeatherRecheck(
                 : validityAtCheck === 'expired'
                   ? 'expired'
                   : 'unchanged'
-    } else if (exact.length > 1) {
+    } else if (exactRevisions.length > 1) {
       result = 'ambiguous'
-      candidates = candidateSummary(
-        exact.map((product) => observedRevision(reading, product, checkedAt)),
-      )
+      candidates = candidateSummary(exactRevisions)
     } else {
       const lineage = reading.products.filter(
         (product) =>
@@ -808,17 +899,20 @@ export function createWeatherRecheck(
             referenceMatches(reference, accepted),
           ),
       )
-      if (lineage.length === 1) {
-        observed = observedRevision(reading, lineage[0], checkedAt)
+      const lineageRevisions = distinctObservedRevisions(
+        reading,
+        lineage,
+        checkedAt,
+      )
+      if (lineageRevisions.length === 1) {
+        observed = lineageRevisions[0]
         result =
-          lineage[0].relationship === 'cancel' ? 'cancelled' : 'superseded'
-      } else if (lineage.length > 1) {
+          observed.product.relationship === 'cancel'
+            ? 'cancelled'
+            : 'superseded'
+      } else if (lineageRevisions.length > 1) {
         result = 'ambiguous'
-        candidates = candidateSummary(
-          lineage.map((product) =>
-            observedRevision(reading, product, checkedAt),
-          ),
-        )
+        candidates = candidateSummary(lineageRevisions)
       } else result = 'not-returned'
     }
   }
@@ -985,7 +1079,12 @@ function validWeatherProductRevision(
     !exactObject(value.geocode, ['ugc', 'same']) ||
     !sortedUniqueStrings(value.geocode.ugc) ||
     !sortedUniqueStrings(value.geocode.same) ||
-    !exactObject(value.geometry, ['status', 'type', 'contentDigest']) ||
+    !exactObject(value.geometry, [
+      'status',
+      'type',
+      'shape',
+      'contentDigest',
+    ]) ||
     !stringIn(value.geometry.status, [
       'absent',
       'valid',
@@ -994,6 +1093,9 @@ function validWeatherProductRevision(
       'too_large',
     ]) ||
     !nullableBoundedText(value.geometry.type, 32) ||
+    !validRetainedGeometry(
+      value.geometry as WeatherProductRevision['geometry'],
+    ) ||
     !(
       value.geometry.contentDigest === null ||
       (typeof value.geometry.contentDigest === 'string' &&
@@ -1023,6 +1125,46 @@ function validWeatherProductRevision(
     zoneIdentities.every(
       (identity, index) => index === 0 || zoneIdentities[index - 1] < identity,
     )
+  )
+}
+
+function validRetainedGeometry(geometry: WeatherProductRevision['geometry']) {
+  if (geometry.status !== 'valid')
+    return geometry.shape === null && geometry.contentDigest === null
+  if (
+    geometry.shape === null ||
+    geometry.type !== geometry.shape.type ||
+    geometry.contentDigest !== contentDigest(geometry.shape)
+  )
+    return false
+  const encoded = new TextEncoder().encode(JSON.stringify(geometry.shape))
+  if (encoded.byteLength > 16 * 1024) return false
+  const polygons =
+    geometry.shape.type === 'Polygon'
+      ? [geometry.shape.coordinates]
+      : geometry.shape.coordinates
+  let vertices = 0
+  return (polygons as number[][][][]).every(
+    (polygon) =>
+      polygon.length > 0 &&
+      polygon.every(
+        (ring) =>
+          ring.length >= 4 &&
+          ring.every((point) => {
+            vertices++
+            return (
+              vertices <= 512 &&
+              point.length === 2 &&
+              point.every(Number.isFinite) &&
+              point[0] >= -180 &&
+              point[0] <= 180 &&
+              point[1] >= -90 &&
+              point[1] <= 90
+            )
+          }) &&
+          ring[0][0] === ring.at(-1)![0] &&
+          ring[0][1] === ring.at(-1)![1],
+      ),
   )
 }
 

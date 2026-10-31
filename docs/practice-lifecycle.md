@@ -290,11 +290,14 @@ sender, or sent time blocks acceptance.
 
 Each accepted record retains a bounded product projection, source-order
 references, reported area and typed zones/codes, geometry status plus a geometry
-checksum (not browser geometry), eligibility and relationship, exact evaluated
-point and algorithm, applicability result/reason/basis, bounded zone source
-identities/revisions/freshness/coverage, snapshot/query/retrieval facts,
-wall-time validity, fixed limitations, facilitator/cycle/phase/action metadata,
-and two independent checksums:
+checksum, and—only for validated inline geometry—the bounded exact shape needed
+to recompute the point classification during restore. Eligibility and
+relationship, exact evaluated point and algorithm, applicability
+result/reason/basis, bounded zone source identities/revisions/freshness/coverage,
+snapshot/query/retrieval facts, wall-time validity, fixed limitations, and
+facilitator/cycle/phase/action metadata are retained with two independent
+checksums. The existing 12 KiB per-record limit rejects inline geometry that
+cannot remain bounded:
 
 - `nws-product-semantic.v1` covers stable product facts and a checksum of any
   retained source geometry. Retrieval timestamps, wall-time validity, and zone

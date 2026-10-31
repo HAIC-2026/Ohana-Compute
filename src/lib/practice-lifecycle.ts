@@ -1665,6 +1665,13 @@ export function restoreLifecycleState(text: string): LifecycleState {
   )
     throw new Error('Saved lifecycle state failed validation.')
   assertLifecycleIntegrity(state)
+  if (
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength >
+      maxLifecycleImportBytes ||
+    new TextEncoder().encode(exportLifecycleRecord(state)).byteLength >
+      maxLifecycleImportBytes
+  )
+    throw new Error('Lifecycle record exceeds the 128 KiB limit.')
   return {
     ...state,
     sourceEvidence: immutableSourceRecord(state.sourceEvidence),
