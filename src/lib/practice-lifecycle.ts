@@ -305,8 +305,16 @@ export type FollowThroughItem = {
 
 export type FollowThroughCycleArchive = {
   cycle: number
-  items: FollowThroughItem[]
+  items: FollowThroughArchiveItem[]
   digest: string
+}
+
+export type FollowThroughArchiveItem = Omit<
+  FollowThroughItem,
+  'observations'
+> & {
+  observationCount: number
+  observations: FollowThroughObservation[]
 }
 
 export type UnmetNeedRecord = {
@@ -828,6 +836,13 @@ function h1Digest(state: LifecycleState) {
             sourceHistory: state.sourceHistory.map((item) => item.sourceDigest),
           }
         : {}),
+      ...(state.followThroughHistory.length
+        ? {
+            followThroughHistory: state.followThroughHistory.map(
+              (item) => item.digest,
+            ),
+          }
+        : {}),
     }),
   )
 }
@@ -862,6 +877,13 @@ function h2Digest(state: LifecycleState) {
       ...(state.sourceHistory.length
         ? {
             sourceHistory: state.sourceHistory.map((item) => item.sourceDigest),
+          }
+        : {}),
+      ...(state.followThroughHistory.length
+        ? {
+            followThroughHistory: state.followThroughHistory.map(
+              (item) => item.digest,
+            ),
           }
         : {}),
     }),
@@ -1054,15 +1076,18 @@ function validFollowThroughItem(value: unknown, currentCycle: number) {
       (!hasCurrentAttemptObservation || latest !== 'observed')) ||
     (value.status === 'unable' &&
       (!hasCurrentAttemptObservation ||
-        (latest !== 'not-observed' && latest !== 'unknown')))
+        (latest !== 'not-observed' && latest !== 'unknown'))) ||
+    (value.status === 'in-progress' &&
+      value.observations.length >= maxFollowThroughObservations &&
+      !hasCurrentAttemptObservation)
   )
     return false
   return true
 }
 
 function sameFollowThroughOrigin(
-  left: FollowThroughItem,
-  right: FollowThroughItem,
+  left: FollowThroughItem | FollowThroughArchiveItem,
+  right: FollowThroughItem | FollowThroughArchiveItem,
 ) {
   return (
     left.id === right.id &&
@@ -1075,15 +1100,80 @@ function sameFollowThroughOrigin(
   )
 }
 
+function followThroughUnresolved(item: FollowThroughItem) {
+  return item.status === 'planned' || item.status === 'in-progress'
+}
+
 function followThroughContinues(
-  prior: FollowThroughItem,
-  next: FollowThroughItem,
+  prior: FollowThroughItem | FollowThroughArchiveItem,
+  next: FollowThroughItem | FollowThroughArchiveItem,
 ) {
+  const statusRank: Record<FollowThroughStatus, number> = {
+    planned: 0,
+    'in-progress': 1,
+    done: 2,
+    unable: 2,
+  }
   return (
     sameFollowThroughOrigin(prior, next) &&
-    next.observations.length >= prior.observations.length &&
-    stableStringify(next.observations.slice(0, prior.observations.length)) ===
-      stableStringify(prior.observations)
+    next.attemptObservationStart >= prior.attemptObservationStart &&
+    statusRank[next.status] >= statusRank[prior.status]
+  )
+}
+
+function validFollowThroughArchiveItem(value: unknown, cycle: number) {
+  if (
+    !exactKeys(value, [
+      'id',
+      'originCycle',
+      'supportItemId',
+      'gapId',
+      'owner',
+      'dueHorizon',
+      'doneCheck',
+      'status',
+      'attemptObservationStart',
+      'observationCount',
+      'observations',
+    ]) ||
+    !Number.isSafeInteger(value.originCycle) ||
+    Number(value.originCycle) < 1 ||
+    Number(value.originCycle) > cycle ||
+    typeof value.supportItemId !== 'string' ||
+    value.id !== `${value.originCycle}:${value.supportItemId}` ||
+    !stringIn(
+      value.gapId,
+      gapCatalog.map((gap) => gap.id),
+    ) ||
+    !stringIn(value.owner, practiceRoles) ||
+    !stringIn(value.dueHorizon, [
+      'next shift',
+      'next day',
+      'next exercise',
+    ] as const) ||
+    !stringIn(value.doneCheck, followThroughDoneChecks) ||
+    !stringIn(value.status, followThroughStatuses) ||
+    !Number.isSafeInteger(value.attemptObservationStart) ||
+    Number(value.attemptObservationStart) < 0 ||
+    !Number.isSafeInteger(value.observationCount) ||
+    Number(value.observationCount) < 0 ||
+    Number(value.observationCount) > maxFollowThroughObservations ||
+    Number(value.attemptObservationStart) > Number(value.observationCount) ||
+    !Array.isArray(value.observations) ||
+    value.observations.length > Number(value.observationCount) ||
+    value.observations.some(
+      (observation) =>
+        !exactKeys(observation, ['cycle', 'practiceMinute', 'result']) ||
+        observation.cycle !== cycle ||
+        !Number.isSafeInteger(observation.practiceMinute) ||
+        !stringIn(observation.result, followThroughResults),
+    )
+  )
+    return false
+  return !(
+    value.status === 'planned' &&
+    (Number(value.observationCount) !== 0 ||
+      Number(value.attemptObservationStart) !== 0)
   )
 }
 
@@ -1096,17 +1186,22 @@ function validFollowThroughArchive(value: unknown) {
     value.items.length > maxFollowThroughItems ||
     typeof value.digest !== 'string' ||
     value.items.some(
-      (item) => !validFollowThroughItem(item, Number(value.cycle)),
+      (item) => !validFollowThroughArchiveItem(item, Number(value.cycle)),
     )
   )
     return false
-  const ids = value.items.map((item) => (item as FollowThroughItem).id)
+  const items = value.items as FollowThroughArchiveItem[]
+  const ids = items.map((item) => item.id)
+  const unresolvedGaps = value.items
+    .filter((item) => followThroughUnresolved(item as FollowThroughArchiveItem))
+    .map((item) => (item as FollowThroughArchiveItem).gapId)
   return (
     new Set(ids).size === ids.length &&
+    new Set(unresolvedGaps).size === unresolvedGaps.length &&
     value.digest ===
       followThroughArchiveDigest({
         cycle: Number(value.cycle),
-        items: value.items as FollowThroughItem[],
+        items,
       })
   )
 }
@@ -1734,41 +1829,79 @@ function validCanonicalRecord(
   const followThroughItems = record.followThroughItems as FollowThroughItem[]
   const followThroughHistory =
     record.followThroughHistory as FollowThroughCycleArchive[]
+  const unresolvedCurrentGaps = followThroughItems
+    .filter(followThroughUnresolved)
+    .map((item) => item.gapId)
+  if (new Set(unresolvedCurrentGaps).size !== unresolvedCurrentGaps.length)
+    return false
+  const archivedObservations = new Map<string, FollowThroughObservation[]>()
   for (const [index, archive] of followThroughHistory.entries()) {
     if (
       archive.cycle >= Number(record.cycle) ||
       (index > 0 && followThroughHistory[index - 1].cycle >= archive.cycle)
     )
       return false
-    for (const item of archive.items) {
-      if (item.originCycle !== archive.cycle) {
-        const prior = followThroughHistory[index - 1]?.items.find((candidate) =>
-          sameFollowThroughOrigin(item, candidate),
-        )
-        if (!prior || !followThroughContinues(prior, item)) return false
-      }
-      const laterItems =
-        index + 1 < followThroughHistory.length
-          ? followThroughHistory[index + 1].items
-          : followThroughItems
-      const successor = laterItems.find((candidate) =>
-        sameFollowThroughOrigin(item, candidate),
+    const priorArchive = index > 0 ? followThroughHistory[index - 1] : undefined
+    for (const prior of priorArchive ? priorArchive.items : []) {
+      if (
+        followThroughUnresolved(prior) &&
+        !archive.items.some((item) => sameFollowThroughOrigin(prior, item))
       )
-      if (item.status === 'done') {
-        if (
-          successor ||
-          followThroughHistory
-            .slice(index + 2)
-            .some((later) =>
-              later.items.some((candidate) =>
-                sameFollowThroughOrigin(item, candidate),
-              ),
-            )
-        )
-          return false
-      } else if (!successor || !followThroughContinues(item, successor))
         return false
     }
+    for (const item of archive.items) {
+      if (item.originCycle !== archive.cycle) {
+        const prior = priorArchive
+          ? priorArchive.items.find((candidate) =>
+              sameFollowThroughOrigin(item, candidate),
+            )
+          : undefined
+        if (
+          !prior ||
+          !priorArchive ||
+          archive.cycle !== priorArchive.cycle + 1 ||
+          !followThroughContinues(prior, item)
+        )
+          return false
+      }
+      const priorObservations = archivedObservations.get(item.id) ?? []
+      if (
+        item.observationCount !==
+        priorObservations.length + item.observations.length
+      )
+        return false
+      const observations = [...priorObservations, ...item.observations]
+      const latest = observations.at(-1)?.result
+      const hasCurrentAttemptObservation =
+        observations.length > item.attemptObservationStart
+      if (
+        (item.status === 'done' &&
+          (!hasCurrentAttemptObservation || latest !== 'observed')) ||
+        (item.status === 'unable' &&
+          (!hasCurrentAttemptObservation ||
+            (latest !== 'not-observed' && latest !== 'unknown')))
+      )
+        return false
+      archivedObservations.set(item.id, observations)
+    }
+  }
+  const latestArchive =
+    followThroughHistory.length > 0
+      ? followThroughHistory[followThroughHistory.length - 1]
+      : undefined
+  for (const archived of latestArchive ? latestArchive.items : []) {
+    const current = followThroughItems.find((item) =>
+      sameFollowThroughOrigin(archived, item),
+    )
+    if (!followThroughUnresolved(archived)) {
+      if (current) return false
+    } else if (
+      !current ||
+      !latestArchive ||
+      latestArchive.cycle !== Number(record.cycle) - 1 ||
+      !followThroughContinues(archived, current)
+    )
+      return false
   }
   for (const item of followThroughItems) {
     if (item.originCycle === Number(record.cycle)) {
@@ -1781,13 +1914,19 @@ function validCanonicalRecord(
       )
         return false
     } else if (
-      !followThroughHistory
-        .at(-1)
-        ?.items.some(
-          (archived) =>
-            sameFollowThroughOrigin(item, archived) &&
-            followThroughContinues(archived, item),
-        )
+      !latestArchive?.items.some(
+        (archived) =>
+          sameFollowThroughOrigin(item, archived) &&
+          followThroughContinues(archived, item),
+      ) ||
+      latestArchive.cycle !== Number(record.cycle) - 1
+    )
+      return false
+    const archived = archivedObservations.get(item.id) ?? []
+    if (
+      item.observations.length < archived.length ||
+      stableStringify(item.observations.slice(0, archived.length)) !==
+        stableStringify(archived)
     )
       return false
   }
@@ -2105,18 +2244,26 @@ function assertLifecycleIntegrity(state: LifecycleState) {
     )
       throw new Error('Saved weather history integrity check failed.')
   }
+  const archivedFollowThroughObservations = new Map<
+    string,
+    FollowThroughObservation[]
+  >()
+  for (const archive of state.followThroughHistory) {
+    for (const item of archive.items) {
+      archivedFollowThroughObservations.set(item.id, [
+        ...(archivedFollowThroughObservations.get(item.id) ?? []),
+        ...item.observations,
+      ])
+    }
+  }
   for (const item of state.followThroughItems) {
     if (item.originCycle >= state.cycle) continue
-    const archived = [...state.followThroughHistory]
-      .reverse()
-      .flatMap((archive) => archive.items)
-      .find((candidate) => sameFollowThroughOrigin(item, candidate))
+    const archived = archivedFollowThroughObservations.get(item.id)
     if (
       !archived ||
-      item.observations.length < archived.observations.length ||
-      stableStringify(
-        item.observations.slice(0, archived.observations.length),
-      ) !== stableStringify(archived.observations)
+      item.observations.length < archived.length ||
+      stableStringify(item.observations.slice(0, archived.length)) !==
+        stableStringify(archived)
     )
       throw new Error('Saved follow-through carry integrity check failed.')
   }
@@ -2424,9 +2571,9 @@ export function lifecycleGates(state: LifecycleState) {
           row.state === 'follow-up-ready' &&
           state.followThroughItems.some(
             (item) =>
-              item.originCycle === state.cycle &&
-              item.supportItemId === row.supportItemId &&
-              item.gapId === row.gapId,
+              item.gapId === row.gapId &&
+              (item.originCycle < state.cycle ||
+                item.supportItemId === row.supportItemId),
           ),
       ),
     unknownOwners:
@@ -2588,6 +2735,25 @@ export function generateCloseoutPacket(state: LifecycleState) {
               )
               .join('\n')
           : 'No structured follow-through items.'
+      }\n\n### Archived follow-through\n${
+        state.followThroughHistory.length
+          ? state.followThroughHistory
+              .map(
+                (archive) =>
+                  `Cycle ${archive.cycle} | ${archive.digest}\n${archive.items
+                    .map(
+                      (item) =>
+                        `${item.id} | ${item.gapId} | ${item.owner} | ${item.dueHorizon} | ${item.doneCheck} | ${item.status} | observations ${item.observationCount} | attempt observation start ${item.attemptObservationStart}\n${item.observations
+                          .map(
+                            (observation) =>
+                              `  cycle ${observation.cycle} T${observation.practiceMinute >= 0 ? '+' : ''}${observation.practiceMinute} | ${observation.result}`,
+                          )
+                          .join('\n')}`,
+                    )
+                    .join('\n')}`,
+              )
+              .join('\n')
+          : 'No archived follow-through outcomes.'
       }`,
     )
   }
@@ -2611,16 +2777,64 @@ export function applyLifecycleAction(
   action: LifecycleAction,
 ): LifecycleState {
   const next = reduceLifecycleAction(state, action)
+  assertLifecycleStateBounded(
+    next,
+    'Lifecycle record exceeds the 128 KiB limit. Export before an explicit reset.',
+  )
+  return next
+}
+
+function assertLifecycleStateBounded(state: LifecycleState, message: string) {
   if (
-    new TextEncoder().encode(serializeLifecycleState(next)).byteLength >
+    new TextEncoder().encode(serializeLifecycleState(state)).byteLength >
       maxLifecycleImportBytes ||
-    new TextEncoder().encode(exportLifecycleRecord(next)).byteLength >
+    new TextEncoder().encode(exportLifecycleRecord(state)).byteLength >
       maxLifecycleImportBytes
   )
-    throw new Error(
-      'Lifecycle record exceeds the 128 KiB limit. Export before an explicit reset.',
-    )
-  return next
+    throw new Error(message)
+}
+
+function projectMinimumDuring(state: LifecycleState) {
+  if (state.phase !== 'before' || state.carriedGaps.length === 0) return state
+  let projected = state
+  projected = reduceLifecycleAction(projected, {
+    type: 'lock-event',
+    eventId: 'hurricane-amber',
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'set-objectives',
+    objectiveIds: ['timing'],
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'set-timing',
+    warningMinutes: 120,
+    preparationMinutes: 60,
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'choose-assumption',
+    choice: 'r1',
+    uptakePercent: 10,
+    supportDays: 3,
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'record-evidence',
+    gapId: projected.carriedGaps[0].gapId,
+    state: 'unknown',
+    partner: 'Practice Partner A',
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'set-scope',
+    area: 'Transportation support',
+    state: 'simulated',
+  })
+  projected = reduceLifecycleAction(projected, {
+    type: 'schedule-inject',
+    stage: 'MAP',
+    minute: 15,
+    area: 'Transportation support',
+  })
+  projected = reduceLifecycleAction(projected, { type: 'seal-h1' })
+  return reduceLifecycleAction(projected, { type: 'start-during' })
 }
 
 function reduceLifecycleAction(
@@ -2985,7 +3199,7 @@ function reduceLifecycleAction(
       if (!h1Ready(state))
         throw new Error('Complete every Before handoff gate first.')
       const digest = h1Digest(state)
-      return recordCapability(
+      const sealed = recordCapability(
         {
           ...state,
           h1: {
@@ -3001,6 +3215,14 @@ function reduceLifecycleAction(
         'B10',
         `Sealed H1 ${digest}; this is not an authorization decision.`,
       )
+      const projectedDuring = reduceLifecycleAction(sealed, {
+        type: 'start-during',
+      })
+      assertLifecycleStateBounded(
+        projectedDuring,
+        'Cannot seal H1 because the projected During state exceeds the 128 KiB limit. Export the strict record and explicitly reset before continuing.',
+      )
+      return sealed
     }
     case 'start-during': {
       if (!state.h1) throw new Error('Seal H1 before starting During.')
@@ -3296,12 +3518,12 @@ function reduceLifecycleAction(
       if (
         state.followThroughItems.some(
           (item) =>
-            item.originCycle === state.cycle &&
-            item.supportItemId === action.supportItemId,
+            item.supportItemId === row.supportItemId ||
+            (followThroughUnresolved(item) && item.gapId === row.gapId),
         )
       )
         throw new Error(
-          'This current recovery row already has a follow-through item.',
+          'This recovery row already has follow-through, or an unresolved item already owns its gap.',
         )
       if (
         !stringIn(action.owner, practiceRoles) ||
@@ -3338,9 +3560,9 @@ function reduceLifecycleAction(
       const item = state.followThroughItems.find(
         (candidate) => candidate.id === action.id,
       )
-      if (!item || !['planned', 'unable'].includes(item.status))
+      if (!item || item.status !== 'planned')
         throw new Error(
-          'Only planned or unable follow-through can start a PRACTICE recheck.',
+          'Only planned follow-through can start a PRACTICE check.',
         )
       if (item.observations.length >= maxFollowThroughObservations)
         throw new Error(
@@ -3603,16 +3825,22 @@ function reduceLifecycleAction(
         .filter((row) => {
           if (row.state !== 'follow-up-ready') return false
           const item = state.followThroughItems.find(
-            (candidate) =>
-              candidate.originCycle === state.cycle &&
-              candidate.supportItemId === row.supportItemId,
+            (candidate) => candidate.gapId === row.gapId,
           )
-          return item?.status !== 'done'
+          return item ? followThroughUnresolved(item) : true
         })
         .map((row) => row.gapId)
       const unresolvedFollowThrough = state.followThroughItems.filter(
-        (item) => item.status !== 'done',
+        followThroughUnresolved,
       )
+      if (
+        unresolvedFollowThrough.some(
+          (item) => item.observations.length >= maxFollowThroughObservations,
+        )
+      )
+        throw new Error(
+          'Resolve follow-through at the observation limit as done or unable before starting the next cycle.',
+        )
       const nextGapIds = [
         ...new Set([
           ...carriedGapIds,
@@ -3637,10 +3865,24 @@ function reduceLifecycleAction(
         state.followThroughItems.length > 0
           ? {
               cycle: state.cycle,
-              items: immutableSourceRecord(state.followThroughItems),
+              items: immutableSourceRecord(
+                state.followThroughItems.map((item) => ({
+                  ...item,
+                  observationCount: item.observations.length,
+                  observations: item.observations.filter(
+                    (observation) => observation.cycle === state.cycle,
+                  ),
+                })),
+              ),
               digest: followThroughArchiveDigest({
                 cycle: state.cycle,
-                items: state.followThroughItems,
+                items: state.followThroughItems.map((item) => ({
+                  ...item,
+                  observationCount: item.observations.length,
+                  observations: item.observations.filter(
+                    (observation) => observation.cycle === state.cycle,
+                  ),
+                })),
               }),
             }
           : null
@@ -3648,7 +3890,12 @@ function reduceLifecycleAction(
         ...state.followThroughHistory,
         ...(followThroughArchive ? [followThroughArchive] : []),
       ])
-      next.followThroughItems = immutableSourceRecord(unresolvedFollowThrough)
+      next.followThroughItems = immutableSourceRecord(
+        unresolvedFollowThrough.map((item) => ({
+          ...item,
+          attemptObservationStart: item.observations.length,
+        })),
+      )
       next.sourceHistory = immutableSourceRecord([
         ...state.sourceHistory,
         ...(state.previousCycle?.sourceEvidence.length
@@ -3698,11 +3945,16 @@ function reduceLifecycleAction(
       next.objectives = carriedObjectiveIds
       next.capabilityMarkers = [...state.capabilityMarkers]
       next.ledger = [...state.ledger]
-      return recordCapability(
+      const rolled = recordCapability(
         next,
         'A10',
         `Sealed H3 ${digest} and started practice cycle ${next.cycle}.`,
       )
+      assertLifecycleStateBounded(
+        projectMinimumDuring(rolled),
+        'Cannot start the next cycle because its minimum projected During state exceeds the 128 KiB limit. Complete terminal follow-through where possible, export the strict record, and explicitly reset before continuing.',
+      )
+      return rolled
     }
   }
 }
