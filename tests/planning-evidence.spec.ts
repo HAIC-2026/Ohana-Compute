@@ -633,7 +633,9 @@ test.describe('Local evidence workflow', () => {
     await expect(
       page.getByText('0/5 questions prepared', { exact: false }),
     ).toBeVisible()
-    await expect(page.getByRole('status')).toContainText('freshness changed')
+    await expect(
+      page.getByRole('status').filter({ hasText: 'freshness changed' }),
+    ).toBeVisible()
     await page.reload()
     await page
       .getByRole('button', { name: 'Detailed workspace', exact: true })
