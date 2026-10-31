@@ -3819,8 +3819,15 @@ function reduceLifecycleAction(
       )
     }
     case 'decide-gates': {
-      if (action.decision === 'gates-met' && !lifecycleGatesMet(state))
+      const gatesMet = lifecycleGatesMet(state)
+      if (action.decision === 'gates-met' && !gatesMet)
         throw new Error('Every end-of-cycle gate must pass first.')
+      if (action.decision === 'gates-unmet-carry-forward' && gatesMet)
+        throw new Error(
+          'All end-of-cycle gates pass; record the canonical gates-met decision.',
+        )
+      if (state.gateDecision === action.decision)
+        throw new Error('The canonical gate decision is already recorded.')
       return recordCapability(
         { ...state, gateDecision: action.decision },
         'A07',

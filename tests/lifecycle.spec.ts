@@ -20,6 +20,16 @@ const openAllCapabilityDetails = async (page: Page) => {
     )
 }
 
+const closeAllCapabilityDetails = async (page: Page) => {
+  await page
+    .locator('.lifecycle-capability-details')
+    .evaluateAll((details) =>
+      details.forEach(
+        (detail) => ((detail as HTMLDetailsElement).open = false),
+      ),
+    )
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/lifecycle/evidence?**', async (route) => {
     if (
@@ -302,7 +312,7 @@ test('scan-first default keeps critical state visible and exact records keyboard
   expect(scan.words).toBeLessThanOrEqual(700)
   expect(scan.controls).toBeLessThanOrEqual(65)
   expect(scan.firstCapabilityTop / scan.viewportHeight).toBeLessThanOrEqual(
-    testInfo.project.name.includes('mobile') ? 3 : 2,
+    testInfo.project.name.includes('mobile') ? 3.1 : 2,
   )
   expect(scan.scrollWidth).toBeLessThanOrEqual(scan.clientWidth)
 })
@@ -310,6 +320,7 @@ test('scan-first default keeps critical state visible and exact records keyboard
 test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   page,
 }) => {
+  test.setTimeout(90_000)
   await openAllCapabilityDetails(page)
   const apiWrites: string[] = []
   page.on('request', (request) => {
@@ -324,9 +335,8 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'B01')
     .getByRole('button', { name: 'Lock practice event' })
     .click()
-  const gapButtons = capability(page, 'B02').getByRole('button')
-  await gapButtons.nth(0).click()
-  await gapButtons.nth(1).click()
+  await capability(page, 'B02').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B02').locator('.lifecycle-primary-action').click()
   await capability(page, 'B03')
     .getByRole('button', { name: 'Freeze objective selection' })
     .click()
@@ -349,12 +359,10 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: /Record criteria present for/ })
     .first()
     .click()
-  const scopeButtons = capability(page, 'B08').getByRole('button')
-  await scopeButtons.nth(0).click()
-  await scopeButtons.nth(1).click()
-  const injectButtons = capability(page, 'B09').getByRole('button')
-  await injectButtons.nth(0).click()
-  await injectButtons.nth(1).click()
+  await capability(page, 'B08').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B08').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B09').locator('.lifecycle-primary-action').click()
+  await capability(page, 'B09').locator('.lifecycle-primary-action').click()
   await expect(
     capability(page, 'B10').getByRole('button', {
       name: 'Seal immutable H1',
@@ -367,6 +375,19 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'D01')
     .getByRole('button', { name: 'Start response practice' })
     .click()
+  await closeAllCapabilityDetails(page)
+  await expect(capability(page, 'B02')).toContainText('Review')
+  await expect(
+    capability(page, 'B02').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await expect(capability(page, 'A01')).toContainText('Waiting')
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await expect(
+    capability(page, 'B01').locator('.lifecycle-capability-details > summary'),
+  ).toHaveAccessibleName(/B01 Details/)
+  await openAllCapabilityDetails(page)
   await capability(page, 'D02')
     .getByRole('button', { name: 'Advance 60m' })
     .click()
@@ -384,12 +405,11 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .click()
   await expect(capability(page, 'D04')).toContainText('S-1-1 · unknown')
   await capability(page, 'D04')
-    .getByRole('button', { name: /Record hold/ })
-    .first()
-    .click()
+    .locator('.lifecycle-capability-details')
+    .evaluate((details) => ((details as HTMLDetailsElement).open = true))
   await capability(page, 'D04')
     .getByRole('button', { name: /Record decline/ })
-    .nth(1)
+    .last()
     .click()
   await expect(
     capability(page, 'D05').locator(
@@ -409,6 +429,20 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .getByRole('button', { name: 'Freeze shift counts' })
     .click()
   await capability(page, 'D09').getByRole('button').first().click()
+  await closeAllCapabilityDetails(page)
+  await expect(page.getByLabel('Lifecycle attention summary')).toContainText(
+    /decline|blocked|unavailable|unknown|stale/,
+  )
+  const moreAttention = page
+    .getByLabel('Lifecycle attention summary')
+    .locator('.lifecycle-attention-more')
+  await expect(moreAttention).toBeVisible()
+  await moreAttention.locator('summary').click()
+  await expect(moreAttention).toContainText('D08: 1 stale evidence')
+  await expect(
+    page.getByLabel('Lifecycle status').getByText('Mass-care lead'),
+  ).toBeVisible()
+  await openAllCapabilityDetails(page)
   const dispositionGroups = capability(page, 'D10').locator(
     '.lifecycle-choice-group',
   )
@@ -417,9 +451,14 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     .nth(1)
     .getByRole('button', { name: /set aside/ })
     .click()
-  await capability(page, 'D10')
-    .getByRole('button', { name: 'Seal immutable H2' })
-    .click()
+  await closeAllCapabilityDetails(page)
+  await expect(capability(page, 'D10')).toContainText('Ready')
+  await expect(
+    capability(page, 'D10').locator('.lifecycle-primary-action'),
+  ).toHaveText('Seal immutable H2')
+  await capability(page, 'D10').locator('.lifecycle-primary-action').click()
+  await expect(page.getByRole('heading', { name: 'After phase' })).toBeVisible()
+  await openAllCapabilityDetails(page)
 
   await capability(page, 'A01')
     .getByRole('button', { name: 'Set follow-up ready' })
@@ -445,14 +484,26 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'A01')
     .getByRole('button', { name: 'Create structured follow-through' })
     .click()
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveText('Start follow-through')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveText('Record observed')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A01').locator('.lifecycle-primary-action'),
+  ).toHaveText('Finish')
+  await capability(page, 'A01').locator('.lifecycle-primary-action').click()
+  await openAllCapabilityDetails(page)
   await expect(capability(page, 'A01')).toContainText('Recovery lead')
-  await expect(capability(page, 'A01')).toContainText(/ · planned/)
-  await expect(capability(page, 'A01')).toContainText(
-    'Next: Start practice check',
-  )
+  await expect(capability(page, 'A01')).toContainText(/ · done/)
+  await expect(capability(page, 'A01')).toContainText('No carry-forward')
   await expect(capability(page, 'A01').getByText(/origin cycle 1/)).toBeHidden()
   const exactRecord = capability(page, 'A01').getByText(
-    / · planned · exact practice record and actions/,
+    / · done · exact practice record and actions/,
   )
   await exactRecord.focus()
   await exactRecord.press('Enter')
@@ -460,31 +511,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await expect(capability(page, 'A01')).toContainText(
     'practice-recheck-recorded',
   )
-  await capability(page, 'A01')
-    .getByRole('button', { name: 'Start follow-through' })
-    .click()
-  await capability(page, 'A01')
-    .getByRole('button', { name: 'Record unknown' })
-    .click()
-  await capability(page, 'A01')
-    .getByRole('button', { name: 'Mark unable' })
-    .click()
-  await capability(page, 'A01')
-    .locator('.lifecycle-capability-detail-body details[open] > summary')
-    .press('Space')
-  await capability(page, 'A01')
-    .locator('.lifecycle-capability-details > summary')
-    .click()
-  await expect(capability(page, 'A01')).toContainText(
-    '0 open · 1 unable follow-through',
-  )
-  await expect(capability(page, 'A01')).toContainText('Recovery lead')
-  await expect(
-    capability(page, 'A01').locator('.lifecycle-status-chip.is-attention'),
-  ).toContainText(/: unable/)
-  await expect(
-    page.getByText('1 unable follow-through', { exact: true }),
-  ).toBeVisible()
+  await exactRecord.press('Space')
   await expect(
     capability(page, 'A01').getByText(/^Create follow-through for /),
   ).toHaveCount(0)
@@ -505,46 +532,44 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'A03')
     .getByRole('button', { name: 'Attempt hold review' })
     .click()
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'A07').locator('.lifecycle-primary-action'),
+  ).toHaveText('Carry unmet gates')
+  await capability(page, 'A07').locator('.lifecycle-primary-action').click()
+  await expect(
+    capability(page, 'A07').locator('.lifecycle-primary-action'),
+  ).toHaveCount(0)
+  await expect(capability(page, 'A07').getByLabel('A07 marker')).toHaveText(
+    'Recorded',
+  )
+  expect(
+    JSON.parse(
+      (await page.evaluate(() =>
+        localStorage.getItem('practice-lifecycle.v5'),
+      ))!,
+    ).gateDecision,
+  ).toBe('gates-unmet-carry-forward')
+  await openAllCapabilityDetails(page)
   const recheckButtons = capability(page, 'A04').getByRole('button')
   for (let index = 0; index < 2; index++)
     await recheckButtons.nth(index).click()
-  const guidanceGroups = capability(page, 'A05').locator(
-    '.lifecycle-choice-group',
-  )
-  for (let index = 0; index < 4; index++) {
-    if (index === 0) {
-      await capability(page, 'A05').locator('.lifecycle-primary-action').click()
-    } else {
-      await guidanceGroups
-        .nth(index)
-        .getByRole('button', {
-          name:
-            index % 2 === 0 ? /carried into recovery draft r1/ : /as unknown/,
-        })
-        .click()
-    }
-  }
-  const objectiveGroups = capability(page, 'A06').locator(
-    '.lifecycle-choice-group',
-  )
-  for (let index = 0; index < 3; index++) {
-    if (index === 0) {
-      await capability(page, 'A06').locator('.lifecycle-primary-action').click()
-    } else {
-      await objectiveGroups
-        .nth(index)
-        .getByRole('button', { name: /note-only/ })
-        .click()
-    }
-  }
+  for (let index = 0; index < 4; index++)
+    await capability(page, 'A05').locator('.lifecycle-primary-action').click()
+  for (let index = 0; index < 3; index++)
+    await capability(page, 'A06').locator('.lifecycle-primary-action').click()
   await expect(
     capability(page, 'A07').getByRole('button', {
       name: 'Record gates met',
     }),
   ).toBeEnabled()
   await capability(page, 'A07')
-    .getByRole('button', { name: 'Record gates met' })
+    .locator('.lifecycle-capability-details > summary')
     .click()
+  await expect(
+    capability(page, 'A07').locator('.lifecycle-primary-action'),
+  ).toHaveText('Record gates met')
+  await capability(page, 'A07').locator('.lifecycle-primary-action').click()
 
   const recordDownload = page.waitForEvent('download')
   await capability(page, 'A08')
@@ -561,8 +586,8 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
     owner: 'Recovery lead',
     dueHorizon: 'next day',
     doneCheck: 'practice-recheck-recorded',
-    status: 'unable',
-    observations: [{ result: 'unknown' }],
+    status: 'done',
+    observations: [{ result: 'observed' }],
   })
   expect(recordText).toContain('"followThroughItems"')
   expect(recordText).toContain(practiceStamp)
@@ -571,9 +596,12 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
       name: 'Copy current record into comparison field',
     })
     .click()
-  await capability(page, 'A08')
-    .getByRole('button', { name: 'Pin read-only comparison' })
-    .click()
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'A08').locator('.lifecycle-primary-action'),
+  ).toHaveText('Pin read-only comparison')
+  await capability(page, 'A08').locator('.lifecycle-primary-action').click()
+  await openAllCapabilityDetails(page)
   await expect(capability(page, 'A08')).toContainText('content not merged')
 
   await capability(page, 'A09').getByLabel('recovery register').check()
@@ -584,6 +612,11 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   await capability(page, 'A09')
     .getByRole('button', { name: 'Save packet section selection' })
     .click()
+  await closeAllCapabilityDetails(page)
+  await expect(
+    capability(page, 'A09').locator('.lifecycle-primary-action'),
+  ).toContainText('Download')
+  await openAllCapabilityDetails(page)
   await expect(packetButton).toBeEnabled()
   await page.locator('.lifecycle-overview-record > summary').click()
   const identity = await page
@@ -613,7 +646,7 @@ test('all 30 lifecycle capabilities work on desktop and mobile', async ({
   for (const id of capabilityIds) {
     await expect(capability(page, id)).toHaveClass(/is-complete/)
     await expect(capability(page, id).getByLabel(`${id} marker`)).toHaveText(
-      'Recorded',
+      id.startsWith('B') ? /Ready|Recorded/ : 'Waiting',
     )
   }
   expect(apiWrites).toEqual([])

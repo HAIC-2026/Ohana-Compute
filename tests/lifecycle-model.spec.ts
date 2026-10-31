@@ -967,6 +967,39 @@ test('H3 refuses a gates-met decision after gate inputs regress', () => {
   expect(apply(state, { type: 'start-next-cycle' }).cycle).toBe(2)
 })
 
+test('A07 records only the canonical decision for the current gate result', () => {
+  const met = completeLifecycle(false)
+  expect(lifecycleGatesMet(met)).toBe(true)
+  expect(() =>
+    apply(met, {
+      type: 'decide-gates',
+      decision: 'gates-unmet-carry-forward',
+    }),
+  ).toThrow(/canonical gates-met decision/)
+  expect(() =>
+    apply(met, { type: 'decide-gates', decision: 'gates-met' }),
+  ).toThrow(/already recorded/)
+  expect(JSON.parse(exportLifecycleRecord(met)).gateDecision).toBe('gates-met')
+
+  let unmet = apply(met, {
+    type: 'configure-recovery-row',
+    supportItemId: met.recoveryRows[0].supportItemId,
+    horizon: 'next day',
+    state: 'pending',
+  })
+  expect(lifecycleGatesMet(unmet)).toBe(false)
+  expect(() =>
+    apply(unmet, { type: 'decide-gates', decision: 'gates-met' }),
+  ).toThrow(/Every end-of-cycle gate must pass/)
+  unmet = apply(unmet, {
+    type: 'decide-gates',
+    decision: 'gates-unmet-carry-forward',
+  })
+  expect(JSON.parse(exportLifecycleRecord(unmet)).gateDecision).toBe(
+    'gates-unmet-carry-forward',
+  )
+})
+
 test('restore rejects malformed ledger and comparison metadata', () => {
   const saved = JSON.parse(JSON.stringify(completeLifecycle(false)))
   expect(saved.comparison).not.toBeNull()

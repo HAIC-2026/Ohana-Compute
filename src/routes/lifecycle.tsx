@@ -22,6 +22,8 @@ import {
   useLifecycleEvidence,
 } from '../lib/lifecycle-evidence'
 import { LifecycleWeatherContext } from '../components/NWSProductDetails'
+import { nwsEligibility, nwsProductValidity } from '../lib/nws-product'
+import { currentNWSApplicability } from '../lib/weather-evidence'
 import {
   applyLifecycleAction,
   canonicalLifecycleRecord,
@@ -98,8 +100,52 @@ type CapabilitySnapshot = {
   exceptions?: string[]
 }
 
+type PrimaryActionContext = {
+  comparisonText: string
+  packetSelectionSaved: boolean
+}
+
 function capabilityPhase(id: CapabilityId) {
   return id.startsWith('B') ? 'before' : id.startsWith('D') ? 'during' : 'after'
+}
+
+function exceptionSeverity(exception: string) {
+  const value = exception.toLowerCase()
+  const priorities = [
+    [
+      'decline',
+      'unable',
+      'blocked',
+      'overdue',
+      'exhausted',
+      'rechecks need attention',
+    ],
+    [
+      'unavailable',
+      'cancelled',
+      'expired',
+      'ambiguous',
+      'ineligible',
+      'cancellation',
+      'non_actual',
+      'non_public',
+      'not_yet_effective',
+      'public evidence',
+    ],
+    ['stale', 'not-returned', 'unknown'],
+    ['pending', 'needed', 'not asked'],
+  ]
+  const index = priorities.findIndex((terms) =>
+    terms.some((term) => value.includes(term)),
+  )
+  return index === -1 ? priorities.length : index
+}
+
+function compareExceptions(left: string, right: string) {
+  return (
+    exceptionSeverity(left) - exceptionSeverity(right) ||
+    left.localeCompare(right)
+  )
 }
 
 function capabilitySnapshot(
@@ -230,7 +276,11 @@ function capabilitySnapshot(
       return {
         fact: `${blockedItems.length} blocked or overdue items`,
         owner: blockedItems[0]?.owner,
-        exceptions: blockedItems.map((item) => `${item.id}: attention`),
+        exceptions: blockedItems.map((item) =>
+          item.response === 'decline'
+            ? `${item.id}: blocked (declined)`
+            : `${item.id}: overdue`,
+        ),
       }
     case 'D06':
       return {
@@ -367,7 +417,196 @@ function capabilitySnapshot(
   }
 }
 
-function splitPrimaryAction(children: ReactNode) {
+function primaryActionSelector(
+  id: CapabilityId,
+  state: LifecycleState,
+  context: PrimaryActionContext,
+): string | RegExp | null {
+  switch (id) {
+    case 'B01':
+      return state.event ? null : 'Lock practice event'
+    case 'B02': {
+      if (state.h1) return null
+      const gap = gapCatalog.find(
+        (candidate) =>
+          !state.carriedGaps.some((item) => item.gapId === candidate.id),
+      )
+      return gap ? `Carry ${gap.label}` : null
+    }
+    case 'B03':
+      return state.objectives.length ? null : 'Freeze objective selection'
+    case 'B04':
+      return state.timing.marginMinutes === null
+        ? 'Compute bounded margin'
+        : null
+    case 'B05':
+      return state.assumptions.chosen ? null : 'Carry comparison'
+    case 'B06': {
+      const format = Object.entries(state.formats).find(
+        ([, formatState]) => formatState !== 'planned',
+      )?.[0]
+      return format ? `Mark ${format} planned` : null
+    }
+    case 'B07': {
+      const gap = state.carriedGaps.find(
+        (candidate) =>
+          !state.evidence.some((item) => item.gapId === candidate.gapId),
+      )
+      return gap ? `Record criteria present for ${gap.gapId}` : null
+    }
+    case 'B08': {
+      const area = serviceAreas.find(
+        (candidate) => state.simulationScope[candidate] !== 'simulated',
+      )
+      return area ? `Mark ${area} simulated` : null
+    }
+    case 'B09': {
+      const area = serviceAreas.find(
+        (candidate) =>
+          state.simulationScope[candidate] === 'simulated' &&
+          !state.injects.some((inject) => inject.area === candidate),
+      )
+      return area ? `Schedule ${area} inject` : null
+    }
+    case 'B10':
+      return !state.h1 && h1Ready(state) ? 'Seal immutable H1' : null
+    case 'D01':
+      return state.h1 && state.phase === 'before'
+        ? 'Start response practice'
+        : null
+    case 'D02':
+      return state.phase === 'during' ? 'Advance 60m' : null
+    case 'D03': {
+      const area = serviceAreas.find(
+        (candidate) =>
+          state.simulationScope[candidate] === 'simulated' &&
+          !state.serviceRecords.some((record) => record.area === candidate),
+      )
+      return area ? `Record ${area} as unknown` : null
+    }
+    case 'D04': {
+      const item = state.supportItems.find(
+        (candidate) => candidate.response === 'not asked',
+      )
+      if (!item) return null
+      const index = state.supportItems.indexOf(item)
+      return `Record hold from ${
+        practicePartners[index % practicePartners.length]
+      } for ${item.id}`
+    }
+    case 'D05':
+      return state.supportItems.some(
+        (item) =>
+          item.response === 'decline' || item.dueMinute < state.practiceMinute,
+      )
+        ? 'Escalate with bounded deadline'
+        : null
+    case 'D06':
+      return !state.assumptions.r2 && revealedInjects(state).length
+        ? 'Add r2 after revealed inject'
+        : null
+    case 'D07':
+      return state.phase === 'during' ? 'Create next guidance version' : null
+    case 'D08':
+      return state.shiftSnapshot ? null : 'Freeze shift counts'
+    case 'D09': {
+      const evidence = state.evidence.find((item) => item.state === 'stale')
+      return evidence ? `Replace ${evidence.id}` : null
+    }
+    case 'D10': {
+      const item = state.supportItems.find(
+        (candidate) => candidate.disposition === 'undecided',
+      )
+      if (item) return `Mark ${item.id} carried`
+      return state.supportItems.length && !state.h2 ? 'Seal immutable H2' : null
+    }
+    case 'A01': {
+      const active = state.followThroughItems.find(
+        (item) => item.status === 'planned' || item.status === 'in-progress',
+      )
+      if (active?.status === 'planned') return 'Start follow-through'
+      if (active?.status === 'in-progress') {
+        const latest = active.observations.at(-1)
+        const hasObservation =
+          active.observations.length > active.attemptObservationStart
+        if (!hasObservation) return 'Record observed'
+        return latest?.result === 'observed' ? 'Finish' : 'Mark unable'
+      }
+      const row = state.recoveryRows.find(
+        (candidate) => candidate.state !== 'follow-up-ready',
+      )
+      return row ? 'Set follow-up ready' : null
+    }
+    case 'A02': {
+      const domain = cmistDomains.find(
+        (candidate) =>
+          !state.unmetNeeds.some((item) => item.domain === candidate),
+      )
+      return domain ? `Record ${domain} as Unknown — not zero` : null
+    }
+    case 'A03':
+      return state.holdReview.attempted ? null : 'Attempt hold review'
+    case 'A04': {
+      const record = state.serviceRecords.find((candidate) =>
+        serviceRecordNeedsRecheck(candidate, state.practiceMinute),
+      )
+      return record ? `Plan ${record.area} recheck` : null
+    }
+    case 'A05': {
+      const block = guidanceBlocks.find(
+        (candidate) => !state.recoveryDraft?.classifications[candidate],
+      )
+      return block
+        ? `Classify ${block} as carried into recovery draft r1`
+        : null
+    }
+    case 'A06': {
+      const objective = state.objectives.find(
+        (candidate) =>
+          !state.objectiveReview.some(
+            (review) => review.objectiveId === candidate,
+          ),
+      )
+      return objective ? `Score ${objective} and mark carry-forward` : null
+    }
+    case 'A07': {
+      const canonicalDecision = lifecycleGatesMet(state)
+        ? 'gates-met'
+        : 'gates-unmet-carry-forward'
+      if (state.gateDecision === canonicalDecision) return null
+      return canonicalDecision === 'gates-met'
+        ? 'Record gates met'
+        : 'Carry unmet gates'
+    }
+    case 'A08':
+      if (state.comparison) return null
+      return context.comparisonText.trim()
+        ? 'Pin read-only comparison'
+        : 'Copy current record into comparison field'
+    case 'A09':
+      return context.packetSelectionSaved
+        ? new RegExp(`^Download ${practiceStamp} packet$`)
+        : 'Save packet section selection'
+    case 'A10':
+      return state.gateDecision && !state.previousCycle
+        ? 'Seal carry-forward and start next cycle'
+        : null
+  }
+}
+
+function nodeText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join('')
+  if (!isValidElement(node)) return ''
+  return nodeText(
+    (node as ReactElement<{ children?: ReactNode }>).props.children,
+  )
+}
+
+function splitPrimaryAction(
+  children: ReactNode,
+  selector: string | RegExp | null,
+) {
   const result: { primary: ReactElement | null } = { primary: null }
 
   const visit = (node: ReactNode): ReactNode => {
@@ -377,9 +616,16 @@ function splitPrimaryAction(children: ReactNode) {
       disabled?: boolean
       className?: string
     }>
-    if (element.type === 'details') return element
+    const label = nodeText(element.props.children).replace(/\s+/g, ' ').trim()
+    const matches =
+      typeof selector === 'string'
+        ? label === selector
+        : selector
+          ? selector.test(label)
+          : false
     if (
       !result.primary &&
+      matches &&
       element.type === 'button' &&
       element.props.disabled !== true
     ) {
@@ -405,27 +651,45 @@ function Capability({
   id,
   title,
   marker,
+  primaryActionContext = {
+    comparisonText: '',
+    packetSelectionSaved: false,
+  },
   children,
 }: {
   state: LifecycleState
   id: CapabilityId
   title: string
   marker: boolean
+  primaryActionContext?: PrimaryActionContext
   children: React.ReactNode
 }) {
   const snapshot = capabilitySnapshot(id, state)
+  const exceptions = [...(snapshot.exceptions ?? [])].sort(compareExceptions)
   const phase = capabilityPhase(id)
-  const currentPhase = state.phase === 'complete' ? 'after' : state.phase
   const phaseOrder = ['before', 'during', 'after']
-  const isFuture = phaseOrder.indexOf(phase) > phaseOrder.indexOf(currentPhase)
-  const { primary, detail } = splitPrimaryAction(children)
-  const status = marker
-    ? 'Recorded'
-    : primary
-      ? 'Ready'
-      : isFuture
-        ? 'Waiting'
-        : 'Ready'
+  const phaseIndex = phaseOrder.indexOf(phase)
+  const currentPhaseIndex = ['before', 'during', 'after', 'complete'].indexOf(
+    state.phase,
+  )
+  const isFuture = phaseIndex > currentPhaseIndex
+  const isPast = phaseIndex < currentPhaseIndex
+  const isTransitionAction =
+    id === 'D01' && state.phase === 'before' && Boolean(state.h1)
+  const selector =
+    !isPast && (!isFuture || isTransitionAction)
+      ? primaryActionSelector(id, state, primaryActionContext)
+      : null
+  const { primary, detail } = splitPrimaryAction(children, selector)
+  const status = isPast
+    ? 'Review'
+    : isFuture && !isTransitionAction
+      ? 'Waiting'
+      : primary
+        ? 'Ready'
+        : marker
+          ? 'Recorded'
+          : 'Open'
 
   return (
     <article
@@ -447,12 +711,12 @@ function Capability({
             <strong>Owner:</strong> {snapshot.owner}
           </p>
         )}
-        {snapshot.exceptions?.length ? (
+        {exceptions.length ? (
           <div
             className="lifecycle-status-chips"
             aria-label={`${id} attention states`}
           >
-            {snapshot.exceptions.slice(0, 4).map((exception) => (
+            {exceptions.slice(0, 4).map((exception) => (
               <span
                 className="lifecycle-status-chip is-attention"
                 key={exception}
@@ -460,9 +724,9 @@ function Capability({
                 {exception}
               </span>
             ))}
-            {snapshot.exceptions.length > 4 && (
+            {exceptions.length > 4 && (
               <span className="lifecycle-status-chip">
-                +{snapshot.exceptions.length - 4} more
+                +{exceptions.length - 4} more
               </span>
             )}
           </div>
@@ -475,7 +739,9 @@ function Capability({
         </div>
       </div>
       <details className="lifecycle-capability-details">
-        <summary aria-label={`${id} ${title} options and exact record`}>
+        <summary
+          aria-label={`${id} Details: ${title} options and exact record`}
+        >
           Details
         </summary>
         <div className="lifecycle-capability-detail-body">{detail}</div>
@@ -736,20 +1002,68 @@ function PracticeLifecycle() {
       evidenceCounts?.unavailableEventSources ||
       liveEvidence.snapshot.status !== 'complete'
     : true
-  const activeExceptions = [
-    ...(liveEvidence.lastKnown ? ['last-known evidence'] : []),
-    ...(evidenceAttention ? ['public evidence needs attention'] : []),
-    ...(openFollowThroughCount
-      ? [`${openFollowThroughCount} open follow-through`]
-      : []),
-    ...(unableFollowThroughCount
-      ? [`${unableFollowThroughCount} unable follow-through`]
-      : []),
-    ...(recheckAttentionCount
-      ? [`${recheckAttentionCount} rechecks need attention`]
-      : []),
-    ...(restoreFailed ? ['saved record invalid'] : []),
-  ]
+  const capabilityExceptions = capabilityIds.flatMap((id) => {
+    const phaseIndex = ['before', 'during', 'after'].indexOf(
+      capabilityPhase(id),
+    )
+    if (phaseIndex > currentPhaseIndex) return []
+    return (capabilitySnapshot(id, state).exceptions ?? []).map(
+      (exception) => `${id}: ${exception}`,
+    )
+  })
+  const nwsProducts =
+    liveEvidence.snapshot?.event_triggers.data?.triggers.flatMap((trigger) =>
+      trigger.source === 'nws' && trigger.nws_product
+        ? [trigger.nws_product]
+        : [],
+    ) ?? []
+  const sourceExceptions = nwsProducts.flatMap((product) => {
+    const label = product.headline ?? product.event ?? product.id ?? 'NWS'
+    const validity = nwsProductValidity(product, liveEvidence.now)
+    const eligibility = nwsEligibility(product)
+    const applicability = currentNWSApplicability(
+      product,
+      liveEvidence.now,
+    ).result
+    return [
+      ...(validity === 'current' ? [] : [`${label}: ${validity}`]),
+      ...(eligibility === 'eligible' ? [] : [`${label}: ${eligibility}`]),
+      ...(applicability === 'unknown'
+        ? [`${label}: applicability unknown`]
+        : []),
+    ]
+  })
+  const activeExceptions = Array.from(
+    new Set([
+      ...capabilityExceptions,
+      ...sourceExceptions,
+      ...(liveEvidence.lastKnown ? ['last-known evidence'] : []),
+      ...(evidenceAttention ? ['public evidence needs attention'] : []),
+      ...(openFollowThroughCount
+        ? [`${openFollowThroughCount} open follow-through`]
+        : []),
+      ...(unableFollowThroughCount
+        ? [`${unableFollowThroughCount} unable follow-through`]
+        : []),
+      ...(recheckAttentionCount
+        ? [`${recheckAttentionCount} rechecks need attention`]
+        : []),
+      ...(restoreFailed ? ['saved record invalid'] : []),
+    ]),
+  ).sort(compareExceptions)
+  const visibleActiveExceptions = activeExceptions.slice(0, 6)
+  const blockedOrOverdueOwner = [...state.supportItems]
+    .filter(
+      (item) =>
+        item.response === 'decline' || item.dueMinute < state.practiceMinute,
+    )
+    .sort(
+      (left, right) =>
+        Number(right.response === 'decline') -
+          Number(left.response === 'decline') ||
+        left.dueMinute - right.dueMinute,
+    )
+    .at(0)?.owner
 
   return (
     <OperationsLayout title="Practice the complete event lifecycle">
@@ -808,14 +1122,32 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             aria-label="Lifecycle attention summary"
           >
             {activeExceptions.length ? (
-              activeExceptions.map((exception) => (
-                <span
-                  className="lifecycle-status-chip is-attention"
-                  key={exception}
-                >
-                  {exception}
-                </span>
-              ))
+              <>
+                {visibleActiveExceptions.map((exception) => (
+                  <span
+                    className="lifecycle-status-chip is-attention"
+                    key={exception}
+                  >
+                    {exception}
+                  </span>
+                ))}
+                {activeExceptions.length > visibleActiveExceptions.length && (
+                  <details className="lifecycle-attention-more">
+                    <summary className="lifecycle-status-chip is-attention">
+                      +
+                      {activeExceptions.length - visibleActiveExceptions.length}{' '}
+                      more attention states
+                    </summary>
+                    <ul>
+                      {activeExceptions
+                        .slice(visibleActiveExceptions.length)
+                        .map((exception) => (
+                          <li key={exception}>{exception}</li>
+                        ))}
+                    </ul>
+                  </details>
+                )}
+              </>
             ) : (
               <span className="lifecycle-status-chip">no exception</span>
             )}
@@ -847,9 +1179,11 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
               {state.phase === 'before'
                 ? 'Facilitator'
                 : state.phase === 'during'
-                  ? (state.supportItems.find(
+                  ? (blockedOrOverdueOwner ??
+                    state.supportItems.find(
                       (item) => item.disposition === 'undecided',
-                    )?.owner ?? 'Facilitator')
+                    )?.owner ??
+                    'Facilitator')
                   : (state.followThroughItems.find(
                       (item) =>
                         item.status === 'planned' ||
@@ -2358,6 +2692,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             id="A08"
             title="Export or pin a strict comparison"
             marker={marked('A08')}
+            primaryActionContext={{ comparisonText, packetSelectionSaved }}
           >
             <div className="operations-actions">
               <button
@@ -2408,6 +2743,7 @@ FORM: Established Hawaiʻi Mass Care Planner operating console; responsive two-c
             id="A09"
             title="Generate a deterministic closeout packet"
             marker={marked('A09')}
+            primaryActionContext={{ comparisonText, packetSelectionSaved }}
           >
             <fieldset>
               <legend>Packet sections</legend>

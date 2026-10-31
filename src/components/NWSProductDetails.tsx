@@ -31,16 +31,6 @@ function freshZoneRow(row: NWSZoneEvidence['zones'][number], now: number) {
   )
 }
 
-function summarizeStates(states: string[]) {
-  const counts = new Map<string, number>()
-  for (const state of states) counts.set(state, (counts.get(state) ?? 0) + 1)
-  return Array.from(counts, ([state, count]) =>
-    count === 1
-      ? state.replaceAll('_', ' ')
-      : `${count} ${state.replaceAll('_', ' ')}`,
-  ).join(' · ')
-}
-
 export function NWSProductDetails({
   product,
   now,
@@ -55,6 +45,10 @@ export function NWSProductDetails({
   const validity = nwsProductValidity(product, now)
   const eligibility = nwsEligibility(product)
   const currentApplicability = currentNWSApplicability(product, now)
+  const productLabel =
+    product.headline ?? product.event ?? product.id ?? 'NWS product'
+  const productDiscriminator =
+    product.id ?? product.sent ?? 'unidentified revision'
   const applicability = {
     inside:
       product.applicability_basis === 'affected_zones'
@@ -120,11 +114,19 @@ export function NWSProductDetails({
             : 'Local applicability is unknown and no impact conclusion is available.'}
       </p>
       <details>
-        <summary>Why applicability is {currentApplicability.result}</summary>
+        <summary
+          aria-label={`${productLabel} (${productDiscriminator}): why applicability is ${currentApplicability.result}`}
+        >
+          Why applicability is {currentApplicability.result}
+        </summary>
         <p>{applicability}</p>
       </details>
       <details>
-        <summary>Exact product facts and provenance</summary>
+        <summary
+          aria-label={`${productLabel} (${productDiscriminator}): exact product facts and provenance`}
+        >
+          Exact product facts and provenance
+        </summary>
         <dl className="nws-product-facts">
           <dt>Product / message ID</dt>
           <dd>{product.id ?? 'Not reported'}</dd>
@@ -317,17 +319,6 @@ export function LifecycleWeatherContext({
   const missingProvenance = events?.triggers.some(
     (row) => row.source === 'nws' && !row.nws_product,
   )
-  const validitySummary = summarizeStates(
-    products.map((product) => nwsProductValidity(product, live.now)),
-  )
-  const eligibilitySummary = summarizeStates(
-    products.map((product) => nwsEligibility(product)),
-  )
-  const applicabilitySummary = summarizeStates(
-    products.map(
-      (product) => currentNWSApplicability(product, live.now).result,
-    ),
-  )
   return (
     <section
       className="lifecycle-source-section"
@@ -347,21 +338,6 @@ export function LifecycleWeatherContext({
           >
             retrieval: {retrieval}
           </span>
-          {validitySummary && (
-            <span className="lifecycle-status-chip">
-              validity: {validitySummary}
-            </span>
-          )}
-          {eligibilitySummary && (
-            <span className="lifecycle-status-chip">
-              eligibility: {eligibilitySummary}
-            </span>
-          )}
-          {applicabilitySummary && (
-            <span className="lifecycle-status-chip">
-              applicability: {applicabilitySummary}
-            </span>
-          )}
           {sourceFailed && (
             <span className="lifecycle-status-chip is-attention">
               source error · facts may be incomplete
@@ -369,6 +345,46 @@ export function LifecycleWeatherContext({
           )}
         </div>
       </div>
+      {products.length > 0 && (
+        <ul className="lifecycle-source-scan-list">
+          {products.map((product, index) => {
+            const label =
+              product.headline ?? product.event ?? product.id ?? 'NWS product'
+            return (
+              <li key={`${product.id}:${index}`}>
+                <strong>{label}</strong>
+                <span>
+                  validity {nwsProductValidity(product, live.now)} · eligibility{' '}
+                  {nwsEligibility(product).replaceAll('_', ' ')} · applicability{' '}
+                  {currentNWSApplicability(product, live.now).result} ·
+                  retrieval {retrieval}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {reviewed && (
+        <p className="lifecycle-source-alert" role="status">
+          Reviewed, not accepted:{' '}
+          {reviewed.product.headline ??
+            reviewed.product.event ??
+            reviewed.product.id ??
+            'NWS product'}{' '}
+          · validity{' '}
+          {nwsProductValidity(
+            reviewed.product,
+            Date.parse(reviewed.reviewedAt),
+          )}{' '}
+          · applicability{' '}
+          {
+            currentNWSApplicability(
+              reviewed.product,
+              Date.parse(reviewed.reviewedAt),
+            ).result
+          }
+        </p>
+      )}
       {!products.length && (
         <p className="lifecycle-source-alert">
           {retrieval === 'fresh' && !sourceFailed && !missingProvenance

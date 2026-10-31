@@ -358,12 +358,40 @@ test('collapsed NWS summary exposes mixed product states', async ({ page }) => {
   await page.goto('/lifecycle')
 
   const weather = page.getByRole('region', { name: 'NWS product provenance' })
-  await expect(weather).toContainText('validity: current · expired')
-  await expect(weather).toContainText('eligibility: eligible · cancellation')
-  await expect(weather).toContainText('applicability: unknown · outside')
+  const rows = weather.locator('.lifecycle-source-scan-list li')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.filter({ hasText: current.headline! })).toContainText(
+    'validity current · eligibility eligible · applicability unknown · retrieval fresh',
+  )
+  await expect(rows.filter({ hasText: cancelled.headline })).toContainText(
+    'validity expired · eligibility cancellation · applicability outside · retrieval fresh',
+  )
   await expect(
     weather.locator('details.lifecycle-source-detail'),
   ).not.toHaveAttribute('open', '')
+  await weather
+    .getByText('Inspect NWS products, immutable records, and rechecks')
+    .click()
+  await expect(
+    weather.getByLabel(
+      `${current.headline!} (${current.id}): exact product facts and provenance`,
+    ),
+  ).toHaveCount(1)
+  await expect(
+    weather.getByLabel(
+      `${cancelled.headline} (${cancelled.id}): exact product facts and provenance`,
+    ),
+  ).toHaveCount(1)
+  await weather
+    .getByRole('button', { name: 'Review exact product revision' })
+    .first()
+    .click()
+  await weather
+    .getByText('Inspect NWS products, immutable records, and rechecks')
+    .click()
+  await expect(weather).toContainText(
+    `Reviewed, not accepted: ${current.headline} · validity current · applicability unknown`,
+  )
 })
 
 test('zone applicability ages to unknown without browser geometry recomputation', async ({
